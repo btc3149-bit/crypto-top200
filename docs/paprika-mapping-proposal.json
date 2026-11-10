@@ -1,0 +1,2838 @@
+{
+ "generatedAt": "2026-11-10",
+ "source": "CoinPaprika /v1/coins + /v1/tickers（2026-11-10 实拉）× CoinGecko 实价（线上 /api/board 同日）交叉核定；施工 agent 逐项核定，未全自动采信",
+ "note": "拟写入值：落库（data/coins.json 的 paprikaId 字段）由协调者在 W2-11 管线就绪后统一执行，本文件仅为核定提案。PAPRIKA_ENABLED=false 不变。",
+ "summary": {
+  "total": 200,
+  "nonNull": 196,
+  "null": 4,
+  "byVerdict": {
+   "accept": 179,
+   "accept-identity": 17,
+   "null": 4
+  },
+  "enableGate197": "映射非空 196/200 未达 197 门槛（且 tickers 实际覆盖另见 paprika-coverage-2026-11-10.md）→ 按 W2-03 §2 门槛禁止启用，维持默认关闭（PAPRIKA_ENABLED=false）"
+ },
+ "coins": [
+  {
+   "coingeckoId": "filecoin",
+   "symbol": "FIL",
+   "name": "Filecoin",
+   "paprikaId": "fil-filecoin",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "fil-filecoin",
+    "rank": 99,
+    "ratio": 1.0016595281049236
+   }
+  },
+  {
+   "coingeckoId": "dogwifcoin",
+   "symbol": "WIF",
+   "name": "dogwifhat",
+   "paprikaId": "wif-dogwifcoin",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "wif-dogwifcoin",
+    "rank": 193,
+    "ratio": 1.0015855884621725
+   }
+  },
+  {
+   "coingeckoId": "bonk",
+   "symbol": "BONK",
+   "name": "Bonk",
+   "paprikaId": "bonk-bonk",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "bonk-bonk",
+    "rank": 163,
+    "ratio": 1.002249165154416
+   }
+  },
+  {
+   "coingeckoId": "ape-and-pepe",
+   "symbol": "APEPE",
+   "name": "Ape and Pepe",
+   "paprikaId": "apepe-ape-and-pepe",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+slug_eq_cgid+symbol_exact]通过；该资产 Paprika rank=4364 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "apepe-ape-and-pepe",
+    "rank": 4364,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "theta-token",
+   "symbol": "THETA",
+   "name": "Theta Network",
+   "paprikaId": "theta-theta-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "theta-theta-token",
+    "rank": 203,
+    "ratio": 1.0014736295309832
+   }
+  },
+  {
+   "coingeckoId": "immutable-x",
+   "symbol": "IMX",
+   "name": "Immutable",
+   "paprikaId": "imx-immutable-x",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "imx-immutable-x",
+    "rank": 246,
+    "ratio": 1.0015063839325482
+   }
+  },
+  {
+   "coingeckoId": "pudgy-penguins",
+   "symbol": "PENGU",
+   "name": "Pudgy Penguins",
+   "paprikaId": "pengu-pudgy-penguins",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "pengu-pudgy-penguins",
+    "rank": 127,
+    "ratio": 1.0026889614483436
+   }
+  },
+  {
+   "coingeckoId": "virtual-protocol",
+   "symbol": "VIRTUAL",
+   "name": "Virtuals Protocol",
+   "paprikaId": "virtual-virtual-protocol",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "virtual-virtual-protocol",
+    "rank": 135,
+    "ratio": 1.0015721692268231
+   }
+  },
+  {
+   "coingeckoId": "fetch-ai",
+   "symbol": "FET",
+   "name": "Artificial Superintelligence Alliance",
+   "paprikaId": "fetch-ai",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "fetch-ai",
+    "rank": 129,
+    "ratio": 1.0017370179443221
+   }
+  },
+  {
+   "coingeckoId": "sei-network",
+   "symbol": "SEI",
+   "name": "Sei",
+   "paprikaId": "sei-sei",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "sei-sei",
+    "rank": 140,
+    "ratio": 1.0027445826936687
+   }
+  },
+  {
+   "coingeckoId": "starknet",
+   "symbol": "STRK",
+   "name": "Starknet",
+   "paprikaId": "strk-starknet",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "strk-starknet",
+    "rank": 141,
+    "ratio": 1.0025714166704804
+   }
+  },
+  {
+   "coingeckoId": "optimism",
+   "symbol": "OP",
+   "name": "Optimism",
+   "paprikaId": "op-optimism",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "op-optimism",
+    "rank": 161,
+    "ratio": 1.0016862437046261
+   }
+  },
+  {
+   "coingeckoId": "beam-2",
+   "symbol": "BEAM",
+   "name": "Beam",
+   "paprikaId": "beam-beam-eth",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=0.999",
+   "candidateChecked": {
+    "id": "beam-beam-eth",
+    "rank": 162,
+    "ratio": 0.9989695594271976
+   }
+  },
+  {
+   "coingeckoId": "the-graph",
+   "symbol": "GRT",
+   "name": "The Graph",
+   "paprikaId": "grt-the-graph",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "grt-the-graph",
+    "rank": 185,
+    "ratio": 1.0009178692353111
+   }
+  },
+  {
+   "coingeckoId": "eigenlayer",
+   "symbol": "EIGEN",
+   "name": "EigenCloud",
+   "paprikaId": "eigen-eigenlayer",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "eigen-eigenlayer",
+    "rank": 390,
+    "ratio": 1.0011519995807874
+   }
+  },
+  {
+   "coingeckoId": "floki",
+   "symbol": "FLOKI",
+   "name": "Floki",
+   "paprikaId": "floki-floki-inu",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "floki-floki-inu",
+    "rank": 172,
+    "ratio": 1.0019662484783132
+   }
+  },
+  {
+   "coingeckoId": "fartcoin",
+   "symbol": "FARTCOIN",
+   "name": "Fartcoin",
+   "paprikaId": "fartcoin-fartcoin",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "fartcoin-fartcoin",
+    "rank": 221,
+    "ratio": 1.0009773860443603
+   }
+  },
+  {
+   "coingeckoId": "celestia",
+   "symbol": "TIA",
+   "name": "Celestia",
+   "paprikaId": "tia-celestia",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "tia-celestia",
+    "rank": 123,
+    "ratio": 1.0011763284177453
+   }
+  },
+  {
+   "coingeckoId": "grass",
+   "symbol": "GRASS",
+   "name": "Grass",
+   "paprikaId": "grass-grass",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.005",
+   "candidateChecked": {
+    "id": "grass-grass",
+    "rank": 133,
+    "ratio": 1.005477363413104
+   }
+  },
+  {
+   "coingeckoId": "the-sandbox",
+   "symbol": "SAND",
+   "name": "The Sandbox",
+   "paprikaId": "sand-the-sandbox",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "sand-the-sandbox",
+    "rank": 226,
+    "ratio": 1.0028294769138562
+   }
+  },
+  {
+   "coingeckoId": "aioz-network",
+   "symbol": "AIOZ",
+   "name": "AIOZ Network",
+   "paprikaId": "aioz-aioz-network",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.997",
+   "candidateChecked": {
+    "id": "aioz-aioz-network",
+    "rank": 232,
+    "ratio": 0.9972546548454655
+   }
+  },
+  {
+   "coingeckoId": "havven",
+   "symbol": "SNX",
+   "name": "Synthetix",
+   "paprikaId": "snx-synthetix-network-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "snx-synthetix-network-token",
+    "rank": 330,
+    "ratio": 1.0011361000820544
+   }
+  },
+  {
+   "coingeckoId": "pepe",
+   "symbol": "PEPE",
+   "name": "Pepe",
+   "paprikaId": "pepe-pepe",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "pepe-pepe",
+    "rank": 45,
+    "ratio": 0.9998619364701106
+   }
+  },
+  {
+   "coingeckoId": "worldcoin-wld",
+   "symbol": "WLD",
+   "name": "Worldcoin",
+   "paprikaId": "wld-worldcoin",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "wld-worldcoin",
+    "rank": 68,
+    "ratio": 1.0019360125619128
+   }
+  },
+  {
+   "coingeckoId": "jasmycoin",
+   "symbol": "JASMY",
+   "name": "JasmyCoin",
+   "paprikaId": "jasmy-jasmycoin",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "jasmy-jasmycoin",
+    "rank": 180,
+    "ratio": 0.9998729678517725
+   }
+  },
+  {
+   "coingeckoId": "akash-network",
+   "symbol": "AKT",
+   "name": "Akash Network",
+   "paprikaId": "akt-akash-network",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.999",
+   "candidateChecked": {
+    "id": "akt-akash-network",
+    "rank": 178,
+    "ratio": 0.9987770919614966
+   }
+  },
+  {
+   "coingeckoId": "jito-governance-token",
+   "symbol": "JTO",
+   "name": "Jito",
+   "paprikaId": "jto-jito",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "jto-jito",
+    "rank": 240,
+    "ratio": 1.0022251928318104
+   }
+  },
+  {
+   "coingeckoId": "zebec-network",
+   "symbol": "ZBCN",
+   "name": "Zebec Network",
+   "paprikaId": "zbcn-zebec-network",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "zbcn-zebec-network",
+    "rank": 210,
+    "ratio": 1.0007737270799668
+   }
+  },
+  {
+   "coingeckoId": "iota",
+   "symbol": "IOTA",
+   "name": "IOTA",
+   "paprikaId": "miota-iota",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "miota-iota",
+    "rank": 197,
+    "ratio": 0.9998705332485411
+   }
+  },
+  {
+   "coingeckoId": "plasma",
+   "symbol": "XPL",
+   "name": "Plasma",
+   "paprikaId": "xpl-plasma",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "xpl-plasma",
+    "rank": 250,
+    "ratio": 0.9999808335600334
+   }
+  },
+  {
+   "coingeckoId": "arweave",
+   "symbol": "AR",
+   "name": "Arweave",
+   "paprikaId": "ar-arweave",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.998",
+   "candidateChecked": {
+    "id": "ar-arweave",
+    "rank": 165,
+    "ratio": 0.9978348386198379
+   }
+  },
+  {
+   "coingeckoId": "kaia",
+   "symbol": "KAIA",
+   "name": "Kaia",
+   "paprikaId": "kaia-kaia",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "kaia-kaia",
+    "rank": 169,
+    "ratio": 1.000832404224708
+   }
+  },
+  {
+   "coingeckoId": "kamino",
+   "symbol": "KMNO",
+   "name": "Kamino",
+   "paprikaId": "kmno-kamino-finance",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "kmno-kamino-finance",
+    "rank": 366,
+    "ratio": 1.0020665122210788
+   }
+  },
+  {
+   "coingeckoId": "bianrensheng",
+   "symbol": "币安人生",
+   "name": "BinanceLife",
+   "paprikaId": "bianrensheng-bianrensheng",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "bianrensheng-bianrensheng",
+    "rank": 112,
+    "ratio": 1.0014755449809207
+   }
+  },
+  {
+   "coingeckoId": "conflux-token",
+   "symbol": "CFX",
+   "name": "Conflux",
+   "paprikaId": "cfx-conflux-network",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "cfx-conflux-network",
+    "rank": 171,
+    "ratio": 0.9999463134322766
+   }
+  },
+  {
+   "coingeckoId": "arbitrum",
+   "symbol": "ARB",
+   "name": "Arbitrum",
+   "paprikaId": "arb-arbitrum",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.004",
+   "candidateChecked": {
+    "id": "arb-arbitrum",
+    "rank": 70,
+    "ratio": 1.004260428068175
+   }
+  },
+  {
+   "coingeckoId": "render-token",
+   "symbol": "RENDER",
+   "name": "Render",
+   "paprikaId": "rndr-render-token",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "rndr-render-token",
+    "rank": 91,
+    "ratio": 1.0010563749474892
+   }
+  },
+  {
+   "coingeckoId": "aptos",
+   "symbol": "APT",
+   "name": "Aptos",
+   "paprikaId": "apt-aptos",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "apt-aptos",
+    "rank": 111,
+    "ratio": 1.0013767256318402
+   }
+  },
+  {
+   "coingeckoId": "pyth-network",
+   "symbol": "PYTH",
+   "name": "Pyth Network",
+   "paprikaId": "pyth-pyth-network",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "pyth-pyth-network",
+    "rank": 110,
+    "ratio": 1.001600333507396
+   }
+  },
+  {
+   "coingeckoId": "ether-fi",
+   "symbol": "ETHFI",
+   "name": "ether.fi",
+   "paprikaId": "ethfi-etherfi",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "ethfi-etherfi",
+    "rank": 100,
+    "ratio": 1.0026478151800615
+   }
+  },
+  {
+   "coingeckoId": "pendle",
+   "symbol": "PENDLE",
+   "name": "Pendle",
+   "paprikaId": "pendle-pendle",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "pendle-pendle",
+    "rank": 154,
+    "ratio": 1.0014773381564044
+   }
+  },
+  {
+   "coingeckoId": "lido-dao",
+   "symbol": "LDO",
+   "name": "Lido DAO",
+   "paprikaId": "ldo-lido-dao",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "ldo-lido-dao",
+    "rank": 149,
+    "ratio": 1.0034388046919942
+   }
+  },
+  {
+   "coingeckoId": "thorchain",
+   "symbol": "RUNE",
+   "name": "THORChain",
+   "paprikaId": "rune-thorchain",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.997",
+   "candidateChecked": {
+    "id": "rune-thorchain",
+    "rank": 173,
+    "ratio": 0.9974797091017896
+   }
+  },
+  {
+   "coingeckoId": "vechain",
+   "symbol": "VET",
+   "name": "VeChain",
+   "paprikaId": "vet-vechain",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.999",
+   "candidateChecked": {
+    "id": "vet-vechain",
+    "rank": 122,
+    "ratio": 0.9992712898856692
+   }
+  },
+  {
+   "coingeckoId": "official-trump",
+   "symbol": "TRUMP",
+   "name": "Official Trump",
+   "paprikaId": "trump-official-trump",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.004",
+   "candidateChecked": {
+    "id": "trump-official-trump",
+    "rank": 152,
+    "ratio": 1.003552398151652
+   }
+  },
+  {
+   "coingeckoId": "monad",
+   "symbol": "MON",
+   "name": "Monad",
+   "paprikaId": "mon-monad",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "mon-monad",
+    "rank": 182,
+    "ratio": 1.0012499678615616
+   }
+  },
+  {
+   "coingeckoId": "sonic-3",
+   "symbol": "S",
+   "name": "Sonic",
+   "paprikaId": "s-sonic",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "s-sonic",
+    "rank": 222,
+    "ratio": 1.0010733067373807
+   }
+  },
+  {
+   "coingeckoId": "decentraland",
+   "symbol": "MANA",
+   "name": "Decentraland",
+   "paprikaId": "mana-decentraland",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.004",
+   "candidateChecked": {
+    "id": "mana-decentraland",
+    "rank": 206,
+    "ratio": 1.0036191572869695
+   }
+  },
+  {
+   "coingeckoId": "neo",
+   "symbol": "NEO",
+   "name": "NEO",
+   "paprikaId": "neo-neo",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "neo-neo",
+    "rank": 211,
+    "ratio": 1.000980501679364
+   }
+  },
+  {
+   "coingeckoId": "chiliz",
+   "symbol": "CHZ",
+   "name": "Chiliz",
+   "paprikaId": "chz-chiliz",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "chz-chiliz",
+    "rank": 223,
+    "ratio": 1.0024279147933064
+   }
+  },
+  {
+   "coingeckoId": "1inch",
+   "symbol": "1INCH",
+   "name": "1inch",
+   "paprikaId": "1inch-1inch",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "1inch-1inch",
+    "rank": 235,
+    "ratio": 1.0018888188260784
+   }
+  },
+  {
+   "coingeckoId": "ethena",
+   "symbol": "ENA",
+   "name": "Ethena",
+   "paprikaId": "ena-ethena",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "ena-ethena",
+    "rank": 48,
+    "ratio": 1.0021784646995708
+   }
+  },
+  {
+   "coingeckoId": "shiba-inu",
+   "symbol": "SHIB",
+   "name": "Shiba Inu",
+   "paprikaId": "shib-shiba-inu",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "shib-shiba-inu",
+    "rank": 42,
+    "ratio": 1.0010822936606378
+   }
+  },
+  {
+   "coingeckoId": "instadapp",
+   "symbol": "FLUID",
+   "name": "Fluid",
+   "paprikaId": "inst-instadapp",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.988",
+   "candidateChecked": {
+    "id": "inst-instadapp",
+    "rank": 264,
+    "ratio": 0.98805224544841
+   }
+  },
+  {
+   "coingeckoId": "convex-finance",
+   "symbol": "CVX",
+   "name": "Convex Finance",
+   "paprikaId": "cvx-convex-finance",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.999",
+   "candidateChecked": {
+    "id": "cvx-convex-finance",
+    "rank": 184,
+    "ratio": 0.9994387841347501
+   }
+  },
+  {
+   "coingeckoId": "ethereum-name-service",
+   "symbol": "ENS",
+   "name": "Ethereum Name Service",
+   "paprikaId": "ens-ethereum-name-service",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.999",
+   "candidateChecked": {
+    "id": "ens-ethereum-name-service",
+    "rank": 192,
+    "ratio": 0.998741976109303
+   }
+  },
+  {
+   "coingeckoId": "origintrail",
+   "symbol": "TRAC",
+   "name": "OriginTrail",
+   "paprikaId": "trac-origintrail",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.998",
+   "candidateChecked": {
+    "id": "trac-origintrail",
+    "rank": 200,
+    "ratio": 0.9983584602734815
+   }
+  },
+  {
+   "coingeckoId": "syrup",
+   "symbol": "SYRUP",
+   "name": "Maple Finance",
+   "paprikaId": "syrup-syrup-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "syrup-syrup-token",
+    "rank": 190,
+    "ratio": 1.0031563655469993
+   }
+  },
+  {
+   "coingeckoId": "injective-protocol",
+   "symbol": "INJ",
+   "name": "Injective",
+   "paprikaId": "inj-injective-protocol",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "inj-injective-protocol",
+    "rank": 94,
+    "ratio": 1.0011587021697883
+   }
+  },
+  {
+   "coingeckoId": "telcoin-2",
+   "symbol": "TEL",
+   "name": "Telcoin",
+   "paprikaId": "tel-telcoin",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "tel-telcoin",
+    "rank": 204,
+    "ratio": 1.0008400146315155
+   }
+  },
+  {
+   "coingeckoId": "falcon-finance-ff",
+   "symbol": "FF",
+   "name": "Falcon Finance",
+   "paprikaId": "ff-falcon-finance",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=0.997",
+   "candidateChecked": {
+    "id": "ff-falcon-finance",
+    "rank": 170,
+    "ratio": 0.996957043449877
+   }
+  },
+  {
+   "coingeckoId": "derive",
+   "symbol": "DRV",
+   "name": "Derive",
+   "paprikaId": "drv7-derive",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "drv7-derive",
+    "rank": 159,
+    "ratio": 1.0005898849811221
+   }
+  },
+  {
+   "coingeckoId": "geodnet",
+   "symbol": "GEOD",
+   "name": "Geodnet",
+   "paprikaId": "geod-geodnet-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "geod-geodnet-token",
+    "rank": 278,
+    "ratio": 1.0017740426084492
+   }
+  },
+  {
+   "coingeckoId": "meteora",
+   "symbol": "MET",
+   "name": "Meteora",
+   "paprikaId": "met-meteora",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "met-meteora",
+    "rank": 199,
+    "ratio": 1.0028571370245216
+   }
+  },
+  {
+   "coingeckoId": "anvil",
+   "symbol": "ANVL",
+   "name": "Anvil",
+   "paprikaId": "anvl-anvil",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "anvl-anvil",
+    "rank": 331,
+    "ratio": 1.0007410899142986
+   }
+  },
+  {
+   "coingeckoId": "pump-fun",
+   "symbol": "PUMP",
+   "name": "Pump.fun",
+   "paprikaId": "pump-pumpbtc",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.005",
+   "candidateChecked": {
+    "id": "pump-pumpbtc",
+    "rank": 1394,
+    "ratio": 1.0047230900816455
+   }
+  },
+  {
+   "coingeckoId": "ondo-finance",
+   "symbol": "ONDO",
+   "name": "Ondo",
+   "paprikaId": "ondo-ondo",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "ondo-ondo",
+    "rank": 53,
+    "ratio": 1.0032845689537946
+   }
+  },
+  {
+   "coingeckoId": "polygon-ecosystem-token",
+   "symbol": "POL",
+   "name": "POL (ex-MATIC)",
+   "paprikaId": "pol-polygon-ecosystem-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "pol-polygon-ecosystem-token",
+    "rank": 83,
+    "ratio": 1.001506065326483
+   }
+  },
+  {
+   "coingeckoId": "jupiter-exchange-solana",
+   "symbol": "JUP",
+   "name": "Jupiter",
+   "paprikaId": "jup-jupiter-exchange-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "jup-jupiter-exchange-token",
+    "rank": 88,
+    "ratio": 1.0031441878664287
+   }
+  },
+  {
+   "coingeckoId": "aero",
+   "symbol": "AERO",
+   "name": "Aerodrome",
+   "paprikaId": "aero-aerodrome-finance",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "aero-aerodrome-finance",
+    "rank": 189,
+    "ratio": 1.0013940960614496
+   }
+  },
+  {
+   "coingeckoId": "blockstack",
+   "symbol": "STX",
+   "name": "Stacks",
+   "paprikaId": "stx-stacks",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "stx-stacks",
+    "rank": 104,
+    "ratio": 1.001426968902979
+   }
+  },
+  {
+   "coingeckoId": "curve-dao-token",
+   "symbol": "CRV",
+   "name": "Curve DAO",
+   "paprikaId": "crv-curve-dao-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "crv-curve-dao-token",
+    "rank": 126,
+    "ratio": 1.0009949204382758
+   }
+  },
+  {
+   "coingeckoId": "layerzero",
+   "symbol": "ZRO",
+   "name": "LayerZero",
+   "paprikaId": "zro-layerzero",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "zro-layerzero",
+    "rank": 188,
+    "ratio": 1.0030828637510436
+   }
+  },
+  {
+   "coingeckoId": "basic-attention-token",
+   "symbol": "BAT",
+   "name": "Basic Attention",
+   "paprikaId": "bat-basic-attention-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "bat-basic-attention-token",
+    "rank": 176,
+    "ratio": 1.0007525255756236
+   }
+  },
+  {
+   "coingeckoId": "dogecoin",
+   "symbol": "DOGE",
+   "name": "Dogecoin",
+   "paprikaId": "doge-dogecoin",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "doge-dogecoin",
+    "rank": 12,
+    "ratio": 1.0021185955671086
+   }
+  },
+  {
+   "coingeckoId": "kaspa",
+   "symbol": "KAS",
+   "name": "Kaspa",
+   "paprikaId": "kas-kaspa",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "kas-kaspa",
+    "rank": 90,
+    "ratio": 1.0011371841058334
+   }
+  },
+  {
+   "coingeckoId": "raydium",
+   "symbol": "RAY",
+   "name": "Raydium",
+   "paprikaId": "ray-raydium",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.005",
+   "candidateChecked": {
+    "id": "ray-raydium",
+    "rank": 121,
+    "ratio": 1.005437601405083
+   }
+  },
+  {
+   "coingeckoId": "swissborg",
+   "symbol": "BORG",
+   "name": "SwissBorg",
+   "paprikaId": "chsb-swissborg",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.007",
+   "candidateChecked": {
+    "id": "chsb-swissborg",
+    "rank": 202,
+    "ratio": 1.0071566289660399
+   }
+  },
+  {
+   "coingeckoId": "vaulta",
+   "symbol": "A",
+   "name": "Vaulta",
+   "paprikaId": "a-vaulta",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "a-vaulta",
+    "rank": 215,
+    "ratio": 1.0026744067741227
+   }
+  },
+  {
+   "coingeckoId": "railgun",
+   "symbol": "RAIL",
+   "name": "Railgun",
+   "paprikaId": "rail-railgun",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+slug_eq_cgid+symbol_exact]通过；该资产 Paprika rank=5111 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "rail-railgun",
+    "rank": 5111,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "superfarm",
+   "symbol": "SUPER",
+   "name": "SuperVerse",
+   "paprikaId": "super-superfarm",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "super-superfarm",
+    "rank": 277,
+    "ratio": 1.0020804307074855
+   }
+  },
+  {
+   "coingeckoId": "reserve-rights-token",
+   "symbol": "RSR",
+   "name": "Reserve Rights",
+   "paprikaId": "rsr-reserve-rights",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=0.995",
+   "candidateChecked": {
+    "id": "rsr-reserve-rights",
+    "rank": 242,
+    "ratio": 0.9948221614993707
+   }
+  },
+  {
+   "coingeckoId": "apecoin",
+   "symbol": "APE",
+   "name": "ApeCoin",
+   "paprikaId": "ape-apecoin",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "ape-apecoin",
+    "rank": 269,
+    "ratio": 1.0028830904088304
+   }
+  },
+  {
+   "coingeckoId": "bittensor",
+   "symbol": "TAO",
+   "name": "Bittensor",
+   "paprikaId": "tao-bittensor",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "tao-bittensor",
+    "rank": 47,
+    "ratio": 1.0014525752399763
+   }
+  },
+  {
+   "coingeckoId": "collector-crypt",
+   "symbol": "CARDS",
+   "name": "Collector Crypt",
+   "paprikaId": "cards-collector-crypt",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.994",
+   "candidateChecked": {
+    "id": "cards-collector-crypt",
+    "rank": 248,
+    "ratio": 0.9943877967854029
+   }
+  },
+  {
+   "coingeckoId": "cap-4",
+   "symbol": "CAP",
+   "name": "Cap",
+   "paprikaId": "cap-cap-2",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "cap-cap-2",
+    "rank": 194,
+    "ratio": 1.0025742757628817
+   }
+  },
+  {
+   "coingeckoId": "unibase",
+   "symbol": "UB",
+   "name": "Unibase",
+   "paprikaId": "ub-unibase",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.005",
+   "candidateChecked": {
+    "id": "ub-unibase",
+    "rank": 147,
+    "ratio": 1.0052971380084048
+   }
+  },
+  {
+   "coingeckoId": "zama",
+   "symbol": "ZAMA",
+   "name": "Zama",
+   "paprikaId": "zama-zama",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+slug_eq_cgid+symbol_exact]通过；该资产 Paprika rank=5372 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "zama-zama",
+    "rank": 5372,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "world-liberty-financial",
+   "symbol": "WLFI",
+   "name": "World Liberty Financial",
+   "paprikaId": "wlfi-official-world-liberty-financial",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "wlfi-official-world-liberty-financial",
+    "rank": 56,
+    "ratio": 1.001147407358684
+   }
+  },
+  {
+   "coingeckoId": "tezos",
+   "symbol": "XTZ",
+   "name": "Tezos",
+   "paprikaId": "xtz-tezos",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "xtz-tezos",
+    "rank": 146,
+    "ratio": 1.0005598206562554
+   }
+  },
+  {
+   "coingeckoId": "shuffle-2",
+   "symbol": "SHFL",
+   "name": "Shuffle",
+   "paprikaId": "shfl-shuffle",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "shfl-shuffle",
+    "rank": 179,
+    "ratio": 1.0029875042299938
+   }
+  },
+  {
+   "coingeckoId": "algorand",
+   "symbol": "ALGO",
+   "name": "Algorand",
+   "paprikaId": "algo-algorand",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "algo-algorand",
+    "rank": 89,
+    "ratio": 1.0011111375491197
+   }
+  },
+  {
+   "coingeckoId": "hash-2",
+   "symbol": "HASH",
+   "name": "Provenance",
+   "paprikaId": null,
+   "verdict": "null",
+   "confidence": "—",
+   "reason": "人工核定降级：hash-hash-2 仅 slug 后缀 \"hash-2\" 与 CG id 巧合，Paprika 侧名称仅 \"Hash\"、rank 10599、无报价可验，无法确认与 Provenance HASH 为同一资产 → 置 null",
+   "candidateChecked": {
+    "id": "hash-hash-2",
+    "rank": 10604,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "mx-token",
+   "symbol": "MX",
+   "name": "MX Token",
+   "paprikaId": "mx-mx-token",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.999",
+   "candidateChecked": {
+    "id": "mx-mx-token",
+    "rank": 209,
+    "ratio": 0.9992195119668382
+   }
+  },
+  {
+   "coingeckoId": "golem",
+   "symbol": "GLM",
+   "name": "Golem",
+   "paprikaId": "glm-golem",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "glm-golem",
+    "rank": 239,
+    "ratio": 1.0003609830317044
+   }
+  },
+  {
+   "coingeckoId": "aave",
+   "symbol": "AAVE",
+   "name": "Aave",
+   "paprikaId": "aave-new",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "aave-new",
+    "rank": 50,
+    "ratio": 1.0014560125335117
+   }
+  },
+  {
+   "coingeckoId": "morpho",
+   "symbol": "MORPHO",
+   "name": "Morpho",
+   "paprikaId": "morpho-morpho",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "morpho-morpho",
+    "rank": 116,
+    "ratio": 1.003233441469685
+   }
+  },
+  {
+   "coingeckoId": "cosmos",
+   "symbol": "ATOM",
+   "name": "Cosmos Hub",
+   "paprikaId": "atom-cosmos-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "atom-cosmos-token",
+    "rank": 1119,
+    "ratio": 0.9998330262876408
+   }
+  },
+  {
+   "coingeckoId": "compound-governance-token",
+   "symbol": "COMP",
+   "name": "Compound",
+   "paprikaId": "comp-compoundd",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "comp-compoundd",
+    "rank": 175,
+    "ratio": 1.0006797889665977
+   }
+  },
+  {
+   "coingeckoId": "mantle",
+   "symbol": "MNT",
+   "name": "Mantle",
+   "paprikaId": "mnt-mantle",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "mnt-mantle",
+    "rank": 57,
+    "ratio": 1.0017697702372843
+   }
+  },
+  {
+   "coingeckoId": "internet-computer",
+   "symbol": "ICP",
+   "name": "Internet Computer",
+   "paprikaId": "icp-internet-computer",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "icp-internet-computer",
+    "rank": 61,
+    "ratio": 1.0033592690576698
+   }
+  },
+  {
+   "coingeckoId": "aster-2",
+   "symbol": "ASTER",
+   "name": "Aster",
+   "paprikaId": "aster-aster",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "aster-aster",
+    "rank": 75,
+    "ratio": 1.002754853202711
+   }
+  },
+  {
+   "coingeckoId": "sui",
+   "symbol": "SUI",
+   "name": "Sui",
+   "paprikaId": "sui-sui",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "sui-sui",
+    "rank": 35,
+    "ratio": 1.00178331076486
+   }
+  },
+  {
+   "coingeckoId": "elrond-erd-2",
+   "symbol": "EGLD",
+   "name": "MultiversX",
+   "paprikaId": "egld-elrond",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "egld-elrond",
+    "rank": 252,
+    "ratio": 1.0018302495397617
+   }
+  },
+  {
+   "coingeckoId": "avalanche-2",
+   "symbol": "AVAX",
+   "name": "Avalanche",
+   "paprikaId": "avax-avalanche",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.004",
+   "candidateChecked": {
+    "id": "avax-avalanche",
+    "rank": 34,
+    "ratio": 1.0036592346109279
+   }
+  },
+  {
+   "coingeckoId": "pi-network",
+   "symbol": "PI",
+   "name": "Pi Network",
+   "paprikaId": "pi2-pi-network",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "pi2-pi-network",
+    "rank": 93,
+    "ratio": 1.0011472420130363
+   }
+  },
+  {
+   "coingeckoId": "xdce-crowd-sale",
+   "symbol": "XDC",
+   "name": "XDC Network",
+   "paprikaId": "xdc-xdc-network",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.005",
+   "candidateChecked": {
+    "id": "xdc-xdc-network",
+    "rank": 128,
+    "ratio": 1.0047038325377355
+   }
+  },
+  {
+   "coingeckoId": "celium",
+   "symbol": "SN51",
+   "name": "lium",
+   "paprikaId": null,
+   "verdict": "null",
+   "confidence": "—",
+   "reason": "Paprika 活跃资产中无可核定候选（名称/slug/symbol 均不匹配或仅有非同一资产如 Wrapped 版）",
+   "candidateChecked": null
+  },
+  {
+   "coingeckoId": "chain-2",
+   "symbol": "XCN",
+   "name": "Onyxcoin",
+   "paprikaId": "xcn-chain",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=0.999",
+   "candidateChecked": {
+    "id": "xcn-chain",
+    "rank": 213,
+    "ratio": 0.9993920906523382
+   }
+  },
+  {
+   "coingeckoId": "non-playable-coin",
+   "symbol": "NPC",
+   "name": "Non-Playable Coin",
+   "paprikaId": "npc-non-playable-coin",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "npc-non-playable-coin",
+    "rank": 241,
+    "ratio": 1.0017123877559035
+   }
+  },
+  {
+   "coingeckoId": "zksync",
+   "symbol": "ZK",
+   "name": "ZKsync",
+   "paprikaId": "zk-zksync",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "zk-zksync",
+    "rank": 441,
+    "ratio": 1.0021576073020313
+   }
+  },
+  {
+   "coingeckoId": "chutes",
+   "symbol": "SN64",
+   "name": "Chutes",
+   "paprikaId": "sn64-chutes",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+slug_eq_cgid+symbol_exact]通过；该资产 Paprika rank=4401 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "sn64-chutes",
+    "rank": 4401,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "chainlink",
+   "symbol": "LINK",
+   "name": "Chainlink",
+   "paprikaId": "link-chainlink",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "link-chainlink",
+    "rank": 20,
+    "ratio": 1.0032305600921956
+   }
+  },
+  {
+   "coingeckoId": "aethir",
+   "symbol": "ATH",
+   "name": "Aethir",
+   "paprikaId": "ath14-aethir",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "ath14-aethir",
+    "rank": 253,
+    "ratio": 1.0025239340000272
+   }
+  },
+  {
+   "coingeckoId": "solana",
+   "symbol": "SOL",
+   "name": "Solana",
+   "paprikaId": "sol-solana",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.008",
+   "candidateChecked": {
+    "id": "sol-solana",
+    "rank": 7,
+    "ratio": 1.0078857725876114
+   }
+  },
+  {
+   "coingeckoId": "pancakeswap-token",
+   "symbol": "CAKE",
+   "name": "PancakeSwap",
+   "paprikaId": "cake-pancakeswap",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "cake-pancakeswap",
+    "rank": 103,
+    "ratio": 1.0017638677355152
+   }
+  },
+  {
+   "coingeckoId": "cardano",
+   "symbol": "ADA",
+   "name": "Cardano",
+   "paprikaId": "ada-cardano",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "ada-cardano",
+    "rank": 22,
+    "ratio": 1.0023839517153605
+   }
+  },
+  {
+   "coingeckoId": "memecore",
+   "symbol": "M",
+   "name": "MemeCore",
+   "paprikaId": "m-memecore",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "m-memecore",
+    "rank": 54,
+    "ratio": 1.0017276855422657
+   }
+  },
+  {
+   "coingeckoId": "midnight-3",
+   "symbol": "NIGHT",
+   "name": "Midnight",
+   "paprikaId": "night-midnight2",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.005",
+   "candidateChecked": {
+    "id": "night-midnight2",
+    "rank": 95,
+    "ratio": 1.004690059506995
+   }
+  },
+  {
+   "coingeckoId": "stable-2",
+   "symbol": "STABLE",
+   "name": "Stable",
+   "paprikaId": "stable-stable",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.009",
+   "candidateChecked": {
+    "id": "stable-stable",
+    "rank": 109,
+    "ratio": 1.008708431570671
+   }
+  },
+  {
+   "coingeckoId": "hedera-hashgraph",
+   "symbol": "HBAR",
+   "name": "Hedera",
+   "paprikaId": "hbar-hedera-hashgraph",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "hbar-hedera-hashgraph",
+    "rank": 39,
+    "ratio": 1.0015061427575758
+   }
+  },
+  {
+   "coingeckoId": "meta-2-2",
+   "symbol": "META",
+   "name": "MetaDAO",
+   "paprikaId": "meta-metadao-new",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "人工核定：Paprika 条目名 \"MetaDAO (new)\"（迁移后新合约）名称包含 + symbol 全等；rank 5393 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "meta-metadium",
+    "rank": 722,
+    "ratio": 0.001811237890751407
+   }
+  },
+  {
+   "coingeckoId": "plume",
+   "symbol": "PLUME",
+   "name": "Plume",
+   "paprikaId": "plume-plume",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "plume-plume",
+    "rank": 501,
+    "ratio": 1.0012165893903369
+   }
+  },
+  {
+   "coingeckoId": "gmt-token",
+   "symbol": "GOMINING",
+   "name": "GoMining",
+   "paprikaId": "gmt-gomining-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "gmt-gomining-token",
+    "rank": 196,
+    "ratio": 0.9999547945340016
+   }
+  },
+  {
+   "coingeckoId": "decred",
+   "symbol": "DCR",
+   "name": "Decred",
+   "paprikaId": "dcr-decred",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.996",
+   "candidateChecked": {
+    "id": "dcr-decred",
+    "rank": 166,
+    "ratio": 0.9964762180797916
+   }
+  },
+  {
+   "coingeckoId": "axie-infinity",
+   "symbol": "AXS",
+   "name": "Axie Infinity",
+   "paprikaId": "axs-axie-infinity",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "axs-axie-infinity",
+    "rank": 201,
+    "ratio": 1.0022130508497513
+   }
+  },
+  {
+   "coingeckoId": "stp-network",
+   "symbol": "AWE",
+   "name": "AWE Network",
+   "paprikaId": "awe-awe-network",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "awe-awe-network",
+    "rank": 216,
+    "ratio": 1.0000489393613696
+   }
+  },
+  {
+   "coingeckoId": "ecash",
+   "symbol": "XEC",
+   "name": "eCash",
+   "paprikaId": "xec-ecash",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "xec-ecash",
+    "rank": 229,
+    "ratio": 1.0006956297573553
+   }
+  },
+  {
+   "coingeckoId": "sosovalue",
+   "symbol": "SOSO",
+   "name": "SoSoValue",
+   "paprikaId": "soso-sosovalue",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "soso-sosovalue",
+    "rank": 418,
+    "ratio": 1.0003949391494258
+   }
+  },
+  {
+   "coingeckoId": "rollbit-coin",
+   "symbol": "RLB",
+   "name": "Rollbit Coin",
+   "paprikaId": "rlb-rollbit-coin",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "rlb-rollbit-coin",
+    "rank": 236,
+    "ratio": 1.0020817277986307
+   }
+  },
+  {
+   "coingeckoId": "safepal",
+   "symbol": "SFP",
+   "name": "SafePal",
+   "paprikaId": "sfp-safepal-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "sfp-safepal-token",
+    "rank": 238,
+    "ratio": 1.0007494177656666
+   }
+  },
+  {
+   "coingeckoId": "uniswap",
+   "symbol": "UNI",
+   "name": "Uniswap",
+   "paprikaId": "uni-uniswap",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "uni-uniswap",
+    "rank": 29,
+    "ratio": 1.000194278021066
+   }
+  },
+  {
+   "coingeckoId": "ethereum-classic",
+   "symbol": "ETC",
+   "name": "Ethereum Classic",
+   "paprikaId": "etc-ethereum-classic",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "etc-ethereum-classic",
+    "rank": 76,
+    "ratio": 1.002036679294372
+   }
+  },
+  {
+   "coingeckoId": "ethereum",
+   "symbol": "ETH",
+   "name": "Ethereum",
+   "paprikaId": "eth-ethereum",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "eth-ethereum",
+    "rank": 2,
+    "ratio": 1.0025174187409958
+   }
+  },
+  {
+   "coingeckoId": "the-open-network",
+   "symbol": "GRAM",
+   "name": "Gram (原Toncoin)",
+   "paprikaId": "toncoin-the-open-network",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "toncoin-the-open-network",
+    "rank": 38,
+    "ratio": 1.0004367033567376
+   }
+  },
+  {
+   "coingeckoId": "trust-wallet-token",
+   "symbol": "TWT",
+   "name": "Trust Wallet",
+   "paprikaId": "twt-trust-wallet-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "twt-trust-wallet-token",
+    "rank": 191,
+    "ratio": 1.0011530621167113
+   }
+  },
+  {
+   "coingeckoId": "gnosis",
+   "symbol": "GNO",
+   "name": "Gnosis",
+   "paprikaId": "gno-gnosis",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.999",
+   "candidateChecked": {
+    "id": "gno-gnosis",
+    "rank": 144,
+    "ratio": 0.9991930052044556
+   }
+  },
+  {
+   "coingeckoId": "bitcoin-cash-sv",
+   "symbol": "BSV",
+   "name": "Bitcoin SV",
+   "paprikaId": "bsv-bitcoin-sv",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "bsv-bitcoin-sv",
+    "rank": 139,
+    "ratio": 1.0032421179740163
+   }
+  },
+  {
+   "coingeckoId": "near",
+   "symbol": "NEAR",
+   "name": "NEAR Protocol",
+   "paprikaId": "near-near-protocol",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.004",
+   "candidateChecked": {
+    "id": "near-near-protocol",
+    "rank": 25,
+    "ratio": 1.003934128708345
+   }
+  },
+  {
+   "coingeckoId": "lighter",
+   "symbol": "LIT",
+   "name": "Lighter",
+   "paprikaId": "lit-lighter",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "lit-lighter",
+    "rank": 92,
+    "ratio": 1.0017339638158163
+   }
+  },
+  {
+   "coingeckoId": "stellar",
+   "symbol": "XLM",
+   "name": "Stellar",
+   "paprikaId": "xlm-stellar",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "xlm-stellar",
+    "rank": 23,
+    "ratio": 1.0025679784319126
+   }
+  },
+  {
+   "coingeckoId": "crypto-com-chain",
+   "symbol": "CRO",
+   "name": "Cronos",
+   "paprikaId": "cro-cryptocom-chain",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "cro-cryptocom-chain",
+    "rank": 43,
+    "ratio": 1.00080841548581
+   }
+  },
+  {
+   "coingeckoId": "sky",
+   "symbol": "SKY",
+   "name": "Sky",
+   "paprikaId": "sky-skycoin",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "sky-skycoin",
+    "rank": 1333,
+    "ratio": 1.00161428258145
+   }
+  },
+  {
+   "coingeckoId": "wefi",
+   "symbol": "WFI",
+   "name": "WeFi",
+   "paprikaId": "wfi-wefi",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "wfi-wefi",
+    "rank": 301,
+    "ratio": 1.0020594002685652
+   }
+  },
+  {
+   "coingeckoId": "useless-3",
+   "symbol": "USELESS",
+   "name": "Useless Coin",
+   "paprikaId": "useless-useless-coin",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "useless-useless-coin",
+    "rank": 208,
+    "ratio": 1.001574844228391
+   }
+  },
+  {
+   "coingeckoId": "seeker",
+   "symbol": "SKR",
+   "name": "Seeker",
+   "paprikaId": "skr-saakuru-labs",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "skr-saakuru-labs",
+    "rank": 817,
+    "ratio": 1.000737261491299
+   }
+  },
+  {
+   "coingeckoId": "dash",
+   "symbol": "DASH",
+   "name": "Dash",
+   "paprikaId": "dash-dash",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.005",
+   "candidateChecked": {
+    "id": "dash-dash",
+    "rank": 102,
+    "ratio": 1.0049095646056594
+   }
+  },
+  {
+   "coingeckoId": "litecoin",
+   "symbol": "LTC",
+   "name": "Litecoin",
+   "paprikaId": "ltc-litecoin-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "ltc-litecoin-token",
+    "rank": 395,
+    "ratio": 1.0018547551634092
+   }
+  },
+  {
+   "coingeckoId": "sun-token",
+   "symbol": "SUN",
+   "name": "Sun Token",
+   "paprikaId": "sun-sun",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "sun-sun",
+    "rank": 142,
+    "ratio": 1.0002789735615576
+   }
+  },
+  {
+   "coingeckoId": "ripple",
+   "symbol": "XRP",
+   "name": "XRP",
+   "paprikaId": "xrp-xrp",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "xrp-xrp",
+    "rank": 6,
+    "ratio": 1.002553666822369
+   }
+  },
+  {
+   "coingeckoId": "rain",
+   "symbol": "RAIN",
+   "name": "Rain",
+   "paprikaId": "rain-rain-protocol",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "rain-rain-protocol",
+    "rank": 37,
+    "ratio": 1.0004316961958257
+   }
+  },
+  {
+   "coingeckoId": "bnb48-club-token",
+   "symbol": "KOGE",
+   "name": "KOGE",
+   "paprikaId": "koge-bnb48-club-token",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+slug_eq_cgid+symbol_exact]通过；该资产 Paprika rank=4676 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "koge-bnb48-club-token",
+    "rank": 4676,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "canton-network",
+   "symbol": "CC",
+   "name": "Canton",
+   "paprikaId": "cc-canton-network",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "cc-canton-network",
+    "rank": 33,
+    "ratio": 1.0024271741306903
+   }
+  },
+  {
+   "coingeckoId": "zencash",
+   "symbol": "ZEN",
+   "name": "Horizen",
+   "paprikaId": "zen-horizen",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "zen-horizen",
+    "rank": 259,
+    "ratio": 1.0001152927483565
+   }
+  },
+  {
+   "coingeckoId": "bitcoin-cash",
+   "symbol": "BCH",
+   "name": "Bitcoin Cash",
+   "paprikaId": "bch-bitcoin-cash",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "bch-bitcoin-cash",
+    "rank": 24,
+    "ratio": 1.0013983201969527
+   }
+  },
+  {
+   "coingeckoId": "binancecoin",
+   "symbol": "BNB",
+   "name": "BNB",
+   "paprikaId": "bnb-binance-coin",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "bnb-binance-coin",
+    "rank": 4,
+    "ratio": 1.0012723299695327
+   }
+  },
+  {
+   "coingeckoId": "nexo",
+   "symbol": "NEXO",
+   "name": "Nexo",
+   "paprikaId": "nexo-nexo",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.998",
+   "candidateChecked": {
+    "id": "nexo-nexo",
+    "rank": 119,
+    "ratio": 0.9979556874448399
+   }
+  },
+  {
+   "coingeckoId": "htx-dao",
+   "symbol": "HTX",
+   "name": "HTX DAO",
+   "paprikaId": "htx-htx",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=0.998",
+   "candidateChecked": {
+    "id": "htx-htx",
+    "rank": 1314,
+    "ratio": 0.9979903145787912
+   }
+  },
+  {
+   "coingeckoId": "coco-2",
+   "symbol": "COCO",
+   "name": "coco",
+   "paprikaId": "coco-coco",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+symbol_exact]通过；该资产 Paprika rank=4536 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "coco-coco",
+    "rank": 4536,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "vision-3",
+   "symbol": "VSN",
+   "name": "Vision",
+   "paprikaId": "vsn-vision",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=0.996",
+   "candidateChecked": {
+    "id": "vsn-vision",
+    "rank": 227,
+    "ratio": 0.995724925158929
+   }
+  },
+  {
+   "coingeckoId": "kinetiq",
+   "symbol": "KNTQ",
+   "name": "Kinetiq",
+   "paprikaId": "kntq-kinetiq",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+slug_eq_cgid+symbol_exact]通过；该资产 Paprika rank=4715 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "kntq-kinetiq",
+    "rank": 4715,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "bc-token",
+   "symbol": "BC",
+   "name": "BCGame Coin",
+   "paprikaId": "bc-bcgame-coin",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+symbol_exact]通过；该资产 Paprika rank=4998 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "bc-bcgame-coin",
+    "rank": 4998,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "bedrock-token",
+   "symbol": "BR",
+   "name": "Bedrock",
+   "paprikaId": "br-bedrock-dao",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=0.995",
+   "candidateChecked": {
+    "id": "br-bedrock-dao",
+    "rank": 247,
+    "ratio": 0.9948115586884106
+   }
+  },
+  {
+   "coingeckoId": "edgex",
+   "symbol": "EDGE",
+   "name": "edgeX",
+   "paprikaId": "edge-edgex",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.008",
+   "candidateChecked": {
+    "id": "edge-edgex",
+    "rank": 205,
+    "ratio": 1.0081590758009487
+   }
+  },
+  {
+   "coingeckoId": "build-on",
+   "symbol": "B",
+   "name": "BUILDon",
+   "paprikaId": "b-buildon",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=0.996",
+   "candidateChecked": {
+    "id": "b-buildon",
+    "rank": 219,
+    "ratio": 0.9958847726150345
+   }
+  },
+  {
+   "coingeckoId": "doublezero",
+   "symbol": "2Z",
+   "name": "DoubleZero",
+   "paprikaId": "2z-doublezero",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "2z-doublezero",
+    "rank": 290,
+    "ratio": 1.0014426339678844
+   }
+  },
+  {
+   "coingeckoId": "debridge",
+   "symbol": "DBR",
+   "name": "deBridge",
+   "paprikaId": "dbr-debridge",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+slug_eq_cgid+symbol_exact]通过；该资产 Paprika rank=5436 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "dbr-debridge",
+    "rank": 5436,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "tron",
+   "symbol": "TRX",
+   "name": "TRON",
+   "paprikaId": "trx-tron",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "trx-tron",
+    "rank": 8,
+    "ratio": 1.0007395089010744
+   }
+  },
+  {
+   "coingeckoId": "bitget-token",
+   "symbol": "BGB",
+   "name": "Bitget Token",
+   "paprikaId": "bgb-bitget-token",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "bgb-bitget-token",
+    "rank": 66,
+    "ratio": 1.0002718744521606
+   }
+  },
+  {
+   "coingeckoId": "venice-token",
+   "symbol": "VVV",
+   "name": "Venice Token",
+   "paprikaId": "vvv-venice-token",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.005",
+   "candidateChecked": {
+    "id": "vvv-venice-token",
+    "rank": 78,
+    "ratio": 1.0049256946644416
+   }
+  },
+  {
+   "coingeckoId": "kucoin-shares",
+   "symbol": "KCS",
+   "name": "KuCoin",
+   "paprikaId": "kcs-kucoin-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "kcs-kucoin-token",
+    "rank": 82,
+    "ratio": 1.0022387090443508
+   }
+  },
+  {
+   "coingeckoId": "zero-gravity",
+   "symbol": "0G",
+   "name": "0G",
+   "paprikaId": "zero-gravity-0g",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "zero-gravity-0g",
+    "rank": 459,
+    "ratio": 1.0019478125360568
+   }
+  },
+  {
+   "coingeckoId": "btse-token",
+   "symbol": "BTSE",
+   "name": "BTSE Token",
+   "paprikaId": "btse-btse-token",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.995",
+   "candidateChecked": {
+    "id": "btse-btse-token",
+    "rank": 181,
+    "ratio": 0.9953785443273202
+   }
+  },
+  {
+   "coingeckoId": "prometeus",
+   "symbol": "PROM",
+   "name": "Prom",
+   "paprikaId": "prom-prometeus",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "prom-prometeus",
+    "rank": 249,
+    "ratio": 1.0004276004131352
+   }
+  },
+  {
+   "coingeckoId": "quant-network",
+   "symbol": "QNT",
+   "name": "Quant",
+   "paprikaId": "qnt-quant",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+symbol_exact] + 价差核定 ratio=1.004",
+   "candidateChecked": {
+    "id": "qnt-quant",
+    "rank": 44,
+    "ratio": 1.0038171458635217
+   }
+  },
+  {
+   "coingeckoId": "gatechain-token",
+   "symbol": "GT",
+   "name": "Gate",
+   "paprikaId": "gt-gatechain-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.986",
+   "candidateChecked": {
+    "id": "gt-gatechain-token",
+    "rank": 69,
+    "ratio": 0.9856011297037901
+   }
+  },
+  {
+   "coingeckoId": "bitcoin",
+   "symbol": "BTC",
+   "name": "Bitcoin",
+   "paprikaId": "btc-bitcoin",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "btc-bitcoin",
+    "rank": 1,
+    "ratio": 1.0012755814089105
+   }
+  },
+  {
+   "coingeckoId": "bitway",
+   "symbol": "BTW",
+   "name": "Bitway",
+   "paprikaId": "btw-bitway",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "btw-bitway",
+    "rank": 46,
+    "ratio": 1.0003561768829734
+   }
+  },
+  {
+   "coingeckoId": "pearl-2",
+   "symbol": "PRL",
+   "name": "Pearl",
+   "paprikaId": "prl-pearl-1",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+symbol_exact]通过；该资产 Paprika rank=7187 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "prl-pearl-1",
+    "rank": 7187,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "ozone-chain",
+   "symbol": "OZO",
+   "name": "Ozone Chain",
+   "paprikaId": "ozo-ozone-chain",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+slug_eq_cgid+symbol_exact]通过；该资产 Paprika rank=4342 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "ozo-ozone-chain",
+    "rank": 4342,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "okb",
+   "symbol": "OKB",
+   "name": "OKB",
+   "paprikaId": "okb-okb",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "okb-okb",
+    "rank": 49,
+    "ratio": 1.0004822070243138
+   }
+  },
+  {
+   "coingeckoId": "just",
+   "symbol": "JST",
+   "name": "JUST",
+   "paprikaId": "jst-just",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "jst-just",
+    "rank": 59,
+    "ratio": 1.0001414354565574
+   }
+  },
+  {
+   "coingeckoId": "genius-3",
+   "symbol": "GENIUS",
+   "name": "Genius",
+   "paprikaId": null,
+   "verdict": "null",
+   "confidence": "—",
+   "reason": "候选 genius-genius-terminal（名 \"Genius Terminal\"，symbol 全等）身份 plausible，但无名称全等/价差证据可核定 → 置 null 待人工确认",
+   "candidateChecked": {
+    "id": "genius-genius-terminal",
+    "rank": 5973,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "zcash",
+   "symbol": "ZEC",
+   "name": "Zcash",
+   "paprikaId": "zec-zcash-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "zec-zcash-token",
+    "rank": 207,
+    "ratio": 1.0024738457453573
+   }
+  },
+  {
+   "coingeckoId": "quack-ai",
+   "symbol": "Q",
+   "name": "Quack AI",
+   "paprikaId": "q-quack-ai",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.999",
+   "candidateChecked": {
+    "id": "q-quack-ai",
+    "rank": 386,
+    "ratio": 0.9993303452332462
+   }
+  },
+  {
+   "coingeckoId": "sentient",
+   "symbol": "SENT",
+   "name": "Sentient",
+   "paprikaId": "sent-sentient",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.001",
+   "candidateChecked": {
+    "id": "sent-sentient",
+    "rank": 218,
+    "ratio": 1.0012100872922125
+   }
+  },
+  {
+   "coingeckoId": "dgrid-ai",
+   "symbol": "DGAI",
+   "name": "DGrid AI",
+   "paprikaId": "dgai-dgrid-ai",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.006",
+   "candidateChecked": {
+    "id": "dgai-dgrid-ai",
+    "rank": 233,
+    "ratio": 1.0057174114059102
+   }
+  },
+  {
+   "coingeckoId": "pons",
+   "symbol": "PONS",
+   "name": "Pons",
+   "paprikaId": "pons-pons",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+slug_eq_cgid+symbol_exact]通过；该资产 Paprika rank=4486 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "pons-pons",
+    "rank": 4486,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "ultima",
+   "symbol": "ULTIMA",
+   "name": "Ultima",
+   "paprikaId": "ultima-ultimaecosystem",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[symbol_exact] + 价差核定 ratio=1.004",
+   "candidateChecked": {
+    "id": "ultima-ultimaecosystem",
+    "rank": 381,
+    "ratio": 1.0040541271786616
+   }
+  },
+  {
+   "coingeckoId": "nxm",
+   "symbol": "NXM",
+   "name": "Nexus Mutual",
+   "paprikaId": null,
+   "verdict": "null",
+   "confidence": "—",
+   "reason": "Paprika 无 Nexus Mutual/NXM 本体条目，仅有 Wrapped NXM（wnxm-wrapped-nxm，非同一资产）→ 置 null",
+   "candidateChecked": null
+  },
+  {
+   "coingeckoId": "monero",
+   "symbol": "XMR",
+   "name": "Monero",
+   "paprikaId": "xmr-monero",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.000",
+   "candidateChecked": {
+    "id": "xmr-monero",
+    "rank": 13,
+    "ratio": 0.9995636971838114
+   }
+  },
+  {
+   "coingeckoId": "whitebit",
+   "symbol": "WBT",
+   "name": "WhiteBIT Coin",
+   "paprikaId": "wbt-whitebit",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.003",
+   "candidateChecked": {
+    "id": "wbt-whitebit",
+    "rank": 18,
+    "ratio": 1.002846741218226
+   }
+  },
+  {
+   "coingeckoId": "pieverse",
+   "symbol": "PIEVERSE",
+   "name": "Pieverse",
+   "paprikaId": "pieverse-pieverse",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.996",
+   "candidateChecked": {
+    "id": "pieverse-pieverse",
+    "rank": 132,
+    "ratio": 0.9963243949446678
+   }
+  },
+  {
+   "coingeckoId": "leo-token",
+   "symbol": "LEO",
+   "name": "UNUS SED LEO",
+   "paprikaId": "leo-leo-token",
+   "verdict": "accept",
+   "confidence": "中",
+   "reason": "身份[slug_eq_cgid+symbol_exact] + 价差核定 ratio=0.999",
+   "candidateChecked": {
+    "id": "leo-leo-token",
+    "rank": 17,
+    "ratio": 0.9993451498065442
+   }
+  },
+  {
+   "coingeckoId": "okzoo",
+   "symbol": "AIOT",
+   "name": "OKZOO",
+   "paprikaId": "aiot-okzoo",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+slug_eq_cgid+symbol_exact]通过；该资产 Paprika rank=4683 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "aiot-okzoo",
+    "rank": 4683,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "yzy",
+   "symbol": "YZY",
+   "name": "YZY",
+   "paprikaId": "yzy-yzy",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+slug_eq_cgid+symbol_exact]通过；该资产 Paprika rank=2997 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "yzy-yzy",
+    "rank": 2997,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "hyperliquid",
+   "symbol": "HYPE",
+   "name": "Hyperliquid",
+   "paprikaId": "hype-hyperliquid",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.002",
+   "candidateChecked": {
+    "id": "hype-hyperliquid",
+    "rank": 11,
+    "ratio": 1.0019825458668632
+   }
+  },
+  {
+   "coingeckoId": "soon-2",
+   "symbol": "SOON",
+   "name": "SOON",
+   "paprikaId": "soon-soon-1",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+symbol_exact]通过；该资产 Paprika rank=4883 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "soon-soon-1",
+    "rank": 4883,
+    "ratio": null
+   }
+  },
+  {
+   "coingeckoId": "humanity",
+   "symbol": "H",
+   "name": "Humanity",
+   "paprikaId": "h-humanity",
+   "verdict": "accept",
+   "confidence": "高",
+   "reason": "身份[name_exact+slug_eq_cgid+symbol_exact] + 价差核定 ratio=1.005",
+   "candidateChecked": {
+    "id": "h-humanity",
+    "rank": 260,
+    "ratio": 1.0046847625740896
+   }
+  },
+  {
+   "coingeckoId": "yellow",
+   "symbol": "YELLOW",
+   "name": "Yellow",
+   "paprikaId": "yellow1-yellow",
+   "verdict": "accept-identity",
+   "confidence": "中",
+   "reason": "身份核定[name_exact+slug_eq_cgid+symbol_exact]通过；该资产 Paprika rank=3043 在免费层 tickers 前 2000 外，未经价差核定，覆盖实测将计缺失",
+   "candidateChecked": {
+    "id": "yellow1-yellow",
+    "rank": 3043,
+    "ratio": null
+   }
+  }
+ ],
+ "manualOverrides": [
+  "HASH hash-2 → null (slug 巧合证据不足)",
+  "META meta-2-2 → meta-metadao-new (accept-identity)",
+  "GENIUS genius-3 → null 原因细化",
+  "NXM nxm → null 原因细化"
+ ],
+ "unresolved": [
+  {
+   "coingeckoId": "hash-2",
+   "symbol": "HASH",
+   "reason": "人工核定降级：hash-hash-2 仅 slug 后缀 \"hash-2\" 与 CG id 巧合，Paprika 侧名称仅 \"Hash\"、rank 10599、无报价可验，无法确认与 Provenance HASH 为同一资产 → 置 null"
+  },
+  {
+   "coingeckoId": "celium",
+   "symbol": "SN51",
+   "reason": "Paprika 活跃资产中无可核定候选（名称/slug/symbol 均不匹配或仅有非同一资产如 Wrapped 版）"
+  },
+  {
+   "coingeckoId": "genius-3",
+   "symbol": "GENIUS",
+   "reason": "候选 genius-genius-terminal（名 \"Genius Terminal\"，symbol 全等）身份 plausible，但无名称全等/价差证据可核定 → 置 null 待人工确认"
+  },
+  {
+   "coingeckoId": "nxm",
+   "symbol": "NXM",
+   "reason": "Paprika 无 Nexus Mutual/NXM 本体条目，仅有 Wrapped NXM（wnxm-wrapped-nxm，非同一资产）→ 置 null"
+  }
+ ]
+}

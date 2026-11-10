@@ -1,0 +1,201 @@
+name,symbol,coingeckoId,candidatePaprikaId,confidence,candidateRank,candidatesForSymbol
+Filecoin,FIL,filecoin,fil-filecoin,高,99,1
+dogwifhat,WIF,dogwifcoin,wif-dogwifcoin,高,193,5
+Bonk,BONK,bonk,bonk-bonk,高,163,4
+Ape and Pepe,APEPE,ape-and-pepe,apepe-ape-and-pepe,高,4364,3
+Theta Network,THETA,theta-token,theta-theta-token,中,203,1
+Immutable,IMX,immutable-x,imx-immutable-x,中,246,2
+Pudgy Penguins,PENGU,pudgy-penguins,pengu-pudgy-penguins,高,127,3
+Virtuals Protocol,VIRTUAL,virtual-protocol,virtual-virtual-protocol,高,135,1
+Artificial Superintelligence Alliance,FET,fetch-ai,fetch-ai,高,129,1
+Sei,SEI,sei-network,sei-sei,高,140,2
+Starknet,STRK,starknet,strk-starknet,高,141,1
+Optimism,OP,optimism,op-optimism,高,161,2
+Beam,BEAM,beam-2,beam-beam,高,1495,2
+The Graph,GRT,the-graph,grt-the-graph,高,185,1
+EigenCloud,EIGEN,eigenlayer,eigen-eigenlayer,中,390,1
+Floki,FLOKI,floki,floki-floki-inu,中,172,4
+Fartcoin,FARTCOIN,fartcoin,fartcoin-fartcoin,高,221,2
+Celestia,TIA,celestia,tia-celestia,高,123,1
+Grass,GRASS,grass,grass-grass,高,133,3
+The Sandbox,SAND,the-sandbox,sand-the-sandbox,高,226,1
+AIOZ Network,AIOZ,aioz-network,aioz-aioz-network,高,232,1
+Synthetix,SNX,havven,,无候选,,1
+Pepe,PEPE,pepe,pepe-pepe,高,45,20
+Worldcoin,WLD,worldcoin-wld,wld-worldcoin,高,68,1
+JasmyCoin,JASMY,jasmycoin,jasmy-jasmycoin,高,180,1
+Akash Network,AKT,akash-network,akt-akash-network,高,178,1
+Jito,JTO,jito-governance-token,jto-jito,高,240,1
+Zebec Network,ZBCN,zebec-network,,无候选,,0
+IOTA,IOTA,iota,miota-iota,高,197,2
+Plasma,XPL,plasma,xpl-plasma,高,250,2
+Arweave,AR,arweave,ar-arweave,高,165,1
+Kaia,KAIA,kaia,kaia-kaia,高,169,1
+Kamino,KMNO,kamino,kmno-kamino-finance,高,366,1
+BinanceLife,币安人生,bianrensheng,bianrensheng-bianrensheng,高,112,1
+Conflux,CFX,conflux-token,,无候选,,1
+Arbitrum,ARB,arbitrum,arb-arbitrum,高,70,4
+Render,RENDER,render-token,rndr-render-token,高,91,1
+Aptos,APT,aptos,apt-aptos,高,111,1
+Pyth Network,PYTH,pyth-network,pyth-pyth-network,高,110,1
+ether.fi,ETHFI,ether-fi,ethfi-etherfi,高,100,1
+Pendle,PENDLE,pendle,pendle-pendle,高,154,1
+Lido DAO,LDO,lido-dao,ldo-lido-dao,高,149,1
+THORChain,RUNE,thorchain,rune-thorchain,高,173,1
+VeChain,VET,vechain,vet-vechain,高,122,1
+Official Trump,TRUMP,official-trump,trump-official-trump,高,152,5
+Monad,MON,monad,mon-monad,高,182,6
+Sonic,S,sonic-3,s-sonic,高,222,1
+Decentraland,MANA,decentraland,mana-decentraland,高,206,2
+NEO,NEO,neo,neo-neo,高,211,2
+Chiliz,CHZ,chiliz,chz-chiliz,高,223,1
+1inch,1INCH,1inch,1inch-1inch,高,235,1
+Ethena,ENA,ethena,ena-ethena,高,48,1
+Shiba Inu,SHIB,shiba-inu,shib-shiba-inu,高,42,3
+Fluid,FLUID,instadapp,inst-instadapp,高,264,2
+Convex Finance,CVX,convex-finance,cvx-convex-finance,高,184,1
+Ethereum Name Service,ENS,ethereum-name-service,ens-ethereum-name-service,高,192,1
+OriginTrail,TRAC,origintrail,trac-origintrail,高,200,2
+Maple Finance,SYRUP,syrup,syrup-syrup-token,中,190,1
+Injective,INJ,injective-protocol,inj-injective-protocol,中,94,1
+Telcoin,TEL,telcoin-2,tel-telcoin,高,204,1
+Falcon Finance,FF,falcon-finance-ff,ff-falcon-finance,高,170,1
+Derive,DRV,derive,drv7-derive,高,159,1
+Geodnet,GEOD,geodnet,geod-geodnet-token,中,278,1
+Meteora,MET,meteora,met-meteora,高,199,3
+Anvil,ANVL,anvil,anvl-anvil,高,331,1
+Pump.fun,PUMP,pump-fun,pump-pumpfun,高,55,4
+Ondo,ONDO,ondo-finance,ondo-ondo,高,53,1
+POL (ex-MATIC),POL,polygon-ecosystem-token,pol-polygon-ecosystem-token,中,83,2
+Jupiter,JUP,jupiter-exchange-solana,jup-jupiter,高,1620,2
+Aerodrome,AERO,aero,aero-aerodrome-finance,中,189,1
+Stacks,STX,blockstack,stx-stacks,高,104,2
+Curve DAO,CRV,curve-dao-token,crv-curve-dao-token,中,126,1
+LayerZero,ZRO,layerzero,zro-layerzero,高,188,1
+Basic Attention,BAT,basic-attention-token,bat-basic-attention-token,中,176,2
+Dogecoin,DOGE,dogecoin,doge-dogecoin,高,12,12
+Kaspa,KAS,kaspa,kas-kaspa,高,90,2
+Raydium,RAY,raydium,ray-raydium,高,121,1
+SwissBorg,BORG,swissborg,chsb-swissborg,高,202,1
+Vaulta,A,vaulta,a-vaulta,高,215,1
+Railgun,RAIL,railgun,rail-railgun,高,5111,2
+SuperVerse,SUPER,superfarm,super-superfarm,高,277,1
+Reserve Rights,RSR,reserve-rights-token,rsr-reserve-rights,高,242,1
+ApeCoin,APE,apecoin,ape-apecoin,高,269,2
+Bittensor,TAO,bittensor,tao-bittensor,高,47,3
+Collector Crypt,CARDS,collector-crypt,cards-collector-crypt,高,248,2
+Cap,CAP,cap-4,cap-cap-2,高,194,9
+Unibase,UB,unibase,ub-unibase,高,147,2
+Zama,ZAMA,zama,zama-zama,高,5372,1
+World Liberty Financial,WLFI,world-liberty-financial,wlfi-official-world-liberty-financial,中,56,3
+Tezos,XTZ,tezos,xtz-tezos,高,146,2
+Shuffle,SHFL,shuffle-2,shfl-shuffle,高,179,1
+Algorand,ALGO,algorand,algo-algorand,高,89,1
+Provenance,HASH,hash-2,hash-hash-2,中,10604,3
+MX Token,MX,mx-token,mx-mx-token,高,209,1
+Golem,GLM,golem,glm-golem,高,239,1
+Aave,AAVE,aave,aave-new,高,50,1
+Morpho,MORPHO,morpho,morpho-morpho,高,116,1
+Cosmos Hub,ATOM,cosmos,atom-cosmos,中,108,2
+Compound,COMP,compound-governance-token,comp-compoundd,高,175,1
+Mantle,MNT,mantle,mnt-mantle,高,57,3
+Internet Computer,ICP,internet-computer,icp-internet-computer,高,61,1
+Aster,ASTER,aster-2,aster-aster,高,75,1
+Sui,SUI,sui,sui-sui,高,35,1
+MultiversX,EGLD,elrond-erd-2,egld-elrond,中,252,1
+Avalanche,AVAX,avalanche-2,avax-avalanche,高,34,1
+Pi Network,PI,pi-network,pi2-pi-network,高,93,3
+XDC Network,XDC,xdce-crowd-sale,xdc-xdc-network,高,128,1
+lium,SN51,celium,,无候选,,0
+Onyxcoin,XCN,chain-2,xcn-chain,高,213,1
+Non-Playable Coin,NPC,non-playable-coin,npc-non-playable-coin,高,241,2
+ZKsync,ZK,zksync,zk-zksync,高,441,1
+Chutes,SN64,chutes,sn64-chutes,高,4401,1
+Chainlink,LINK,chainlink,link-chainlink,高,20,1
+Aethir,ATH,aethir,ath14-aethir,高,253,2
+Solana,SOL,solana,sol-solana,高,7,8
+PancakeSwap,CAKE,pancakeswap-token,cake-pancakeswap,高,103,1
+Cardano,ADA,cardano,ada-cardano,高,22,4
+MemeCore,M,memecore,m-memecore,高,54,3
+Midnight,NIGHT,midnight-3,night-midnight2,高,95,3
+Stable,STABLE,stable-2,stable-stable,高,109,1
+Hedera,HBAR,hedera-hashgraph,hbar-hedera-hashgraph,中,39,1
+MetaDAO,META,meta-2-2,,无候选,,7
+Plume,PLUME,plume,plume-plume,高,501,1
+GoMining,GOMINING,gmt-token,,无候选,,1
+Decred,DCR,decred,dcr-decred,高,166,1
+Axie Infinity,AXS,axie-infinity,axs-axie-infinity,高,201,1
+AWE Network,AWE,stp-network,awe-awe-network,高,216,1
+eCash,XEC,ecash,xec-ecash,高,229,1
+SoSoValue,SOSO,sosovalue,soso-sosovalue,高,418,1
+Rollbit Coin,RLB,rollbit-coin,rlb-rollbit-coin,高,236,1
+SafePal,SFP,safepal,sfp-safepal-token,中,238,1
+Uniswap,UNI,uniswap,uni-uniswap,高,29,2
+Ethereum Classic,ETC,ethereum-classic,etc-ethereum-classic,高,76,1
+Ethereum,ETH,ethereum,eth-ethereum,高,2,1
+Gram (原Toncoin),GRAM,the-open-network,toncoin-the-open-network,中,38,3
+Trust Wallet,TWT,trust-wallet-token,twt-trust-wallet-token,中,191,1
+Gnosis,GNO,gnosis,gno-gnosis,高,144,1
+Bitcoin SV,BSV,bitcoin-cash-sv,bsv-bitcoin-sv,高,139,1
+NEAR Protocol,NEAR,near,near-near-protocol,高,25,3
+Lighter,LIT,lighter,lit-lighter,高,92,3
+Stellar,XLM,stellar,xlm-stellar,高,23,1
+Cronos,CRO,crypto-com-chain,cro-cryptocom-chain,高,43,2
+Sky,SKY,sky,sky-sky,高,60,5
+WeFi,WFI,wefi,wfi-wefi,高,301,1
+Useless Coin,USELESS,useless-3,useless-useless-coin,高,208,1
+Seeker,SKR,seeker,skr-seeker,高,292,3
+Dash,DASH,dash,dash-dash,高,102,2
+Litecoin,LTC,litecoin,ltc-litecoin,高,31,2
+Sun Token,SUN,sun-token,sun-sun,中,142,1
+XRP,XRP,ripple,xrp-xrp,高,6,6
+Rain,RAIN,rain,rain-rain-protocol,中,37,4
+KOGE,KOGE,bnb48-club-token,koge-bnb48-club-token,高,4676,1
+Canton,CC,canton-network,cc-canton-network,中,33,3
+Horizen,ZEN,zencash,zen-horizen,高,259,3
+Bitcoin Cash,BCH,bitcoin-cash,bch-bitcoin-cash,高,24,2
+BNB,BNB,binancecoin,bnb-binance-coin,高,4,3
+Nexo,NEXO,nexo,nexo-nexo,高,119,1
+HTX DAO,HTX,htx-dao,htx-htx,中,1314,1
+coco,COCO,coco-2,coco-coco,高,4536,2
+Vision,VSN,vision-3,vsn-vision,高,227,1
+Kinetiq,KNTQ,kinetiq,kntq-kinetiq,高,4715,1
+BCGame Coin,BC,bc-token,bc-bcgame-coin,高,4998,1
+Bedrock,BR,bedrock-token,,无候选,,2
+edgeX,EDGE,edgex,edge-edgex,高,205,3
+BUILDon,B,build-on,b-buildon,高,219,1
+DoubleZero,2Z,doublezero,2z-doublezero,高,290,1
+deBridge,DBR,debridge,dbr-debridge,高,5436,1
+TRON,TRX,tron,trx-tron,高,8,2
+Bitget Token,BGB,bitget-token,bgb-bitget-token,高,66,1
+Venice Token,VVV,venice-token,vvv-venice-token,高,78,2
+KuCoin,KCS,kucoin-shares,,无候选,,1
+0G,0G,zero-gravity,zero-gravity-0g,高,459,1
+BTSE Token,BTSE,btse-token,btse-btse-token,高,181,1
+Prom,PROM,prometeus,prom-prometeus,中,249,1
+Quant,QNT,quant-network,qnt-quant,高,44,1
+Gate,GT,gatechain-token,gt-gatechain-token,中,69,1
+Bitcoin,BTC,bitcoin,btc-bitcoin,高,1,10
+Bitway,BTW,bitway,btw-bitway,高,46,1
+Pearl,PRL,pearl-2,prl-pearl-1,高,7187,3
+Ozone Chain,OZO,ozone-chain,ozo-ozone-chain,高,4342,1
+OKB,OKB,okb,okb-okb,高,49,1
+JUST,JST,just,jst-just,高,59,1
+Genius,GENIUS,genius-3,,无候选,,1
+Zcash,ZEC,zcash,zec-zcash,高,10,5
+Quack AI,Q,quack-ai,q-quack-ai,高,386,2
+Sentient,SENT,sentient,sent-sentient,高,218,4
+DGrid AI,DGAI,dgrid-ai,dgai-dgrid-ai,高,233,1
+Pons,PONS,pons,pons-pons,高,4486,1
+Ultima,ULTIMA,ultima,ultima-ultimaecosystem,中,381,1
+Nexus Mutual,NXM,nxm,,无候选,,0
+Monero,XMR,monero,xmr-monero,高,13,2
+WhiteBIT Coin,WBT,whitebit,wbt-whitebit,高,18,1
+Pieverse,PIEVERSE,pieverse,pieverse-pieverse,高,132,1
+UNUS SED LEO,LEO,leo-token,leo-leo-token,中,17,2
+OKZOO,AIOT,okzoo,aiot-okzoo,高,4683,1
+YZY,YZY,yzy,yzy-yzy,高,2997,3
+Hyperliquid,HYPE,hyperliquid,hype-hyperliquid,高,11,3
+SOON,SOON,soon-2,soon-soon-1,高,4883,4
+Humanity,H,humanity,h-humanity,高,260,2
+Yellow,YELLOW,yellow,yellow1-yellow,高,3043,1
