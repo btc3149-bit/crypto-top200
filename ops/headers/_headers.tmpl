@@ -16,6 +16,6 @@
 
 /data/*
   Content-Type: application/json; charset=utf-8
-  X-Content-Type-Options: nosniff
-  Cross-Origin-Resource-Policy: same-origin
   Cache-Control: {{DATA_CACHE_CONTROL}}
+# 注：/data/* 的 nosniff 与 CORP 由 /* 组统一供给。Pages _headers 多组命中是「合并」而非「覆盖」：
+# 实测（2026-11-10 预览 S1）两组同写同名头会产生重复头行，故此处不重复写，勿再加回。
