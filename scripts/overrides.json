@@ -132,6 +132,16 @@
    "status": "active"
   },
   {
+   "symbol": "AERO",
+   "coingeckoId": "aero",
+   "type": "manual-resolution",
+   "reason": "W2-11 金标重建时补登：CoinGecko 同存 aero（现名 Aero）与 aerodrome-finance（Aerodrome Finance）两条同符号同价条目，自动打分按名称相似度误选后者；以快照市值 $6.06亿 与排名口径核定现行 id=aero（live 市值/排名均更接近快照），人工核定",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/aero",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "active"
+  },
+  {
    "symbol": "BCAP",
    "coingeckoId": "blockchain-capital",
    "type": "manual-resolution",

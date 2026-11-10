@@ -77,6 +77,21 @@ npm run deploy:preview            # 预览冒烟通过后再上生产
 - 增删币种：新增条目必须带正确的 `coingeckoId`（在 coingecko.com 搜币名，网址里 `/en/coins/` 后面那段就是 id），否则该币没有实时价；易混 id 的权威登记见 `scripts/overrides.json`。
 - 部署后脚本自动冒烟。
 
+## 数据管线（build.py 单入口）
+
+数据只许一条路生成：研究报告（`research_notes/` 三份）→ `scripts/build.py` → `data/coins.json`（源）+ `public/data/coins.json`（产物）。
+
+```bash
+python3 scripts/build.py            # 全量构建：parse→resolve→merge→validate(G1–G10)→audit→emit，产构建报告
+python3 scripts/build.py --emit     # 只校验（check_meta）+拷贝：改完源后出产物/预览用，秒级
+python3 scripts/build.py --offline  # 离线构建（跳过在线审计，构建报告标红，产物禁止直接上生产）
+```
+
+- 门禁 G1–G10 任一不过：非零退出、不写产物、报错带报告行号/币名。阈值单点定义在 `scripts/pipeline_config.py`（AUDIT_BAND 等），别处出现比值字面量视为违规。
+- id 人工核定只登记在 `scripts/overrides.json`（build.py 与周检共读）；XTZ/SHFL 拆分数据在 `scripts/fixtures/xtz_shfl_split.json`。
+- 构建报告落 `ops/build-reports/`：**人工签核后才可 commit + 打 tag + 部署**；未签核产物禁止上生产。
+- 旧脚本（parse_report/map_ids/build_coins_json、merge_refill*、migrate_meta_v2）已退役归档于 `scripts/archive/`，勿再运行。
+
 ## 回滚方法
 
 - **控制台一键回滚**：Cloudflare 控制台 → Workers & Pages → `crypto-top200` → Deployments → 选中上一个正常的生产部署 → Rollback，即时生效。

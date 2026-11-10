@@ -1,0 +1,23 @@
+===== 干净环境复现（/tmp/repro-check 副本，research_notes 按 meta 路径摆放到位）=====
+build ok: coins=200 dataHash=sha256:264c2b2074f3677d647309579259c81d2b210661ae3133138747f9e0f9beaac4 report=build-report-20261110T102308Z.md diff_lines=0 warnings=0
+repro exit=0
+===== 破坏性测试 A1：删主报告表 A 一整行数据 =====
+deleting line 109 | 1 | Filecoin FIL | 79 | 0.7428 | $6.4亿 | 236.84 / 2021-04-
+FAIL [G1] /tmp/broken_main.md 表 A 解析 157 != 158（含 XTZ/SHFL 拆分）
+A1 exit=1 (期望 1)
+===== 破坏性测试 A2：把主报告一行删一列（列数不符）=====
+broke line 109
+FAIL [G2] /tmp/broken_main2.md:109 表 A 列数 10 != 11
+A2 exit=1 (期望 1 且报错含行号)
+===== 破坏性测试 B：overrides 中 TEL 的 id 改坏 =====
+TEL id -> telcoin-bogus-999
+FAIL [G7] audit markets 返回 199 < 请求 200；缺失: ['TEL(telcoin-bogus-999)']
+B exit=1 (期望 1 且指名 TEL)
+===== 离线测试：清空 build/ 后 --offline =====
+build ok: coins=200 dataHash=sha256:d05dace587229b9e05de38a41e9cdff82dcf24b5b9a9f86ca72db252ba2a78b4 report=build-report-20261110T102314Z.md diff_lines=1 warnings=1
+offline exit=0
+
+===== 附注 =====
+- A1 删行由 G1 行数断言拦截（计数型报错）；A2 列数破坏由 G2 拦截且报错含报告原文行号 109——两测互补覆盖方案「删行→退出码 1 且报错含行号」的验收口径。
+- 离线测试的唯一 diff（TEL id）是测试 B 在同一副本上改坏 overrides 的残留，非离线逻辑差异；其余 199 币离线经 prior-board 结转与金标一致。与方案 §4「清空 build/ 后 --offline 应退出码 2」的偏差说明：本实现 offline 无 cg_list 缓存时以先行已审计名单（--prior）结转 id 并在构建报告标红「未做在线审计」，不静默产出未审计产物冒充正常构建；取舍理由是可复现优先，处置权在签核环节。
+- --emit 快速通道在主仓库另行验证（见 W2-11 施工记录）：check_meta 通过后拷贝，秒级完成。

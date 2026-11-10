@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-from pipeline_config import AUDIT_BAND  # noqa: E402
+from pipeline_config import AUDIT_BAND, DEVIATION_TOL  # noqa: E402
 
 VERSION = "1.0.0"
 CALLS = {"cg_markets_top250": 0, "cg_markets_ids": 0, "cg_list": 0, "coincap_assets": 0}
@@ -133,7 +133,7 @@ def main():
             c6_checked += 1
             cc_price = float(a["priceUsd"])
             dev = abs(cc_price - m["current_price"]) / m["current_price"]
-            if dev > 0.20:
+            if dev > DEVIATION_TOL:
                 queue.append(f"多源偏离 {c['symbol']}: CoinGecko={m['current_price']} CoinCap={cc_price} 偏离 {dev:.0%}")
     except Exception as e:
         c6_status = f"跳过（接口不可用: {str(e)[:120]}）"
