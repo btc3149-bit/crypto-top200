@@ -1,0 +1,39 @@
+=== 场景1 一致放行 ===
+PASS schemaVersion == 2
+PASS R1 generatedAt ISO8601 带时区: 2026-11-10T10:15:13+00:00
+PASS R2 dataHash 与 coins 规范化哈希一致
+PASS R3 counts 与数据重算一致
+PASS R3 平铺镜像 totalCoins 一致
+PASS R3 平铺镜像 tableA 一致
+PASS R3 平铺镜像 tableB 一致
+PASS R4 research_notes/top-200-coins-next-bull-run-estimates-20261110-0737/report.md sha256 一致
+PASS R4 research_notes/top-200-refill-43-non-stablecoins-20261110-0856/report.md sha256 一致
+PASS R4 research_notes/top-200-refill-round2-to-200-20261110-0906/report.md sha256 一致
+PASS generator 在位
+check_meta: 11 pass, 0 fail
+[deploy] 数据门禁通过 sha256=6b25589b6b1a2150c7470ecabcf17d487a88e9bbdc90bed06b5acb5f9055f5b5
+gate exit=0
+=== 场景2 只改 public 中止 ===
+[deploy] 错误：public/data/coins.json 与源 data/coins.json 哈希不一致。
+[deploy] 请先运行 python3 scripts/build.py --emit（或完整构建）生成产物，禁止手改 public/ 副本。
+gate exit=1
+=== 场景3 只改 data 未 emit 中止 ===
+[deploy] 错误：public/data/coins.json 与源 data/coins.json 哈希不一致。
+[deploy] 请先运行 python3 scripts/build.py --emit（或完整构建）生成产物，禁止手改 public/ 副本。
+gate exit=1
+=== 恢复后复验 ===
+PASS schemaVersion == 2
+PASS R1 generatedAt ISO8601 带时区: 2026-11-10T10:15:13+00:00
+PASS R2 dataHash 与 coins 规范化哈希一致
+PASS R3 counts 与数据重算一致
+PASS R3 平铺镜像 totalCoins 一致
+PASS R3 平铺镜像 tableA 一致
+PASS R3 平铺镜像 tableB 一致
+PASS R4 research_notes/top-200-coins-next-bull-run-estimates-20261110-0737/report.md sha256 一致
+PASS R4 research_notes/top-200-refill-43-non-stablecoins-20261110-0856/report.md sha256 一致
+PASS R4 research_notes/top-200-refill-round2-to-200-20261110-0906/report.md sha256 一致
+PASS generator 在位
+check_meta: 11 pass, 0 fail
+[deploy] 数据门禁通过 sha256=6b25589b6b1a2150c7470ecabcf17d487a88e9bbdc90bed06b5acb5f9055f5b5
+gate exit=0
+RESTORED-IDENTICAL

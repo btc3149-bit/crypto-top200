@@ -1,12 +1,54 @@
 {
  "meta": {
-  "generatedAt": "2026-11-10",
-  "source": "主研究报告《市值前 200 加密货币下一轮牛市高点预估排名》（2026-11-10，老币价格/市值快照为 CoinGecko 口径 2026-11-08 日收盘）+ 补位研究《市值前 200 预估榜单补位研究》（2026-11-10，补位币为 CoinGecko 实盘核验 2026-11-10） + 第二轮补位研究《市值预估榜单第二轮补位研究》（2026-11-10，第 270 位起顺延，同为 CoinGecko 实盘核验 2026-11-10）",
+  "schemaVersion": 2,
+  "generatedAt": "2026-11-10T10:15:13+00:00",
+  "dataHash": "sha256:264c2b2074f3677d647309579259c81d2b210661ae3133138747f9e0f9beaac4",
   "estimateWindow": "2029 年 9 月下旬 ~ 10 月中旬（下一轮牛市高点推算窗口）",
+  "sourceReports": [
+   {
+    "title": "市值前 200 加密货币下一轮牛市高点预估排名",
+    "date": "2026-11-10",
+    "path": "research_notes/top-200-coins-next-bull-run-estimates-20261110-0737/report.md",
+    "sha256": "8d512b5198298c3001dcb35a542b8890bd82f51680578e1a2014338cc1933c97"
+   },
+   {
+    "title": "市值前 200 预估榜单补位研究",
+    "date": "2026-11-10",
+    "path": "research_notes/top-200-refill-43-non-stablecoins-20261110-0856/report.md",
+    "sha256": "f7bc7d1a2d11c741d3c03de29f0e11f2bf8fde3a6df3aa94fab23f9771afe511"
+   },
+   {
+    "title": "市值预估榜单第二轮补位研究",
+    "date": "2026-11-10",
+    "path": "research_notes/top-200-refill-round2-to-200-20261110-0906/report.md",
+    "sha256": "456574bf6dc5f750d6d2da87d1cdc2e29967980ff81e35192733f1bc610bd64b"
+   }
+  ],
+  "generator": {
+   "script": "scripts/build.py",
+   "version": "2.0.0",
+   "python": "3.12"
+  },
+  "counts": {
+   "totalCoins": 200,
+   "tableA": 200,
+   "tableB": 0,
+   "byAthFlag": {
+    "verified": 95,
+    "approx": 69,
+    "unverified": 36
+   },
+   "byDataDate": {
+    "2026-11-08": 139,
+    "2026-11-10": 61
+   },
+   "withRankNote": 7
+  },
+  "note": "全表 200 个不重复可预估币、锚定类清零；数据日期双口径：老币 2026-11-08 快照、补位币 2026-11-10 核验（见各条 dataDate）。变更史见 CHANGELOG 与 CHANGELOG-补位*.md。",
+  "source": "《市值前 200 加密货币下一轮牛市高点预估排名》（2026-11-10） + 《市值前 200 预估榜单补位研究》（2026-11-10） + 《市值预估榜单第二轮补位研究》（2026-11-10）",
   "totalCoins": 200,
   "tableA": 200,
-  "tableB": 0,
-  "note": "全表单一榜：原表B 43 个锚定类（稳定币/黄金代币/代币化基金/包装资产等）已按规则全部剔除，并按市值排名顺延补入补位研究的 43 个非锚定币（CoinGecko 市值第 203–269 位区间筛选）。 其中 19 个与原表A尾部币种重复（两份报告排名口径与日期不同：原榜为 SectorAlpha 11-08 收盘口径、补位为 CoinGecko 11-10 实盘口径），已按补位报告的最新数据更新原条目、不重复计数；实际新增 24 个，全表共 182 个不重复可预估币种。另：原表A第 157 行 XTZ/SHFL 合并行已拆为两条。数据日期：老币 2026-11-08 快照、补位币 2026-11-10 核验（见各条 dataDate）。 第二轮补位（2026-11-10）：自 CoinGecko 市值第 270 位继续顺延，跳过 7 个锚定类（ACRED、FRXUSD、SPCXX、USDON、GGBR、JPYC、MAG7.SSI），于第 271–293 位区间取 18 个普通币补入，全表凑满 200 个不重复可预估币种；第二轮正式 18 个经名称/代码/CoinGecko id 三重比对与现有 182 条零重复，备选 4 个未启用。 第二轮新币事实数据同为 2026-11-10 CoinGecko 实盘核验（dataDate=2026-11-10）。"
+  "tableB": 0
  },
  "coins": [
   {

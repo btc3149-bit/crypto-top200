@@ -2,6 +2,8 @@
 
 本项目每次生产部署记一行：日期、版本/摘要、部署 ID。数据变更细节另见 `CHANGELOG-补位.md` 与 Git tag。
 
+- **2026-11-10 — meta v2（v1.3.0-meta-v2，本地施工，部署由协调者统一执行）**：单一事实源定版（`data/coins.json` 为唯一可编辑源、`public/data/coins.json` 为构建产物）；meta 升 v2（schemaVersion/generatedAt UTC/dataHash/sourceReports 逐份 sha256/generator/counts 全计算）；新增 `scripts/check_meta.py` 复验与 `scripts/migrate_meta_v2.py` 一次性迁移（coins 数组 dataHash 迁移前后一致）；`deploy.sh` 门禁改为只验哈希+check_meta、不一致即中止（保留 `DEPLOY_SKIP_META_CHECK=1` 留痕通道）；三场景演练留档 `ops/deploy-gate-drill-2026-11-10.log`。
+
 ## 2026-11-10 — 基线
 
 - **首次上线（拖放部署，快照模式故障态）**：经 Cloudflare 控制台拖放直传上线至项目 `crypto-top200`（自定义域 https://top200.oppcal.com ）。该方式不编译 `functions/`，`/api/board` 返回首页 HTML 而非 JSON，站点自上线起处于快照模式（数据基准 2026-11-08）——故障态如实记录，根因见 `UPGRADE_PLAN.md` §4.1.1。

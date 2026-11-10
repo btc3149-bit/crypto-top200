@@ -28,17 +28,21 @@ cd "$(dirname "$0")/.."
 PROJECT_ROOT="$(pwd)"
 echo "[deploy] 环境=$ENV_NAME 分支=$BRANCH 项目根=$PROJECT_ROOT"
 
-# (b) 数据一致性门禁：data/coins.json 与 public/data/coins.json 必须一致；
-#     不一致时以 data/ 为准同步一份，再比一次；仍不一致则退出报错，禁止部署。
-if ! cmp -s data/coins.json public/data/coins.json; then
-  echo "[deploy] 两份 coins.json 不一致，以 data/coins.json 为准同步到 public/data/coins.json"
-  cp data/coins.json public/data/coins.json
-fi
-if ! cmp -s data/coins.json public/data/coins.json; then
-  echo "[deploy] 错误：同步后两份 coins.json 仍不一致，已中止部署。" >&2
+# (b) 数据一致性门禁（v2）：只验不改。不一致即中止，同步是 build.py 的职责。
+SRC_HASH="$(sha256sum data/coins.json | cut -d' ' -f1)"
+OUT_HASH="$(sha256sum public/data/coins.json | cut -d' ' -f1)"
+if [ "$SRC_HASH" != "$OUT_HASH" ]; then
+  echo "[deploy] 错误：public/data/coins.json 与源 data/coins.json 哈希不一致。" >&2
+  echo "[deploy] 请先运行 python3 scripts/build.py --emit（或完整构建）生成产物，禁止手改 public/ 副本。" >&2
   exit 1
 fi
-echo "[deploy] 数据一致性门禁通过（data/coins.json == public/data/coins.json）"
+# 与 meta 内嵌 dataHash 对账（防「两份一起被手改成另一份错数据」）
+if [ "${DEPLOY_SKIP_META_CHECK:-0}" = "1" ]; then
+  echo "[deploy] 警告：DEPLOY_SKIP_META_CHECK=1 已设置，跳过 check_meta 对账（留痕通道：请在 CHANGELOG 该行注明绕过原因）"
+else
+  python3 scripts/check_meta.py data/coins.json || exit 1
+fi
+echo "[deploy] 数据门禁通过 sha256=$SRC_HASH"
 
 # (c) 用 package.json 锁定的 wrangler 版本部署（防 CLI 大版本漂移）
 WRANGLER_VERSION="$(python3 -c "import json; print(json.load(open('package.json'))['devDependencies']['wrangler'])")"

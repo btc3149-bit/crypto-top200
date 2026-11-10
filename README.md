@@ -2,7 +2,7 @@
 
 线上地址：https://top200.oppcal.com （Cloudflare Pages 项目名定版：`crypto-top200`）
 
-本站是研究报告《市值前 200 加密货币下一轮牛市高点预估排名》的在线版：**全表 182 个币全部可预估**（原表 B 的 43 个锚定类资产已剔除，并按市值顺延补入 43 个非锚定币，详见 `CHANGELOG-补位.md`）。数据基准：老币为 CoinGecko 口径 **2026-11-08 日收盘快照**，补位币为 **2026-11-10 CoinGecko 实盘核验**。预估窗口为 2029 年 9 月下旬 ~ 10 月中旬的历史周期情景推演区间。
+本站是研究报告《市值前 200 加密货币下一轮牛市高点预估排名》的在线版：**全表币数见 `data/coins.json` 的 `meta.counts`**（原表 B 的 43 个锚定类资产已剔除，并经两轮市值顺延补位，详见 `CHANGELOG-补位.md`、`CHANGELOG-补位2.md`；README 不再写死币数，以 meta.counts 为准）。数据基准：老币为 CoinGecko 口径 **2026-11-08 日收盘快照**，补位币为 **2026-11-10 CoinGecko 实盘核验**。预估窗口为 2029 年 9 月下旬 ~ 10 月中旬的历史周期情景推演区间。
 
 页面打开后由 `functions/api/board.js` 服务端代理 CoinGecko 实时行情（缓存 120 秒），倍数空间按现价自动重算；接口不可用时页面回退到快照数据并标注「快照模式」。
 
@@ -21,8 +21,8 @@
 | 文件 | 作用 |
 |---|---|
 | `public/index.html` | 网页本体（无需任何构建步骤） |
-| `public/data/coins.json` | 预估数据（网页实际读取这一份） |
-| `data/coins.json` | 预估数据主文件（与上面内容相同；两份必须一致，部署脚本会校验） |
+| `public/data/coins.json` | 预估数据（网页实际读取这一份）——**构建产物，勿手改**，由 `scripts/build.py` 从源生成，同目录 `DO_NOT_EDIT.md` 有说明 |
+| `data/coins.json` | 预估数据**唯一可编辑源**（单一事实源定版）；`public/` 副本与它哈希不一致时部署门禁直接中止 |
 | `functions/api/board.js` | 行情代理：服务端拉 CoinGecko 实时价格并缓存 120 秒 |
 | `wrangler.toml` | Pages 项目配置（项目名 `crypto-top200`） |
 | `package.json` | 锁定 wrangler 版本（当前 4.159.0）与部署/冒烟命令脚本 |
@@ -48,7 +48,7 @@ npm run deploy:preview   # 部署到 preview 分支，脚本会自动对预览�
 npm run deploy           # 部署到生产（main 分支），脚本会自动对 https://top200.oppcal.com 跑冒烟
 ```
 
-`scripts/deploy.sh` 内部流程：校验 `data/coins.json` 与 `public/data/coins.json` 一致（不一致以 `data/` 为准同步，仍不一致则中止）→ 用 `package.json` 锁定的 wrangler 版本执行 `wrangler pages deploy public --project-name crypto-top200`（preview 加 `--branch preview`，production 加 `--branch main`）→ 对对应地址执行 `scripts/smoke.sh`。冒烟失败时脚本非零退出并提示「部署已上线但冒烟失败，需人工处理/回滚」。
+`scripts/deploy.sh` 内部流程：数据门禁（只验不改：两份 coins.json 哈希一致 + `scripts/check_meta.py` 复验 meta v2，不一致即中止，同步是 build.py 的职责；紧急绕过用 `DEPLOY_SKIP_META_CHECK=1` 单次生效并须在 CHANGELOG 注明）→ 用 `package.json` 锁定的 wrangler 版本执行 `wrangler pages deploy public --project-name crypto-top200`（preview 加 `--branch preview`，production 加 `--branch main`）→ 对对应地址执行 `scripts/smoke.sh`。冒烟失败时脚本非零退出并提示「部署已上线但冒烟失败，需人工处理/回滚」。
 
 手动单独冒烟：
 
@@ -61,13 +61,21 @@ bash scripts/smoke.sh https://preview.crypto-top200.pages.dev
 
 **已废弃：控制台拖放不编译 functions/，会导致 /api/board 失效（2026-11-10 审计结论）**。首次上线用的就是拖放直传：`functions/api/board.js` 被当成静态文件，`/api/board` 返回的是首页 HTML（HTTP 200），前端静默回退快照——故障被降级设计伪装成了「可用」。此后任何一次拖放更新都会让故障永久持续。部署只走上面的 Wrangler 直推，没有第二种方法。旧的 `dist-upload/` 与 `upload.zip` 拖放产物已移入项目外的归档目录，不要再生成这类拍平目录/zip 包。
 
-## 换数据再部署（一步完成）
+## 换数据再部署
 
-改 `public/data/coins.json` 与 `data/coins.json`（两份须一致，`deploy.sh` 会校验并以 `data/` 为准同步）后 `npm run deploy` 即可。细则：
+**只改源 `data/coins.json`**（优先经 `scripts/build.py` 从研究报告重建，见下方「数据管线」；紧急小修可手改源，但须补跑校验）。`public/data/coins.json` 是构建产物，禁止手改。流程：
+
+```bash
+python3 scripts/build.py --emit   # 只校验 + 把源拷贝为产物（本地、无网络、秒级）
+npx wrangler pages dev public     # 本地预览（不要双击 index.html：file:// 下 fetch 会被浏览器拦截，只能看静态壳）
+npm run deploy:preview            # 预览冒烟通过后再上生产
+```
+
+细则：
 
 - 改预估区间改 `estLo` / `estHi`（预估下限/上限，美元）。
-- 增删币种：新增条目必须带正确的 `coingeckoId`（在 coingecko.com 搜币名，网址里 `/en/coins/` 后面那段就是 id），否则该币没有实时价。
-- 改完先本地双击 `public/index.html` 看一眼排版没坏，再部署；部署后脚本自动冒烟。
+- 增删币种：新增条目必须带正确的 `coingeckoId`（在 coingecko.com 搜币名，网址里 `/en/coins/` 后面那段就是 id），否则该币没有实时价；易混 id 的权威登记见 `scripts/overrides.json`。
+- 部署后脚本自动冒烟。
 
 ## 回滚方法
 
@@ -114,6 +122,6 @@ npx wrangler pages dev public
 ## 数据与口径说明
 
 - 实时行情：CoinGecko（经 `functions/api/board.js` 代理，缓存 120 秒；上游故障时自动回退最近缓存并标注）。
-- 预估数据：全表 182 个币全部可预估。构成：原报告表 A 158 条为基础，剔除原表 B 43 个锚定类（稳定币/黄金代币/代币化基金/包装资产等），按市值顺延补入 43 个非锚定币；其中 19 个与原表尾部重复、已按补位数据更新不重复计数，实际新增 24 个。原表 A 第 157 行 XTZ/SHFL 合并行已拆为两条。
+- 预估数据：全表币数见 `data/coins.json` 的 `meta.counts`。构成：原报告表 A 158 条为基础，剔除原表 B 43 个锚定类（稳定币/黄金代币/代币化基金/包装资产等），第一轮按市值顺延补入 43 个非锚定币（其中 19 个与原表尾部重复、已按补位数据更新不重复计数，实际新增 24 个），第二轮再顺延补入 18 个，凑满现行全表。原表 A 第 157 行 XTZ/SHFL 合并行已拆为两条。
 - 数据日期：老币价格/市值为 CoinGecko 口径 2026-11-08 日收盘（与 CoinMarketCap 交叉核对；101–200 名的 ATH 部分为聚合口径约值）；补位币为 2026-11-10 CoinGecko 实盘核验，前端在「报告现排名」列以「11-10核验」标记。
-- CoinGecko ID 映射已在 2026-11-10 逐一在线核定。易混项特别注意：TEL 用 `telcoin-2`（`telcoin` 是已废弃旧合约）、BCG 在 CoinGecko 的 id 是 `bc-token`（符号 BC）、PRL 是 `pearl-2`（符号 PEARL）、WFI 是 `wefi`、BCAP 是 `blockchain-capital`、SATUSD 是 `satoshi-stablecoin`；补位批易混项：BR 是 `bedrock-token`、XCN 是 `chain-2`、B 是 `build-on`、SUPER 是 `superfarm`、SN64 是 `chutes`、S 是 `sonic-3`、AWE 是 `stp-network`。
+- CoinGecko ID 映射已在 2026-11-10 逐一在线核定。易混项（人工核定的 id 覆盖）的权威登记见 [`scripts/overrides.json`](scripts/overrides.json)（含每条的理由、证据链接与复审到期日）；README 不再自带第二份易混清单，消除双源。
