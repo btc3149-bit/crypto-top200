@@ -165,7 +165,11 @@ async function getIds(request) {
 
 async function fetchUpstreamInternal(env, ids) {
   const startedAt = Date.now();
-  const headers = { accept: "application/json" };
+  // UA 必须显式设置：CoinGecko 对 Workers 默认 fetch UA 返回 403（2026-11-10 预览实测坐实）
+  const headers = {
+    accept: "application/json",
+    "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+  };
   if (env && env.COINGECKO_API_KEY) headers["x-cg-demo-api-key"] = env.COINGECKO_API_KEY;
 
   const mk =
