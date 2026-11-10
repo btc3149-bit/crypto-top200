@@ -52,6 +52,15 @@ if ! node ops/headers/gen-headers.mjs --check; then
 fi
 echo "[deploy] W2-18 _headers --check 通过"
 
+# (b3) W2-01 fetcher 数据一致性门禁：workers/fetcher/coins.json 的 meta.dataHash 必须与 data/coins.json 一致
+# （只比 dataHash 不比字节：meta.generatedAt 允许不同）。不一致即中止——同步动作：cp data/coins.json workers/fetcher/coins.json，
+# 按 docs/fetcher-runbook.md 重生成 src/coins-list.js，并单独部署 fetcher（npx wrangler deploy -c workers/fetcher/wrangler.toml，不与 Pages 连推）。
+if ! python3 -c "import json,sys; a=json.load(open('data/coins.json'))['meta']['dataHash']; b=json.load(open('workers/fetcher/coins.json'))['meta']['dataHash']; sys.exit(0 if a==b else 1)"; then
+  echo "[deploy] 错误：workers/fetcher/coins.json 与 data/coins.json 的 dataHash 不一致，请先同步 fetcher 数据副本并重生成 coins-list.js（见 docs/fetcher-runbook.md）。" >&2
+  exit 1
+fi
+echo "[deploy] W2-01 fetcher 数据门禁通过"
+
 # (c) 用 package.json 锁定的 wrangler 版本部署（防 CLI 大版本漂移）
 WRANGLER_VERSION="$(python3 -c "import json; print(json.load(open('package.json'))['devDependencies']['wrangler'])")"
 echo "[deploy] 使用 wrangler@${WRANGLER_VERSION} 部署到项目 crypto-top200（branch=$BRANCH）"
