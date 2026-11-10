@@ -7,3 +7,4 @@ AUDIT_BAND = (0.35, 2.8)      # 在线核价：live/snapshot 比值合格带（�
 EXPECTED_TOTAL = 200          # 终表行数断言（替代散落的 43/18/182/200 字面量断言）
 MULT_DRIFT_TOL = 0.35         # 二轮补位倍数漂移容差（吸收 merge_refill2.py 的 0.35 断言；与 AUDIT_BAND 下限同值异义，勿混用）
 DEVIATION_TOL = 0.20          # 周检 C6 多源偏离阈值（CoinCap vs CoinGecko 现价偏离 >20% 进人工队列）
+REPORT_URL = ""               # W2-17 研究报告回链（U4 未确认时为空→两落点整段不渲染；确认后填 https 地址重跑 render-snapshot 即生效）

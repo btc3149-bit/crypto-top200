@@ -18,6 +18,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 from pipeline_config import AUDIT_BAND, EXPECTED_TOTAL, MULT_DRIFT_TOL  # noqa: E402
 import check_meta  # noqa: E402
+import render_snapshot  # noqa: E402  （W2-17：emit 后把榜单快照静态注入 public/index.html）
 
 VERSION = "2.0.0"
 BUILD_DIR = ROOT / "build"
@@ -487,7 +488,12 @@ def main():
             print("FAIL [emit] check_meta 未通过，不拷贝", file=sys.stderr)
             return 1
         h = emit(doc)
-        print(f"emit ok sha256={h}")
+        try:
+            render_snapshot.run(ROOT / "data/coins.json", ROOT / "public/index.html")
+        except render_snapshot.SnapshotError as e:
+            print(f"FAIL [render-snapshot] {e}", file=sys.stderr)
+            return 1
+        print(f"emit ok sha256={h} (+render-snapshot 静态注入)")
         return 0
     offline = "--offline" in args
     prior_path = Path(opt("--prior", str(ROOT / "data/coins.json")))
@@ -644,6 +650,11 @@ def main():
         gates.append("G9 meta 自洽通过")
         file_hash = emit(doc)
         gates.append("G10 双目标哈希一致通过")
+        try:
+            render_snapshot.run(ROOT / "data/coins.json", ROOT / "public/index.html")
+        except render_snapshot.SnapshotError as e:
+            fail("G10", "render-snapshot", str(e))
+        gates.append("render-snapshot 静态注入 200 行通过（W2-17）")
     except GateFail as e:
         print(str(e), file=sys.stderr)
         return 1

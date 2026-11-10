@@ -89,6 +89,7 @@ python3 scripts/build.py --offline  # 离线构建（跳过在线审计，构建
 ```
 
 - 门禁 G1–G10 任一不过：非零退出、不写产物、报错带报告行号/币名。阈值单点定义在 `scripts/pipeline_config.py`（AUDIT_BAND 等），别处出现比值字面量视为违规。
+- emit 之后管线自动执行 `render-snapshot` 步（`scripts/render_snapshot.py`）：以同一份 `data/coins.json` 为快照源，把 200 行榜单静态注入 `public/index.html` 的 SNAPSHOT 标记区（JS 成功后整表替换、失败时保留快照，W2-17）；标记缺失/条数不符即中止，研究报告回链由 `pipeline_config.py` 的 `REPORT_URL` 一处控制（空 = 两落点不渲染）。
 - id 人工核定只登记在 `scripts/overrides.json`（build.py 与周检共读）；XTZ/SHFL 拆分数据在 `scripts/fixtures/xtz_shfl_split.json`。
 - 构建报告落 `ops/build-reports/`：**人工签核后才可 commit + 打 tag + 部署**；未签核产物禁止上生产。
 - 旧脚本（parse_report/map_ids/build_coins_json、merge_refill*、migrate_meta_v2）已退役归档于 `scripts/archive/`，勿再运行。
