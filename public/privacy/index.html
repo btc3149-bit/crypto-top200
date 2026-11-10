@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>隐私说明 · 市值前200币种 · 下一轮牛市预估排名（实时行情）</title>
+<meta name="description" content="市值前200加密货币下一轮牛市预估排名站的隐私说明：本站无账号、无广告、无 Cookie 统计，仅有聚合流量统计与榜单数据代理两条数据流。">
+<!-- 草稿状态：本页 canonical 为自指草稿，随正式部署与全站 SEO 基础件（W2-16）一并合入时复核 -->
+<link rel="canonical" href="https://top200.oppcal.com/privacy">
+<style>
+  :root{--bg:#0b0e14;--card:#131824;--line:#232b3d;--txt:#e8ecf4;--dim:#8b96ad;--acc:#f0b90b;--up:#2ebd85;--dn:#f6465d;--chip:#1c2333}
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:860px;margin:0 auto;padding:16px 14px 48px}
+  h1{font-size:22px;margin:6px 0 4px}
+  h2{font-size:16px;margin:22px 0 8px;color:var(--txt)}
+  p,li{font-size:14px;line-height:1.8;color:#c6cede}
+  .sub{color:var(--dim);font-size:13px;line-height:1.7}
+  section{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-top:14px}
+  a{color:var(--acc)}
+  footer{color:var(--dim);font-size:12px;line-height:1.7;margin-top:16px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>隐私说明</h1>
+  <p class="sub">最后更新：2026-11-10 ｜ 适用域名：仅 <strong>top200.oppcal.com</strong></p>
+  <!-- [状态句替换位] 统计启用后（须先经站长签收，见 ops/signoffs.md 的 U7 行），把下一句替换为「已启用」版本并更新页首日期，再重新部署。 -->
+  <p class="sub">当前状态：<strong>网站统计（Web Analytics）尚未启用</strong>。本页如实描述当前实际数据流；统计启用时，本页将先行更新再开启开关。</p>
+
+  <section>
+    <h2>一、本页说明什么</h2>
+    <p>本页说明本站在您访问时会处理哪些数据、经由哪些系统、用于什么目的，以及您如何屏蔽其中的统计部分。本站是一个公开的行情榜单页面：无账号系统、无广告、无付费功能。</p>
+  </section>
+
+  <section>
+    <h2>二、一句话总览</h2>
+    <p>本站无账号、无广告、无 Cookie 统计；只有两条数据流：聚合流量统计（Cloudflare Web Analytics，<strong>尚未启用</strong>，见第三节）与榜单数据代理（CoinGecko 行情经本站服务端转发，见第四节）。</p>
+  </section>
+
+  <section>
+    <h2>三、数据流一 · 网站流量统计（Cloudflare Web Analytics，尚未启用）</h2>
+    <p>本站计划使用 Cloudflare Web Analytics 做聚合流量统计，<strong>目前尚未启用</strong>。启用后它的数据流如下（按 Cloudflare 官方口径）：页面加载时从 <code>static.cloudflareinsights.com</code> 加载一个轻量脚本（beacon），把本次浏览的聚合信号回传本站的 <code>/cdn-cgi/rum</code> 路径。</p>
+    <p>采集项仅为聚合统计所需：页面路径、来源站（referrer）、国家/地区、设备/浏览器/操作系统粗分类、页面加载性能与 Core Web Vitals（LCP/INP/CLS 等）。它<strong>无 Cookie、无本地存储、无指纹识别、不跨站追踪、不记录 URL 查询串</strong>。数据留存口径：未采样的原始 beacon 数据保留 7 天，之后聚合保存，仪表盘可查过去 6 个月。本站能看到的只是聚合报表，<strong>看不到单个访客的记录</strong>。用途仅为了解访问量与页面性能，不用于广告或画像。</p>
+    <p>另请知悉读数边界：广告拦截器会屏蔽该脚本域名，部分网络环境下脚本也可能加载失败，这些访问不会计入统计——统计数字只看趋势，不代表全部访客。</p>
+  </section>
+
+  <section>
+    <h2>四、数据流二 · 榜单数据代理（CoinGecko）</h2>
+    <p>榜单的实时行情来自 CoinGecko。您的浏览器<strong>不直连 CoinGecko</strong>：浏览器只请求本站的同源接口 <code>/api/board</code>，由本站服务端函数向 CoinGecko 拉取行情后转发给您。因此 CoinGecko 一侧看到的是本站服务器发出的请求，而不是您的身份信息。</p>
+    <p>按服务端函数的实际代码：行情结果在服务端缓存 <strong>120 秒</strong>，缓存期内多人访问共用同一份数据；上游故障时回退最近一次成功数据并明确标注为缓存/快照状态，不会把旧数据冒充实时。本站服务端函数<strong>不记录、不存储访客的 IP 地址</strong>，其运行日志仅包含错误类型、上游状态码与耗时。本站不把榜单请求数据用于画像，也不出售或共享给任何第三方。</p>
+  </section>
+
+  <section>
+    <h2>五、数据流三 · 浏览器本地存储</h2>
+    <p>本站自身<strong>不设置任何 Cookie</strong>，这也是本站不弹 Cookie 横幅的原因。</p>
+    <!-- [待 W2-06 前端包落地后复核] 下段为「若使用」口径预写：自选功能上线时键名以实际上线代码为准复核后去掉本注释。 -->
+    <p>若您使用本站的自选/收藏功能，该功能会使用浏览器 <code>localStorage</code>（键名以实际上线版本为准，预定为 <code>top200.watchlist.v1</code>）把您选中的币种<strong>只保存在您本机浏览器里</strong>，不上传到任何服务器；清除浏览器站点数据即可删除。未使用该功能时，不写入该键。</p>
+  </section>
+
+  <section>
+    <h2>六、本站不收集什么</h2>
+    <ul>
+      <li>不收集姓名、邮箱、手机号等身份信息；无注册、无登录。</li>
+      <li>无广告，无第三方营销追踪；明确不使用 Google Analytics 类带 Cookie 的统计工具。</li>
+      <li>不做浏览器指纹识别。</li>
+      <li>不出售或共享个人数据——本站本身就不持有个人数据。</li>
+    </ul>
+  </section>
+
+  <section>
+    <h2>七、屏蔽方法与不影响使用</h2>
+    <p>统计启用后，如您不希望被计入统计，可用广告拦截器屏蔽 <code>cloudflareinsights.com</code>，或在浏览器中全局拦截第三方脚本。屏蔽后本站全部功能（榜单、自选）照常可用，仅该次访问不计入统计。</p>
+  </section>
+
+  <section>
+    <h2>八、变更与联系</h2>
+    <p>本页文案变更时，会更新页首「最后更新」日期，并在本站更新日志中留痕；涉及数据流变化的变更，会先更新本页、再上线功能。若日后本站任何功能引入 Cookie，必须先修改本页再上线。</p>
+    <!-- [联系方式替换位] 站长指定邮箱后填入下一行并去掉本注释；未指定前不显示邮箱，不自创。 -->
+    <p>联系方式：（站长指定邮箱待填入）</p>
+  </section>
+
+  <footer>
+    <a href="/">返回榜单首页</a> ｜ 本站仅供信息参考，不构成投资建议。加密货币投资可损失全部本金，请独立判断、量力而行。
+  </footer>
+</div>
+</body>
+</html>
