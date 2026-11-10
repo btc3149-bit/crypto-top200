@@ -1,0 +1,23 @@
+# crypto-top200-fetcher — W2-01 抓取 Worker（独立于 Pages 项目 crypto-top200）
+# G0 形态（2026-11-10）：禁用 Cron —— BOARD_FETCH_DISABLED="1" 且暂不注册 triggers。
+# 启用影子 Cron（G1）须同时：删 BOARD_FETCH_DISABLED（或置 "0") + 加回下述 triggers 块，
+# 且前置 fetcher 侧 COINGECKO_API_KEY 已由协调者注入（否则每 run 必失败、空烧无数据可比对）。
+# [triggers]
+# crons = ["*/10 * * * *"]
+name = "crypto-top200-fetcher"
+main = "src/index.js"
+compatibility_date = "2026-11-01"
+
+[[kv_namespaces]]
+binding = "BOARD_KV"
+id = "ad1b72702c5c4f229999bea5b118d1bc"
+
+[vars]
+PAPRIKA_ENABLED = "false"
+BOARD_SOURCE = "auto"
+BOARD_FETCH_DISABLED = "1"
+# BOARD_TARGET_KEY = "current" # G1 影子期置 "shadow"（只写 v1:board:shadow）
+
+# Secrets（值不写在本文件，经 wrangler secret put 注入，均由协调者处理）：
+# COINGECKO_API_KEY — 与 Pages Secret 独立的一份注入
+# MANUAL_RUN_TOKEN — POST /run 手动补抓校验头 x-manual-token 的值
