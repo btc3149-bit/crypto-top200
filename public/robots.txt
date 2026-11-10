@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://top200.oppcal.com/sitemap.xml

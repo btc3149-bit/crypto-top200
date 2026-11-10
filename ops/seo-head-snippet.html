@@ -1,0 +1,83 @@
+<!-- ============================================================
+  W2-16 SEO head 定版片段（交协调者在前端列车后统一合入 public/index.html 的 <head>）
+  依据：PHASE2_PLAN.md W2-16 §1/§2/§3/§5/§8/§9，逐字定版，合入时勿改文案。
+  合入顺序：title（沿用现行，不动）之后依次为 description、canonical、OG、Twitter、
+  theme-color、favicon 三行、JSON-LD。
+  站名来源：现行 index.html 的 <title> 原文「市值前200币种 · 下一轮牛市预估排名（实时行情）」，
+  og:site_name / og:title / JSON-LD 的 WebSite.name 与 Dataset creator.name 均抄此原文，不新造。
+  /privacy 页合入项：自指 canonical（已在其草稿内）+ 基础 OG（title/description/url/type，
+  og:image 复用全站 https://top200.oppcal.com/og-cover.jpg）。
+  ============================================================ -->
+
+<!-- §1 meta description（定版文案，OG/Twitter description 复用同一文案，三处必须一致） -->
+<meta name="description" content="市值前200加密货币下一轮牛市预估排名：实时价格、市值与上涨倍数空间一览，数据来自 CoinGecko 实时行情。本站为历史周期分析推演，不构成投资建议。">
+
+<!-- §2 canonical（首页自指；*.pages.dev 不得写入） -->
+<link rel="canonical" href="https://top200.oppcal.com/">
+
+<!-- §3 Open Graph -->
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="市值前200币种 · 下一轮牛市预估排名（实时行情）">
+<meta property="og:locale" content="zh_CN">
+<meta property="og:title" content="市值前200币种 · 下一轮牛市预估排名（实时行情）">
+<meta property="og:description" content="市值前200加密货币下一轮牛市预估排名：实时价格、市值与上涨倍数空间一览，数据来自 CoinGecko 实时行情。本站为历史周期分析推演，不构成投资建议。">
+<meta property="og:url" content="https://top200.oppcal.com/">
+<meta property="og:image" content="https://top200.oppcal.com/og-cover.jpg">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="市值前200加密货币预估排名榜单封面">
+
+<!-- §3 Twitter Card（逐项与 OG 同值写死，不依赖平台回退） -->
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="市值前200币种 · 下一轮牛市预估排名（实时行情）">
+<meta name="twitter:description" content="市值前200加密货币下一轮牛市预估排名：实时价格、市值与上涨倍数空间一览，数据来自 CoinGecko 实时行情。本站为历史周期分析推演，不构成投资建议。">
+<meta name="twitter:image" content="https://top200.oppcal.com/og-cover.jpg">
+
+<!-- §9 theme-color（深色单主题，两行同值） -->
+<meta name="theme-color" content="#0b0e14">
+<meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0b0e14">
+
+<!-- §5 favicon 三行 -->
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="icon" href="/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+
+<!-- §8 JSON-LD（WebSite + Dataset 同页 @graph；不写 license、不写虚构 dateModified） -->
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "name": "市值前200币种 · 下一轮牛市预估排名（实时行情）",
+      "url": "https://top200.oppcal.com/",
+      "inLanguage": "zh-CN",
+      "description": "市值前200加密货币下一轮牛市预估排名：实时价格、市值与上涨倍数空间一览，数据来自 CoinGecko 实时行情。本站为历史周期分析推演，不构成投资建议。"
+    },
+    {
+      "@type": "Dataset",
+      "name": "市值前200加密货币下一轮牛市预估排名",
+      "description": "市值前200加密货币下一轮牛市预估排名：实时价格、市值与上涨倍数空间一览，数据来自 CoinGecko 实时行情。本站为历史周期分析推演，不构成投资建议。",
+      "url": "https://top200.oppcal.com/",
+      "inLanguage": "zh-CN",
+      "variableMeasured": ["现价", "市值", "市值排名", "预估倍数空间", "预估排名"],
+      "measurementTechnique": "基于历史周期与市值锚定的分析推演，实时行情来自 CoinGecko",
+      "creator": { "@type": "Organization", "name": "市值前200币种 · 下一轮牛市预估排名（实时行情）" },
+      "isAccessibleForFree": true,
+      "distribution": [
+        { "@type": "DataDownload", "encodingFormat": "application/json", "contentUrl": "https://top200.oppcal.com/api/board" }
+      ]
+    }
+  ]
+}
+</script>
+
+<!-- ============================================================
+  合入备注（非 head 内容，勿原样粘贴进页面）：
+  1. §10 noscript 说明行属 <body> 榜单区上方，不在本片段内。因 W2-17 静态注入尚未上线，
+     合入时 noscript 先用临时文案「本站榜单需要 JavaScript 才能加载，请启用后刷新。」；
+     W2-17 上线后切换为定版文案「本站榜单由 JavaScript 加载实时行情。未启用 JavaScript 时，
+     您看到的是页面构建时的快照榜单（见表注时间），数据可能不是最新。」
+  2. _headers（OG 图与 favicon 缓存规则）归 W2-18/协调者（ops/headers 以外本包不碰），不在本片段内。
+  3. OG 图更新时改文件名版本号（如 og-cover-v2.jpg）并同步改上方 og:image / twitter:image。
+  ============================================================ -->
