@@ -15,6 +15,7 @@
 - **不删风险提示**：页首风险条与页脚免责声明必须保留（预估倍数排名 ≠ 推荐排名）。
 - **零广告、零返佣、零引流**：不加广告位、不加交易所返佣/注册链接、不做社群引流；同时不得出现收费荐币、代客理财、承诺收益话术。
 - **只动 `crypto-top200` 这一个项目**：部署、Secret、回滚等一切 Cloudflare 操作只针对本项目，不触碰账号下其他域名与应用。
+- **密钥硬规则**：任何 API key / Token 只存保险箱或平台 Secret，禁止写入仓库任何文件、禁止发到聊天、禁止出现在截图里；台账只记元数据（见 `ops/security/key-ledger.md`），轮换按 `ops/security/rotation-playbook.md` 执行。
 
 ## 包里有什么
 
@@ -101,7 +102,7 @@ python3 scripts/build.py --offline  # 离线构建（跳过在线审计，构建
 ## 冒烟与探针
 
 - 冒烟（`scripts/smoke.sh <基址>`）：断言 ① `/api/board` 返回 200 且 Content-Type 为 JSON；② body 含 `coins`、`updatedAt`、`coverage`；③ body 不含 `<!DOCTYPE html`（负向断言，专防 HTML 冒充接口）；④ `coverage.returned` 不低于 `/data/coins.json` 币数的 94%；⑤ 首页 200 且含「市值前 200 币种」；⑥ `/data/coins.json` 200 且可解析。任一失败非零退出。
-- 探针（`scripts/probe.sh <基址>`）：同一组断言外加新鲜度判定（`updatedAt` 距今 ≤15 分钟为 pass；stale 且年龄 ≤3600 秒为 warn；snapshot 模式为 fail），每次运行把一行 JSON 结果追加到 `ops/probe-log.jsonl`。告警邮箱预留环境变量 `PROBE_ALERT_EMAIL`：未设置时只记录不发送；真实外部探针服务（邮件告警）待站长提供邮箱后另行接入。
+- 探针（`scripts/probe.sh <基址>`）：同一组断言外加新鲜度判定（`updatedAt` 距今 ≤15 分钟为 pass；stale 且年龄 ≤3600 秒为 warn；snapshot 模式为 fail），每次运行把一行 JSON 结果追加到 `ops/probe-log.jsonl`。告警邮箱已于 2026-11-10 接入（U3）：`PROBE_ALERT_EMAIL` 指向站长邮箱、外部探针（UptimeRobot + healthchecks.io）的告警联系人同为该邮箱，配置与触发演练记录见 `ops/probe-config.md`；两家服务的账号注册须站长本人完成（指引在该文件内）。
 
 ## CoinGecko API key（Secret 方式）
 
@@ -111,7 +112,7 @@ python3 scripts/build.py --offline  # 离线构建（跳过在线审计，构建
 npx wrangler pages secret put COINGECKO_API_KEY --project-name crypto-top200
 ```
 
-改 Secret 后必须重新部署才生效。生产与 Preview 可各用一把；轮换流程：新建 → 替换并重新部署 → 在 CoinGecko 后台吊销旧 key。
+改 Secret 后必须重新部署才生效。注意：CoinGecko Demo 档**全账号仅 1 把 key**——Preview 环境不配 key、改走 fixture 样例数据（W2-20 定版）；轮换流程：新建 → 替换并重新部署 → 在 CoinGecko 后台吊销旧 key，剧本全文见 `ops/security/rotation-playbook.md`。
 
 ## 本地预览（可选）
 
@@ -129,12 +130,40 @@ npx wrangler pages dev public
 
 ## 运维节奏
 
-- **每次部署后**：冒烟（`deploy.sh` 已自动执行）+ 探针跑一次（`bash scripts/probe.sh`），结果留档在 `ops/probe-log.jsonl`。
-- **触发式介入**：只在部署后、数据更新时、探针告警经站长转达时、站长选定的复核时间点介入，不做长期盯盘。
-- **下一次复核点：2026-11-21**（底部窗口关闭后的一次性复核，清单见 `UPGRADE_PLAN.md` §6.5）。
-- **季度体检**：部署 Token（90 天到期）与 CoinGecko key 的有效期、wrangler 锁定版本、回滚演练、合规自查（免责三处在位、无商业链接、数据署名正确）。
+**总原则：触发式介入**——只在部署后、数据更新时、探针告警经站长转达时、站长选定的复核时间点介入，不做长期盯盘。以下四触发点清单为 W2-15 定版（`ops/checklists.md`），每项含动作与完成判据；勾完即存档，证据文件指针写在对应留痕里。
+
+### ① 部署后（每次生产部署必走，≤15 分钟）
+
+- [ ] probe.sh 全量断言通过，结果追加 `ops/probe-log.jsonl`
+- [ ] HC2 success ping 已发出（部署管线自动，人工抽查 healthchecks 日志页有记录；未配置 ping URL 时 `scripts/hc_ping.sh` 打印 `skipped-no-url`，记为降级运行，不算本项失败）
+- [ ] 外部探针未处于 pause（部署中若 pause 过 M1–M4，此时恢复）
+- [ ] 若本次部署含数据/函数变更：抽查 `/api/board` 条数＝200、`mode` 字段、新鲜度各一项
+- [ ] 若含静态文件变更：抽查 canonical/OG/favicon 抓取（与 W2-16 验收项共用）
+
+### ② 数据更新（名单/快照/口径变更时）
+
+- [ ] 名单 diff 核对：新增/退出币种清单与变更原因（顺延补位、去重规则）逐条对上
+- [ ] 稳定币/锚定类计数＝0、总数＝200、无重复（三项数字写进留痕，不写「已核对」空话）
+- [ ] 快照时间与新鲜度阈值复核；构建注入（W2-17）标记区计数＝200
+- [ ] probe.sh 复跑通过
+
+### ③ 告警转达（收到 DOWN/缺席告警时）
+
+- [ ] 先自检复现（自定义域打开首页＋`/api/board`），区分真故障/误报/上游（CoinGecko）故障
+- [ ] 建 `ops/incidents/` 事件页：起止时间、主告警 ID、根因、处置
+- [ ] 只向用户转达一条汇总（故障性质＋影响＋是否已恢复），不逐条转发每封告警邮件
+- [ ] 恢复通知（UP）到达后关事件页；无恢复通知则人工确认恢复并注明
+
+### ④ 选定复核点（下一次已定 2026-11-21，模板见 `ops/reviews/2026-11-21-review.md`）
+
+- [ ] 按模板全项执行并成文 `ops/reviews/2026-11-21-review.md`
+- [ ] HC3 success ping 发出（W2-13），HC3 随即停用/删除或改期到下一个用户选定日期——**没有用户新选日期时不得自行滚动生成下一个复核点**（遵守「不默认长期盯盘」约定）
+
+### 常设例行（非触发）
+
 - **名单周检（手动/半自动，不设常驻定时任务）**：运行 `python3 scripts/weekly_check.py` 产出 `ops/weekly/<年>-W<周>.md` 并更新 `ops/weekly/state.json`，报告与 state 一并 commit。周检只读、只产报告，永不写 coins.json、永不触发部署；移入候选只给行情与占位行，不自动给预估。
 - **月审 SOP**：每月一次逐条复审 `scripts/overrides.json` 的 active 条目（打开 evidenceUrl 核对 id 仍正确 → 更新 verifiedAt/reviewDue 并记入当周周报 D 节）+ 处置积压人工队列；月审结论附在当月最后一周报告尾部，不另起文件。事件急查（大盘单日 ±20%、构建比值异常、探针告警涉币、下架/迁移新闻）可单次运行周检并在报告头标 `event-triggered`。
+- **季度体检**：清单见 `ops/quarterly/2027-Q1-checklist.md`（含 Token/key 有效期、回滚演练、tail 演练、合规自查）。
 
 ## 数据与口径说明
 
