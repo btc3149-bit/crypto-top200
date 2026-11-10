@@ -1,0 +1,456 @@
+{
+ "version": 1,
+ "baselineWeek": "2026-W46",
+ "baselineDate": "2026-11-10",
+ "note": "第 0 周基准：以 2026-11-10 现行 200 币名单为基准，watch/drift 计数为空，首跑从 1 起算",
+ "watchOut": {
+  "IMX": {
+   "weeks": 1,
+   "id": "immutable-x"
+  },
+  "SNX": {
+   "weeks": 1,
+   "id": "havven"
+  },
+  "1INCH": {
+   "weeks": 1,
+   "id": "1inch"
+  },
+  "TEL": {
+   "weeks": 1,
+   "id": "telcoin-2"
+  },
+  "SUPER": {
+   "weeks": 1,
+   "id": "superfarm"
+  },
+  "RSR": {
+   "weeks": 1,
+   "id": "reserve-rights-token"
+  },
+  "APE": {
+   "weeks": 1,
+   "id": "apecoin"
+  },
+  "GLM": {
+   "weeks": 1,
+   "id": "golem"
+  },
+  "EGLD": {
+   "weeks": 1,
+   "id": "elrond-erd-2"
+  },
+  "ZK": {
+   "weeks": 1,
+   "id": "zksync"
+  },
+  "SN64": {
+   "weeks": 1,
+   "id": "chutes"
+  },
+  "ATH": {
+   "weeks": 1,
+   "id": "aethir"
+  },
+  "META": {
+   "weeks": 1,
+   "id": "meta-2-2"
+  },
+  "PLUME": {
+   "weeks": 1,
+   "id": "plume"
+  },
+  "RLB": {
+   "weeks": 1,
+   "id": "rollbit-coin"
+  },
+  "SFP": {
+   "weeks": 1,
+   "id": "safepal"
+  },
+  "WFI": {
+   "weeks": 1,
+   "id": "wefi"
+  },
+  "SKR": {
+   "weeks": 1,
+   "id": "seeker"
+  },
+  "ZEN": {
+   "weeks": 1,
+   "id": "zencash"
+  },
+  "2Z": {
+   "weeks": 1,
+   "id": "doublezero"
+  },
+  "DBR": {
+   "weeks": 1,
+   "id": "debridge"
+  },
+  "0G": {
+   "weeks": 1,
+   "id": "zero-gravity"
+  },
+  "PROM": {
+   "weeks": 1,
+   "id": "prometeus"
+  },
+  "GENIUS": {
+   "weeks": 1,
+   "id": "genius-3"
+  },
+  "PONS": {
+   "weeks": 1,
+   "id": "pons"
+  },
+  "ULTIMA": {
+   "weeks": 1,
+   "id": "ultima"
+  },
+  "NXM": {
+   "weeks": 1,
+   "id": "nxm"
+  },
+  "AIOT": {
+   "weeks": 1,
+   "id": "okzoo"
+  },
+  "YZY": {
+   "weeks": 1,
+   "id": "yzy"
+  },
+  "SOON": {
+   "weeks": 1,
+   "id": "soon-2"
+  },
+  "H": {
+   "weeks": 1,
+   "id": "humanity"
+  },
+  "YELLOW": {
+   "weeks": 1,
+   "id": "yellow"
+  }
+ },
+ "watchIn": {
+  "USDT": {
+   "weeks": 1,
+   "id": "tether",
+   "rank": 3
+  },
+  "USDC": {
+   "weeks": 1,
+   "id": "usd-coin",
+   "rank": 5
+  },
+  "FIGR_HELOC": {
+   "weeks": 1,
+   "id": "figure-heloc",
+   "rank": 9
+  },
+  "USDS": {
+   "weeks": 1,
+   "id": "usds",
+   "rank": 14
+  },
+  "USDE": {
+   "weeks": 1,
+   "id": "ethena-usde",
+   "rank": 20
+  },
+  "DAI": {
+   "weeks": 1,
+   "id": "dai",
+   "rank": 23
+  },
+  "USD1": {
+   "weeks": 1,
+   "id": "usd1-wlfi",
+   "rank": 29
+  },
+  "XAUT": {
+   "weeks": 1,
+   "id": "tether-gold",
+   "rank": 30
+  },
+  "PYUSD": {
+   "weeks": 1,
+   "id": "paypal-usd",
+   "rank": 34
+  },
+  "USDG": {
+   "weeks": 1,
+   "id": "global-dollar",
+   "rank": 36
+  },
+  "RLUSD": {
+   "weeks": 1,
+   "id": "ripple-usd",
+   "rank": 37
+  },
+  "USDY": {
+   "weeks": 1,
+   "id": "ondo-us-dollar-yield",
+   "rank": 41
+  },
+  "USYC": {
+   "weeks": 1,
+   "id": "hashnote-usyc",
+   "rank": 43
+  },
+  "EURSAFO": {
+   "weeks": 1,
+   "id": "spiko-amundi-overnight-swap-fund-eur",
+   "rank": 46
+  },
+  "USDF": {
+   "weeks": 1,
+   "id": "falcon-finance",
+   "rank": 48
+  },
+  "PAXG": {
+   "weeks": 1,
+   "id": "pax-gold",
+   "rank": 49
+  },
+  "BUIDL": {
+   "weeks": 1,
+   "id": "blackrock-usd-institutional-digital-liquidity-fund",
+   "rank": 53
+  },
+  "U": {
+   "weeks": 1,
+   "id": "united-stables",
+   "rank": 54
+  },
+  "USDD": {
+   "weeks": 1,
+   "id": "usdd",
+   "rank": 58
+  },
+  "DOT": {
+   "weeks": 1,
+   "id": "polkadot",
+   "rank": 60
+  },
+  "BFUSD": {
+   "weeks": 1,
+   "id": "bfusd",
+   "rank": 65
+  },
+  "USDGO": {
+   "weeks": 1,
+   "id": "usdgo",
+   "rank": 70
+  },
+  "OUSD": {
+   "weeks": 1,
+   "id": "open-usd",
+   "rank": 76
+  },
+  "GHO": {
+   "weeks": 1,
+   "id": "gho",
+   "rank": 87
+  },
+  "USTB": {
+   "weeks": 1,
+   "id": "superstate-short-duration-us-government-securities-fund-ustb",
+   "rank": 88
+  },
+  "JAAA": {
+   "weeks": 1,
+   "id": "janus-henderson-anemoy-aaa-clo-fund",
+   "rank": 97
+  },
+  "BDX": {
+   "weeks": 1,
+   "id": "beldex",
+   "rank": 99
+  },
+  "USD0": {
+   "weeks": 1,
+   "id": "usual-usd",
+   "rank": 101
+  },
+  "EURC": {
+   "weeks": 1,
+   "id": "euro-coin",
+   "rank": 102
+  },
+  "TUSD": {
+   "weeks": 1,
+   "id": "true-usd",
+   "rank": 106
+  },
+  "EUTBL": {
+   "weeks": 1,
+   "id": "eutbl",
+   "rank": 107
+  },
+  "FLR": {
+   "weeks": 1,
+   "id": "flare-networks",
+   "rank": 108
+  },
+  "YLDS": {
+   "weeks": 1,
+   "id": "ylds",
+   "rank": 109
+  },
+  "REUSD": {
+   "weeks": 1,
+   "id": "re-protocol-reusd",
+   "rank": 117
+  },
+  "KAU": {
+   "weeks": 1,
+   "id": "kinesis-gold",
+   "rank": 118
+  },
+  "BTT": {
+   "weeks": 1,
+   "id": "bittorrent",
+   "rank": 121
+  },
+  "SPX": {
+   "weeks": 1,
+   "id": "spx6900",
+   "rank": 124
+  },
+  "SOFID": {
+   "weeks": 1,
+   "id": "sofiusd",
+   "rank": 126
+  },
+  "OUSG": {
+   "weeks": 1,
+   "id": "ousg",
+   "rank": 127
+  },
+  "APXUSD": {
+   "weeks": 1,
+   "id": "apxusd",
+   "rank": 131
+  },
+  "FDUSD": {
+   "weeks": 1,
+   "id": "first-digital-usd",
+   "rank": 135
+  },
+  "KITE": {
+   "weeks": 1,
+   "id": "kite-2",
+   "rank": 136
+  },
+  "OHM": {
+   "weeks": 1,
+   "id": "olympus",
+   "rank": 142
+  },
+  "SAFO": {
+   "weeks": 1,
+   "id": "safo",
+   "rank": 145
+  },
+  "PC0000031": {
+   "weeks": 1,
+   "id": "tradable-na-rent-financing-platform-sstn",
+   "rank": 147
+  },
+  "BP": {
+   "weeks": 1,
+   "id": "backpack",
+   "rank": 148
+  },
+  "SPCXB": {
+   "weeks": 1,
+   "id": "spacex-bstocks-tokenized-stock",
+   "rank": 149
+  },
+  "LUNC": {
+   "weeks": 1,
+   "id": "terra-luna",
+   "rank": 150
+  },
+  "FRAX": {
+   "weeks": 1,
+   "id": "frax",
+   "rank": 151
+  },
+  "USX": {
+   "weeks": 1,
+   "id": "usx",
+   "rank": 160
+  },
+  "NFT": {
+   "weeks": 1,
+   "id": "apenft",
+   "rank": 166
+  },
+  "KAG": {
+   "weeks": 1,
+   "id": "kinesis-silver",
+   "rank": 167
+  },
+  "EURCV": {
+   "weeks": 1,
+   "id": "societe-generale-forge-eurcv",
+   "rank": 168
+  },
+  "MGLO": {
+   "weeks": 1,
+   "id": "midas-fasanara-global-open",
+   "rank": 170
+  },
+  "USAT": {
+   "weeks": 1,
+   "id": "usa",
+   "rank": 177
+  },
+  "USTBL": {
+   "weeks": 1,
+   "id": "spiko-us-t-bills-money-market-fund",
+   "rank": 179
+  },
+  "AERO": {
+   "weeks": 1,
+   "id": "aerodrome-finance",
+   "rank": 184
+  },
+  "PC0000033": {
+   "weeks": 1,
+   "id": "tradable-apac-diversified-finance-provider-sstn",
+   "rank": 188
+  },
+  "A7A5": {
+   "weeks": 1,
+   "id": "a7a5",
+   "rank": 191
+  },
+  "USDAI": {
+   "weeks": 1,
+   "id": "usdai",
+   "rank": 193
+  },
+  "AUSD": {
+   "weeks": 1,
+   "id": "agora-dollar",
+   "rank": 196
+  },
+  "GUSD": {
+   "weeks": 1,
+   "id": "gusd",
+   "rank": 198
+  },
+  "CRCLB": {
+   "weeks": 1,
+   "id": "circle-internet-group-bstock",
+   "rank": 199
+  }
+ },
+ "driftMarked": [],
+ "updatedAt": "2026-11-10T10:17:10+00:00",
+ "lastRunWeek": "2026-W46"
+}

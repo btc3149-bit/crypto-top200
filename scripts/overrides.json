@@ -1,0 +1,155 @@
+{
+ "version": 1,
+ "entries": [
+  {
+   "symbol": "TEL",
+   "coingeckoId": "telcoin-2",
+   "type": "dead-contract-successor",
+   "reason": "CoinGecko 上 telcoin 为已废弃旧合约，现行合约为 telcoin-2（2026-11-10 在线核价比值 0.97）",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/telcoin-2",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "active"
+  },
+  {
+   "symbol": "BC",
+   "coingeckoId": "bc-token",
+   "type": "symbol-mismatch",
+   "reason": "报告原符号 BCG，CoinGecko 符号为 BC、id 为 bc-token（name=BCGame Coin）；现行 coins.json 以 BC 登记",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/bc-token",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "active"
+  },
+  {
+   "symbol": "PRL",
+   "coingeckoId": "pearl-2",
+   "type": "symbol-mismatch",
+   "reason": "CoinGecko 符号为 PEARL，id 为 pearl-2；报告与现行表符号为 PRL",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/pearl-2",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "active"
+  },
+  {
+   "symbol": "WFI",
+   "coingeckoId": "wefi",
+   "type": "manual-resolution",
+   "reason": "自动匹配无法定夺，人工核定 id=wefi（在线核价比值 1.000）",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/wefi",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "active"
+  },
+  {
+   "symbol": "BR",
+   "coingeckoId": "bedrock-token",
+   "type": "id-suffix-collision",
+   "reason": "补位批人工核定：Bedrock 的 CoinGecko id 为 bedrock-token",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/bedrock-token",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "active"
+  },
+  {
+   "symbol": "XCN",
+   "coingeckoId": "chain-2",
+   "type": "id-suffix-collision",
+   "reason": "补位批人工核定：Onyxcoin（XCN）的 CoinGecko id 为 chain-2",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/chain-2",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "active"
+  },
+  {
+   "symbol": "B",
+   "coingeckoId": "build-on",
+   "type": "manual-resolution",
+   "reason": "补位批人工核定：BUILDon（单字母符号 B 高碰撞）的 CoinGecko id 为 build-on",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/build-on",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "active"
+  },
+  {
+   "symbol": "SUPER",
+   "coingeckoId": "superfarm",
+   "type": "manual-resolution",
+   "reason": "补位批人工核定：SuperVerse 改名遗留 id superfarm",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/superfarm",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "active"
+  },
+  {
+   "symbol": "SN64",
+   "coingeckoId": "chutes",
+   "type": "manual-resolution",
+   "reason": "补位批人工核定：符号 SN64 与 id chutes 无字面关联，人工核定",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/chutes",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "active"
+  },
+  {
+   "symbol": "S",
+   "coingeckoId": "sonic-3",
+   "type": "id-suffix-collision",
+   "reason": "补位批人工核定：Sonic（单字母符号 S 高碰撞）的 CoinGecko id 为 sonic-3",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/sonic-3",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "active"
+  },
+  {
+   "symbol": "AWE",
+   "coingeckoId": "stp-network",
+   "type": "manual-resolution",
+   "reason": "补位批人工核定：AWE Network 前身 STP，id 未随改名，仍为 stp-network",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/stp-network",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "active"
+  },
+  {
+   "symbol": "SNX",
+   "coingeckoId": "havven",
+   "type": "manual-resolution",
+   "reason": "二轮补位批复核补登：Synthetix 的 CoinGecko id 为其原名 Havven 的 havven，与现行 name/symbol 无字面关联，自动匹配靠名称历史命中，人工核定",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/havven",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "active"
+  },
+  {
+   "symbol": "EGLD",
+   "coingeckoId": "elrond-erd-2",
+   "type": "manual-resolution",
+   "reason": "二轮补位批复核补登：MultiversX 前身 Elrond，id 仍为 elrond-erd-2（改名遗留+后缀），人工核定",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/elrond-erd-2",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "active"
+  },
+  {
+   "symbol": "BCAP",
+   "coingeckoId": "blockchain-capital",
+   "type": "manual-resolution",
+   "reason": "一期人工核定 id=blockchain-capital（比值 0.999）；2026-11-10 随表 B 锚定类剔除退出名单，退役保留溯源",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/blockchain-capital",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "retired"
+  },
+  {
+   "symbol": "SATUSD",
+   "coingeckoId": "satoshi-stablecoin",
+   "type": "manual-resolution",
+   "reason": "一期人工核定 id=satoshi-stablecoin（比值 1.000）；2026-11-10 随表 B 锚定类剔除退出名单，退役保留溯源",
+   "evidenceUrl": "https://www.coingecko.com/en/coins/satoshi-stablecoin",
+   "verifiedAt": "2026-11-10",
+   "reviewDue": "2027-02-08",
+   "status": "retired"
+  }
+ ]
+}

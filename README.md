@@ -118,6 +118,8 @@ npx wrangler pages dev public
 - **触发式介入**：只在部署后、数据更新时、探针告警经站长转达时、站长选定的复核时间点介入，不做长期盯盘。
 - **下一次复核点：2026-11-21**（底部窗口关闭后的一次性复核，清单见 `UPGRADE_PLAN.md` §6.5）。
 - **季度体检**：部署 Token（90 天到期）与 CoinGecko key 的有效期、wrangler 锁定版本、回滚演练、合规自查（免责三处在位、无商业链接、数据署名正确）。
+- **名单周检（手动/半自动，不设常驻定时任务）**：运行 `python3 scripts/weekly_check.py` 产出 `ops/weekly/<年>-W<周>.md` 并更新 `ops/weekly/state.json`，报告与 state 一并 commit。周检只读、只产报告，永不写 coins.json、永不触发部署；移入候选只给行情与占位行，不自动给预估。
+- **月审 SOP**：每月一次逐条复审 `scripts/overrides.json` 的 active 条目（打开 evidenceUrl 核对 id 仍正确 → 更新 verifiedAt/reviewDue 并记入当周周报 D 节）+ 处置积压人工队列；月审结论附在当月最后一周报告尾部，不另起文件。事件急查（大盘单日 ±20%、构建比值异常、探针告警涉币、下架/迁移新闻）可单次运行周检并在报告头标 `event-triggered`。
 
 ## 数据与口径说明
 
