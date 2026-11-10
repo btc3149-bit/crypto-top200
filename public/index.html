@@ -53,6 +53,9 @@
   .stat .v{min-height:28px}
   .status-banner{min-height:42px}
   #liveBadge{min-width:76px;text-align:center}
+  .th-sort{background:none;border:none;color:inherit;font:inherit;font-weight:600;cursor:pointer;padding:4px 2px;min-height:36px}
+  .th-sort:disabled{cursor:not-allowed;opacity:.55}
+  .th-arrow{color:var(--acc);font-size:10px}
   /* W2-09 立规：本期新增动效默认不加；将来若加，必须写在 @media (prefers-reduced-motion: no-preference) 内，reduce 档保持瞬时切换 */
   @media (max-width:640px){
     .hm{display:none}
@@ -87,12 +90,6 @@
     <select id="confSel">
       <option value="">置信度：全部</option><option>高</option><option>中</option><option>低</option>
     </select>
-    <select id="sortSel">
-      <option value="est">排序：报告预估排名</option>
-      <option value="mult" id="optMult">排序：快照倍数</option>
-      <option value="mcap" id="optMcap">排序：快照市值</option>
-      <option value="price" id="optPrice">排序：快照价</option>
-    </select>
     <button class="act" id="refreshBtn">刷新行情</button>
   </div>
 
@@ -100,8 +97,8 @@
     <table>
       <caption class="sr-only">市值前 200 币种下一轮牛市预估排名表，行情状态见页首状态横幅</caption>
       <thead><tr>
-        <th scope="col" id="thRank">预估排名</th><th scope="col" class="hm">报告排名</th><th scope="col">币种</th><th scope="col" id="thPrice">快照价（11-08）($)</th><th scope="col" class="hm">24h</th>
-        <th scope="col" class="hm" id="thMcap">快照市值</th><th scope="col" class="hm">报告现排名</th><th scope="col" class="hm">ATH($)</th><th scope="col">2029预估区间($)</th><th scope="col" id="thMult">快照倍数</th><th scope="col">置信度</th><th scope="col" class="hm" style="text-align:left">核心依据</th>
+        <th scope="col" id="thSort-rank" aria-sort="ascending"><button class="th-sort" type="button" id="sortBtn-rank" data-sort="rank"><span id="thRank">预估排名</span><span class="th-arrow" id="sortArrow-rank"> ▲</span></button></th><th scope="col" class="hm">报告排名</th><th scope="col">币种</th><th scope="col" id="thSort-price"><button class="th-sort" type="button" id="sortBtn-price" data-sort="price"><span id="thPrice">快照价（11-08）($)</span><span class="th-arrow" id="sortArrow-price"></span></button></th><th scope="col" class="hm" id="thSort-change24h"><button class="th-sort" type="button" id="sortBtn-change24h" data-sort="change24h">24h<span class="th-arrow" id="sortArrow-change24h"></span></button></th>
+        <th scope="col" class="hm" id="thSort-mcap"><button class="th-sort" type="button" id="sortBtn-mcap" data-sort="mcap"><span id="thMcap">快照市值</span><span class="th-arrow" id="sortArrow-mcap"></span></button></th><th scope="col" class="hm">报告现排名</th><th scope="col" class="hm" id="thSort-athDrop"><button class="th-sort" type="button" id="sortBtn-athDrop" data-sort="athDrop">ATH($)<span class="th-arrow" id="sortArrow-athDrop"></span></button></th><th scope="col">2029预估区间($)</th><th scope="col" id="thSort-mult"><button class="th-sort" type="button" id="sortBtn-mult" data-sort="mult"><span id="thMult">快照倍数</span><span class="th-arrow" id="sortArrow-mult"></span></button></th><th scope="col">置信度</th><th scope="col" class="hm" style="text-align:left">核心依据</th>
       </tr></thead>
       <tbody id="tbodyA"><tr><td colspan="12" style="text-align:center">数据加载中…</td></tr></tbody>
     </table>
@@ -188,19 +185,16 @@ function applyBoardState() {
   const updTxt = BOARD && BOARD.updatedAt ? fmtTimeStr(BOARD.updatedAt) : "—";
   if (mode === "live") {
     $("thRank").textContent = "实时预估排名"; $("thPrice").textContent = "现价($)"; $("thMcap").textContent = "实时市值"; $("thMult").textContent = "实时倍数";
-    $("optMult").textContent = "排序：实时倍数"; $("optMcap").textContent = "排序：实时市值"; $("optPrice").textContent = "排序：现价";
     $("stMcapK").textContent = "全网总市值（实时）"; $("stTimeK").textContent = "行情更新时间";
     badge.textContent = "实时行情"; badge.className = "badge live";
     banner.textContent = "实时行情 · 更新于 " + updTxt; banner.className = "status-banner live";
   } else if (mode === "stale") {
     $("thRank").textContent = "预估排名（缓存）"; $("thPrice").textContent = "现价（缓存）($)"; $("thMcap").textContent = "市值（缓存）"; $("thMult").textContent = "倍数（缓存）";
-    $("optMult").textContent = "排序：倍数（缓存）"; $("optMcap").textContent = "排序：市值（缓存）"; $("optPrice").textContent = "排序：现价（缓存）";
     $("stMcapK").textContent = "全网总市值（缓存）"; $("stTimeK").textContent = "行情更新时间";
     badge.textContent = ageTxt ? "缓存行情（" + ageTxt + "）" : "缓存行情"; badge.className = "badge stale";
     banner.textContent = "缓存行情：数据截至 " + updTxt + (ageTxt ? "，" + ageTxt : "") + "，上游暂不可达"; banner.className = "status-banner stale";
   } else {
     $("thRank").textContent = "预估排名"; $("thPrice").textContent = "快照价（" + snapshotShort() + "）($)"; $("thMcap").textContent = "快照市值"; $("thMult").textContent = "快照倍数";
-    $("optMult").textContent = "排序：快照倍数"; $("optMcap").textContent = "排序：快照市值"; $("optPrice").textContent = "排序：快照价";
     $("stMcapK").textContent = "全网总市值"; $("stTimeK").textContent = "数据基准";
     badge.textContent = "快照模式（" + snapshotDate() + "）"; badge.className = "badge snapshot";
     banner.textContent = "快照模式：当前为 " + snapshotDate() + " 快照数据，非实时行情"; banner.className = "status-banner snapshot";
@@ -217,8 +211,57 @@ function applyBoardState() {
     $("stChg").textContent = fmtPct(g.totalMcapChange24h); $("stChg").className = "v " + (g.totalMcapChange24h != null ? (g.totalMcapChange24h >= 0 ? "up" : "dn") : "");
     $("stTime").textContent = mode === "stale" && ageTxt ? updTxt + "（" + ageTxt + "）" : updTxt;
   }
+  updateSortHeaders();
 }
 
+let sortState = { key: "rank", dir: "asc" };
+const SORT_DEFS = {
+  rank: { defDir: "asc", label: "预估排名" },
+  price: { defDir: "desc", label: "现价" },
+  change24h: { defDir: "desc", label: "24h" },
+  mcap: { defDir: "desc", label: "市值" },
+  athDrop: { defDir: "asc", label: "距ATH" },
+  mult: { defDir: "desc", label: "倍数" }
+};
+function sortVal(c, key) {
+  if (key === "rank") return boardMode() === "snapshot" ? c.estRank : c._d.liveRank;
+  if (key === "price") return c._d.price;
+  if (key === "change24h") return c._d.chg;
+  if (key === "mcap") return c._d.mcap;
+  if (key === "athDrop") return c._d.athDrop;
+  return c._d.multMid;
+}
+function cmpCoins(x, y) {
+  const xv = sortVal(x, sortState.key), yv = sortVal(y, sortState.key);
+  const xn = xv == null, yn = yv == null;
+  if (xn || yn) { if (xn && yn) return x.estRank - y.estRank; return xn ? 1 : -1; }
+  if (xv !== yv) return (xv - yv) * (sortState.dir === "asc" ? 1 : -1);
+  return x.estRank - y.estRank;
+}
+function updateSortHeaders() {
+  for (const key of Object.keys(SORT_DEFS)) {
+    const th = $("thSort-" + key), btn = $("sortBtn-" + key), arrow = $("sortArrow-" + key);
+    if (!th || !btn) continue;
+    const active = sortState.key === key;
+    if (active) th.setAttribute("aria-sort", sortState.dir === "asc" ? "ascending" : "descending");
+    else th.removeAttribute("aria-sort");
+    if (arrow) arrow.textContent = active ? (sortState.dir === "asc" ? " ▲" : " ▼") : "";
+    btn.setAttribute("aria-label", "按" + SORT_DEFS[key].label + "排序" + (active ? "，当前" + (sortState.dir === "asc" ? "升序" : "降序") : ""));
+    if (key === "change24h") {
+      const dis = boardMode() === "snapshot";
+      btn.disabled = dis;
+      btn.title = dis ? "快照模式下无 24h 数据" : "";
+    }
+  }
+}
+function setSort(key) {
+  if (!SORT_DEFS[key]) return;
+  if (key === "change24h" && boardMode() === "snapshot") return;
+  if (sortState.key === key) sortState.dir = sortState.dir === "asc" ? "desc" : "asc";
+  else sortState = { key: key, dir: SORT_DEFS[key].defDir };
+  showAllManual = false;
+  render();
+}
 function rebuildDerived() {
   boardVer++;
   for (const c of COINS) {
@@ -275,12 +318,9 @@ function rowHTML(c) {
 function render() {
   applyBoardState();
   const q = $("q").value.trim().toLowerCase();
-  const conf = $("confSel").value, sort = $("sortSel").value;
+  const conf = $("confSel").value;
   let a = COINS.filter((c) => (!q || c._d.searchBlob.includes(q)) && (!conf || c.confidence === conf));
-  if (sort === "est") a.sort((x, y) => x.estRank - y.estRank);
-  if (sort === "mult") a.sort((x, y) => (y._d.multMid == null ? -1 : y._d.multMid) - (x._d.multMid == null ? -1 : x._d.multMid));
-  if (sort === "mcap") a.sort((x, y) => (y._d.mcap || 0) - (x._d.mcap || 0));
-  if (sort === "price") a.sort((x, y) => (y._d.price || 0) - (x._d.price || 0));
+  a.sort(cmpCoins);
   const limit = effectiveLimit();
   const shown = limit === Infinity ? a : a.slice(0, limit);
   $("tbodyA").innerHTML = shown.map((c) => rowHTML(c)).join("");
@@ -338,7 +378,12 @@ $("q").addEventListener("input", () => { showAllManual = false; scheduleRender()
 $("q").addEventListener("compositionstart", () => { isComposing = true; });
 $("q").addEventListener("compositionend", () => { isComposing = false; showAllManual = false; scheduleRender(); });
 $("confSel").onchange = () => { showAllManual = false; render(); };
-$("sortSel").onchange = () => { showAllManual = false; render(); };
+const theadEl = document.querySelector("thead");
+if (theadEl) theadEl.addEventListener("click", (ev) => {
+  const btn = ev.target.closest("button[data-sort]");
+  if (!btn || btn.disabled) return;
+  setSort(btn.dataset.sort);
+});
 $("refreshBtn").onclick = loadBoard;
 $("showAllBtn").onclick = () => { showAllManual = $("showAllBtn").dataset.act !== "less"; render(); };
 init();
