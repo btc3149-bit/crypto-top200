@@ -1,0 +1,11 @@
+# Cloudflare Pages 项目配置（用 wrangler 命令行部署时使用）
+# 线上项目名定版为 crypto-top200（pages.dev 与自定义域 top200.oppcal.com 都挂在它上面）。
+# 注意：控制台拖放上传不编译 functions/，已废弃；部署只走 Wrangler 直推（见 README 与 scripts/deploy.sh）。
+name = "crypto-top200"
+pages_build_output_dir = "public"
+compatibility_date = "2026-11-01"
+
+# 可选：CoinGecko Demo API key（免费申请，能提高接口限额；不设也能用公共接口）
+# 不要把 key 直接写进这个文件！部署后在 Cloudflare 控制台
+# 项目 → Settings → Environment variables 里添加 COINGECKO_API_KEY（类型选 Secret），
+# 或用命令行：npx wrangler pages secret put COINGECKO_API_KEY --project-name crypto-top200

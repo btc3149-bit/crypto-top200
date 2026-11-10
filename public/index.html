@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>市值前200币种 · 下一轮牛市预估排名（实时行情）</title>
+<style>
+  :root{--bg:#0b0e14;--card:#131824;--line:#232b3d;--txt:#e8ecf4;--dim:#8b96ad;--acc:#f0b90b;--up:#2ebd85;--dn:#f6465d;--chip:#1c2333}
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif;overflow-x:hidden}
+  .wrap{max-width:1180px;margin:0 auto;padding:16px 14px 48px}
+  .risk{background:#2a1416;border:1px solid #5b2530;color:#f3c1c8;border-radius:10px;padding:10px 14px;font-size:13px;line-height:1.6;margin-bottom:14px}
+  h1{font-size:22px;margin:6px 0 4px}
+  .sub{color:var(--dim);font-size:13px;line-height:1.7}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin:14px 0}
+  .stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+  .stat .k{color:var(--dim);font-size:12px}
+  .stat .v{font-size:19px;font-weight:700;margin-top:4px}
+  .badge{display:inline-block;padding:1px 8px;border-radius:20px;font-size:11px;background:var(--chip);color:var(--dim);vertical-align:middle}
+  .badge.live{color:#0b0e14;background:var(--up);font-weight:700}
+  .badge.stale{color:#0b0e14;background:var(--acc);font-weight:700}
+  .badge.snapshot{color:#fff;background:var(--dn);font-weight:700}
+  .status-banner{border:1px solid var(--line);border-radius:10px;padding:9px 14px;font-size:13px;line-height:1.6;margin:12px 0 0}
+  .status-banner.live{background:#10231c;border-color:#1d4d3a;color:#9fe8c9}
+  .status-banner.stale{background:#2a2210;border-color:#5b4a1f;color:#f3dd9a}
+  .status-banner.snapshot{background:#2a1416;border-color:#5b2530;color:#f3c1c8}
+  .stat .v.muted{color:var(--dim)}
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin:14px 0 10px}
+  .toolbar input[type=search],.toolbar select{background:var(--card);color:var(--txt);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:14px}
+  .toolbar input[type=search]{flex:1;min-width:160px}
+  .tab{border:1px solid var(--line);background:var(--card);color:var(--dim);border-radius:8px;padding:8px 14px;font-size:14px;cursor:pointer}
+  .tab.on{color:var(--txt);border-color:var(--acc);font-weight:700}
+  button.act{background:var(--acc);color:#111;border:none;border-radius:8px;padding:8px 14px;font-size:14px;font-weight:700;cursor:pointer}
+  .tablewrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+  table{border-collapse:collapse;width:100%;min-width:1060px;font-size:13px}
+  th,td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{color:var(--dim);font-weight:600;background:#171d2c;position:sticky;top:0}
+  td:nth-child(3),th:nth-child(3){text-align:left}
+  .sym{color:var(--dim);font-size:11px}
+  .conf-高{color:var(--up);font-weight:700}.conf-中{color:var(--acc);font-weight:700}.conf-低{color:var(--dim)}
+  .up{color:var(--up)}.dn{color:var(--dn)}
+  .reason{white-space:normal;min-width:220px;text-align:left;color:var(--dim);font-size:12px;line-height:1.5}
+  section.method{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-top:18px;font-size:14px;line-height:1.8;color:#c6cede}
+  section.method h2{font-size:16px;margin:0 0 8px;color:var(--txt)}
+  footer{color:var(--dim);font-size:12px;line-height:1.7;margin-top:16px}
+  .hidden{display:none}
+  @media (max-width:640px){
+    .hm{display:none}
+    table{min-width:0;width:100%}
+    .toolbar input[type=search],.toolbar select{font-size:16px}
+    .toolbar select,.toolbar button,button.act,.tab{min-height:44px;padding-top:10px;padding-bottom:10px}
+    .toolbar input[type=search]{min-height:44px}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="risk">⚠️ <strong>风险提示：本页不构成投资建议。</strong>「预估高点」是基于历史周期的情景推演（样本仅 3–4 轮），不是预测、不是承诺；加密货币可归零，长尾币归零风险极高，本表后段的补位币为市值 200 名开外长尾、流动性更薄、风险更高。预估倍数排名 ≠ 推荐排名——排名越靠前通常归零概率越高。请独立判断。</div>
+
+  <h1>市值前 200 币种 · 下一轮牛市预估排名 <span class="badge" id="liveBadge">行情加载中…</span></h1>
+  <div class="sub">预估目标窗口：<strong>2029 年 9 月下旬 ~ 10 月中旬</strong>（按比特币减半周期历史天数推算）。全表 <strong>182 个币全部可预估</strong>：原榜单中的稳定币/锚定类已按规则剔除，并按市值顺延补入非锚定币。预估区间来自两份研究报告（主榜单 2026-11-10 发布，老币快照价为 2026-11-08 收盘；补位批为 2026-11-10 CoinGecko 实盘核验）；现价、市值与倍数按实时行情重算。行情数据来源：CoinGecko。</div>
+
+  <div class="status-banner snapshot" id="statusBanner">快照模式：当前为 2026-11-08 快照数据，非实时行情</div>
+
+  <div class="stats">
+    <div class="stat"><div class="k" id="stMcapK">全网总市值</div><div class="v muted" id="stMcap">—</div></div>
+    <div class="stat"><div class="k">BTC 主导率</div><div class="v" id="stDom">—</div></div>
+    <div class="stat"><div class="k">总市值 24h</div><div class="v" id="stChg">—</div></div>
+    <div class="stat"><div class="k" id="stTimeK">数据基准</div><div class="v" id="stTime" style="font-size:15px">快照 2026-11-08</div></div>
+  </div>
+
+  <div class="toolbar">
+    <span class="badge" style="font-size:12px;padding:6px 10px">全部币种 · 预估排名（182）</span>
+    <input type="search" id="q" placeholder="搜索币种名称 / 代码，如 BTC、Solana">
+    <select id="confSel">
+      <option value="">置信度：全部</option><option>高</option><option>中</option><option>低</option>
+    </select>
+    <select id="sortSel">
+      <option value="est">排序：报告预估排名</option>
+      <option value="mult" id="optMult">排序：快照倍数</option>
+      <option value="mcap" id="optMcap">排序：快照市值</option>
+      <option value="price" id="optPrice">排序：快照价</option>
+    </select>
+    <button class="act" id="refreshBtn">刷新行情</button>
+  </div>
+
+  <div class="tablewrap" id="wrapA">
+    <table>
+      <thead><tr>
+        <th id="thRank">预估排名</th><th class="hm">报告排名</th><th>币种</th><th id="thPrice">快照价（11-08）($)</th><th class="hm">24h</th>
+        <th class="hm" id="thMcap">快照市值</th><th class="hm">报告现排名</th><th class="hm">ATH($)</th><th>2029预估区间($)</th><th id="thMult">快照倍数</th><th>置信度</th><th class="hm" style="text-align:left">核心依据</th>
+      </tr></thead>
+      <tbody id="tbodyA"></tbody>
+    </table>
+  </div>
+
+  <section class="method">
+    <h2>方法论简述（与研究报告一致）</h2>
+    <p><strong>先定总量，再分个币。</strong>下一轮牛市总市值峰值三情景：保守 6.5 万亿 / 基准 8.0 万亿 / 乐观 10.0 万亿美元（本轮峰值约 4.28 万亿）。每个币的预估都经过三重校验：① 历史周期法——历轮高点与涨幅衰减（市值越大倍数越低）；② 市值可行性硬约束——预估价 × 2029 年稀释后流通量 = 隐含市值，占总市值份额超限即下调（如 HYPE 因解锁稀释 ×2.3，倍数被压到 1.3–2.3×）；③ 个币价值潜力——赛道地位、真实采用/收入、解锁与风险。置信度：新币（无完整周期史）最高只能评「低」。</p>
+    <p><strong>构成与计数说明：</strong>全表共 <strong>182 个不重复币种，全部可预估</strong>。原研究报告表 A 157 个预估排名位（第 157 位 XTZ / SHFL 合并行拆为两条，共 158 个币）；原表 B 的 43 个锚定类（法币稳定币、黄金代币、代币化基金/股票、包装/映射资产、质押衍生等）已按规则<strong>全部剔除</strong>，并按市值排名顺延补入 43 个非锚定币——补位币取自 CoinGecko 市值第 203–269 位区间（顺延中另跳过 26 个锚定类）。其中 19 个补位币与原表 A 尾部币种重复（两份报告排名口径与日期不同：原榜为 SectorAlpha 2026-11-08 收盘口径、补位为 CoinGecko 2026-11-10 实盘口径），已按补位报告的最新核验数据更新原条目、不重复计数，故实际新增 24 个、总数为 182。ATH 带 † / 约值者为聚合口径约数，不作估算主锚。</p>
+    <p><strong>数据日期差异：</strong>老币的快照价/市值为 2026-11-08 日收盘（CoinGecko 口径），补位批 43 个币为 2026-11-10 CoinGecko 实盘核验（表中「报告现排名」带“11-10核验”标记）；两批的报告倍数均为各自快照口径，<strong>实时倍数</strong>则统一以实时现价重算，口径自动对齐。</p>
+    <p><strong>实时倍数</strong> = 预估区间 ÷ 实时现价；若行情暂不可达，则回退到最近一次缓存并标注「缓存数据」，或以 2026-11-08 快照价计算并标注。报告原文与完整方法论见研究报告《市值前 200 加密货币下一轮牛市高点预估排名》（2026-11-10）。</p>
+  </section>
+
+  <footer>
+    数据来源：行情由 <a href="https://www.coingecko.com" target="_blank" rel="noopener" style="color:var(--acc)">CoinGecko</a> 提供（经本站服务端缓存代理，每 120 秒更新）；预估数据来自上述两份研究报告（主榜单价格快照为 CoinGecko 口径 2026-11-08 日收盘，与 CoinMarketCap 交叉核对；补位批为 2026-11-10 CoinGecko 实盘核验）。<br>
+    本站仅供信息参考，不构成投资建议。加密货币投资可损失全部本金，请独立判断、量力而行。
+  </footer>
+</div>
+
+<script>
+"use strict";
+let COINS = [], BOARD = null;
+
+const $ = (id) => document.getElementById(id);
+function fmtPrice(p) {
+  if (p == null || !isFinite(p)) return "—";
+  if (p >= 1000) return p.toLocaleString("en-US", { maximumFractionDigits: 2 });
+  if (p >= 1) return p.toFixed(2);
+  if (p >= 0.01) return p.toFixed(4);
+  return Number(p.toPrecision(4)).toString();
+}
+function fmtMcap(v) {
+  if (v == null || !isFinite(v) || v <= 0) return "—";
+  if (v >= 1e12) return "$" + (v / 1e12).toFixed(2) + "万亿";
+  if (v >= 1e8) return "$" + (v / 1e8).toFixed(v >= 1e10 ? 0 : 2) + "亿";
+  return "$" + (v / 1e4).toFixed(0) + "万";
+}
+function fmtPct(x) {
+  if (x == null || !isFinite(x)) return "—";
+  return (x >= 0 ? "+" : "") + x.toFixed(1) + "%";
+}
+function live(c) { return (BOARD && BOARD.coins && BOARD.coins[c.coingeckoId]) || null; }
+function effPrice(c) { const l = live(c); return l && l.price ? l.price : c.snapshotPrice; }
+function effMcap(c) { const l = live(c); return l && l.mcapUsd ? l.mcapUsd : c.snapshotMcapUsd; }
+function liveMult(c) {
+  const p = effPrice(c); if (!p || !c.estLo) return null;
+  return { lo: c.estLo / p, hi: c.estHi / p, mid: (c.estLo + c.estHi) / 2 / p };
+}
+function esc(s) { return String(s == null ? "" : s).replace(/[&<>"]/g, (m) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[m])); }
+const SNAPSHOT_DATE_DEFAULT = "2026-11-08";
+function snapshotDate() { return (BOARD && BOARD.snapshotDate) || SNAPSHOT_DATE_DEFAULT; }
+function snapshotShort() { const d = snapshotDate(); return /^\d{4}-\d{2}-\d{2}/.test(d) ? d.slice(5, 10) : d; }
+function boardMode() {
+  if (!BOARD) return "snapshot";
+  if (BOARD.mode === "live" || BOARD.mode === "stale" || BOARD.mode === "snapshot") return BOARD.mode;
+  if (!BOARD.coins || Object.keys(BOARD.coins).length === 0) return "snapshot";
+  if (BOARD.stale) return "stale";
+  return "live";
+}
+function staleAgeSecCalc() {
+  if (!BOARD) return null;
+  if (BOARD.staleAgeSec != null && isFinite(BOARD.staleAgeSec)) return Number(BOARD.staleAgeSec);
+  if (BOARD.updatedAt && BOARD.servedAt) { const diff = (new Date(BOARD.servedAt) - new Date(BOARD.updatedAt)) / 1000; if (isFinite(diff) && diff >= 0) return diff; }
+  if (BOARD.updatedAt) { const diff = (Date.now() - new Date(BOARD.updatedAt)) / 1000; if (isFinite(diff) && diff >= 0) return diff; }
+  return null;
+}
+function staleMins() { const s = staleAgeSecCalc(); if (s == null) return null; return Math.max(1, Math.round(s / 60)); }
+function fmtTimeStr(iso) { if (!iso) return "—"; const t = new Date(iso); if (isNaN(t)) return "—"; return t.toLocaleString("zh-CN", { timeZone: "Asia/Shanghai", hour12: false }); }
+function applyBoardState() {
+  const mode = boardMode();
+  const badge = $("liveBadge"), banner = $("statusBanner");
+  const mins = staleMins();
+  const ageTxt = mins != null ? "约 " + mins + " 分钟前" : null;
+  const updTxt = BOARD && BOARD.updatedAt ? fmtTimeStr(BOARD.updatedAt) : "—";
+  if (mode === "live") {
+    $("thRank").textContent = "实时预估排名"; $("thPrice").textContent = "现价($)"; $("thMcap").textContent = "实时市值"; $("thMult").textContent = "实时倍数";
+    $("optMult").textContent = "排序：实时倍数"; $("optMcap").textContent = "排序：实时市值"; $("optPrice").textContent = "排序：现价";
+    $("stMcapK").textContent = "全网总市值（实时）"; $("stTimeK").textContent = "行情更新时间";
+    badge.textContent = "实时行情"; badge.className = "badge live";
+    banner.textContent = "实时行情 · 更新于 " + updTxt; banner.className = "status-banner live";
+  } else if (mode === "stale") {
+    $("thRank").textContent = "预估排名（缓存）"; $("thPrice").textContent = "现价（缓存）($)"; $("thMcap").textContent = "市值（缓存）"; $("thMult").textContent = "倍数（缓存）";
+    $("optMult").textContent = "排序：倍数（缓存）"; $("optMcap").textContent = "排序：市值（缓存）"; $("optPrice").textContent = "排序：现价（缓存）";
+    $("stMcapK").textContent = "全网总市值（缓存）"; $("stTimeK").textContent = "行情更新时间";
+    badge.textContent = ageTxt ? "缓存行情（" + ageTxt + "）" : "缓存行情"; badge.className = "badge stale";
+    banner.textContent = "缓存行情：数据截至 " + updTxt + (ageTxt ? "，" + ageTxt : "") + "，上游暂不可达"; banner.className = "status-banner stale";
+  } else {
+    $("thRank").textContent = "预估排名"; $("thPrice").textContent = "快照价（" + snapshotShort() + "）($)"; $("thMcap").textContent = "快照市值"; $("thMult").textContent = "快照倍数";
+    $("optMult").textContent = "排序：快照倍数"; $("optMcap").textContent = "排序：快照市值"; $("optPrice").textContent = "排序：快照价";
+    $("stMcapK").textContent = "全网总市值"; $("stTimeK").textContent = "数据基准";
+    badge.textContent = "快照模式（" + snapshotDate() + "）"; badge.className = "badge snapshot";
+    banner.textContent = "快照模式：当前为 " + snapshotDate() + " 快照数据，非实时行情"; banner.className = "status-banner snapshot";
+  }
+  if (mode === "snapshot") {
+    $("stMcap").textContent = "—"; $("stMcap").className = "v muted";
+    $("stDom").textContent = "—"; $("stDom").className = "v";
+    $("stChg").textContent = "—"; $("stChg").className = "v";
+    $("stTime").textContent = "快照 " + snapshotDate();
+  } else {
+    const g = (BOARD && BOARD.global) || {};
+    $("stMcap").textContent = fmtMcap(g.totalMcapUsd); $("stMcap").className = "v" + (g.totalMcapUsd ? "" : " muted");
+    $("stDom").textContent = g.btcDominance != null ? g.btcDominance.toFixed(1) + "%" : "—"; $("stDom").className = "v";
+    $("stChg").textContent = fmtPct(g.totalMcapChange24h); $("stChg").className = "v " + (g.totalMcapChange24h != null ? (g.totalMcapChange24h >= 0 ? "up" : "dn") : "");
+    $("stTime").textContent = mode === "stale" && ageTxt ? updTxt + "（" + ageTxt + "）" : updTxt;
+  }
+}
+
+function computeLiveRanks() {
+  const sorted = [...COINS].sort((x, y) => {
+    const mx = liveMult(x), my = liveMult(y);
+    return (my ? my.mid : -1) - (mx ? mx.mid : -1);
+  });
+  sorted.forEach((c, i) => (c._liveRank = i + 1));
+}
+
+function render() {
+  applyBoardState();
+  computeLiveRanks();
+  const q = $("q").value.trim().toLowerCase();
+  const conf = $("confSel").value, sort = $("sortSel").value;
+  const match = (c) => !q || c.name.toLowerCase().includes(q) || c.symbol.toLowerCase().includes(q);
+
+  let a = COINS.filter((c) => match(c) && (!conf || c.confidence === conf));
+  if (sort === "est") a.sort((x, y) => x.estRank - y.estRank);
+  if (sort === "mult") a.sort((x, y) => (liveMult(y) || { mid: -1 }).mid - (liveMult(x) || { mid: -1 }).mid);
+  if (sort === "mcap") a.sort((x, y) => (effMcap(y) || 0) - (effMcap(x) || 0));
+  if (sort === "price") a.sort((x, y) => (effPrice(y) || 0) - (effPrice(x) || 0));
+  $("tbodyA").innerHTML = a.map((c) => {
+    const l = live(c), m = liveMult(c);
+    const missingTag = (BOARD && boardMode() !== "snapshot" && !l) ? " <span class='sym'>快照价</span>" : "";
+    return "<tr>" +
+      "<td>" + (c._liveRank != null ? c._liveRank : "—") + "</td>" +
+      "<td class='hm'>" + c.estRank + "</td>" +
+      "<td><strong>" + esc(c.name) + "</strong> <span class='sym'>" + esc(c.symbol) + "</span></td>" +
+      "<td>" + fmtPrice(effPrice(c)) + missingTag + "</td>" +
+      "<td class='hm " + (l && l.change24h != null ? (l.change24h >= 0 ? "up" : "dn") : "") + "'>" + (l ? fmtPct(l.change24h) : "—") + "</td>" +
+      "<td class='hm'>" + fmtMcap(effMcap(c)) + "</td>" +
+      "<td class='hm'>" + (c.rankNow != null ? c.rankNow : "—") + (c.dataDate === "2026-11-10" ? "<br><span class='sym'>11-10核验</span>" : "") + "</td>" +
+      "<td class='hm'>" + fmtPrice(c.athPrice) + (c.athDate ? "<br><span class='sym'>" + esc(c.athDate) + "</span>" : "") + "</td>" +
+      "<td>" + fmtPrice(c.estLo) + "–" + fmtPrice(c.estHi) + "</td>" +
+      "<td>" + (m ? m.lo.toFixed(1) + "–" + m.hi.toFixed(1) + "×" : "—") + "</td>" +
+      "<td class='conf-" + esc(c.confidence) + "'>" + esc(c.confidence) + "</td>" +
+      "<td class='reason hm'>" + esc(c.reason) + "</td></tr>";
+  }).join("");
+}
+
+async function loadBoard() {
+  try {
+    const res = await fetch("/api/board", { cache: "no-store" });
+    if (!res.ok) throw new Error("board " + res.status);
+    BOARD = await res.json();
+    if (!BOARD || typeof BOARD !== "object") throw new Error("board invalid");
+    if (!BOARD.snapshotDate) BOARD.snapshotDate = SNAPSHOT_DATE_DEFAULT;
+    // mode=snapshot contract: coins empty / global null is handled by applyBoardState via boardMode()
+  } catch (e) {
+    BOARD = null;
+  }
+  render();
+}
+
+async function init() {
+  const res = await fetch("data/coins.json");
+  const data = await res.json();
+  COINS = data.coins;
+  render();
+  loadBoard();
+}
+$("q").oninput = render;
+$("confSel").onchange = render;
+$("sortSel").onchange = render;
+$("refreshBtn").onclick = loadBoard;
+init();
+</script>
+</body>
+</html>

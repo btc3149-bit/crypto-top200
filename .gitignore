@@ -1,0 +1,7 @@
+node_modules/
+.wrangler/
+.dev.vars*
+*.zip
+dist-upload/
+build/
+ops/*.jsonl
