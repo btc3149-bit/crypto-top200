@@ -67,9 +67,12 @@ echo "[deploy] 使用 wrangler@${WRANGLER_VERSION} 部署到项目 crypto-top200
 npx "wrangler@${WRANGLER_VERSION}" pages deploy public --project-name crypto-top200 --branch "$BRANCH" --commit-dirty=true
 
 # (d) 部署后冒烟：失败则非零退出，部署虽已上线但必须人工处理/回滚
+# W2-13/HC2：冒烟结果同步 ping healthchecks（HEALTHCHECKS_DEPLOY_PING_URL 未设置时 hc_ping.sh 打印 skipped-no-url 并以 0 退出，不阻断部署）。
 echo "[deploy] 部署完成，开始冒烟：$BASE_URL"
 if ! bash scripts/smoke.sh "$BASE_URL"; then
+  bash scripts/hc_ping.sh fail || true
   echo "部署已上线但冒烟失败，需人工处理/回滚" >&2
   exit 1
 fi
+bash scripts/hc_ping.sh success || true
 echo "[deploy] 冒烟通过，$ENV_NAME 部署完成：$BASE_URL"
