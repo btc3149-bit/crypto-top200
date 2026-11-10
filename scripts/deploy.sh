@@ -44,6 +44,14 @@ else
 fi
 echo "[deploy] 数据门禁通过 sha256=$SRC_HASH"
 
+# (b2) W2-18 安全头一致性门禁：public/_headers 必须与当前 index.html 的生成结果一致。
+# 不一致即中止部署——先运行 node ops/headers/gen-headers.mjs 重新生成，禁止手改 public/_headers。
+if ! node ops/headers/gen-headers.mjs --check; then
+  echo "[deploy] 错误：public/_headers 与 index.html 不一致，请先运行 node ops/headers/gen-headers.mjs 重新生成后再部署。" >&2
+  exit 1
+fi
+echo "[deploy] W2-18 _headers --check 通过"
+
 # (c) 用 package.json 锁定的 wrangler 版本部署（防 CLI 大版本漂移）
 WRANGLER_VERSION="$(python3 -c "import json; print(json.load(open('package.json'))['devDependencies']['wrangler'])")"
 echo "[deploy] 使用 wrangler@${WRANGLER_VERSION} 部署到项目 crypto-top200（branch=$BRANCH）"
