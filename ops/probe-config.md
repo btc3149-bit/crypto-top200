@@ -1,0 +1,80 @@
+# 外部探针配置清单（W2-13）
+
+> 站点：https://top200.oppcal.com ｜ Cloudflare Pages 项目：`crypto-top200`
+> 组合：UptimeRobot Free（可用性 + keyword）＋ healthchecks.io Free（dead man's switch），$0。
+> **红线：本文件只记监控名称、ID、对象与断言原文；ping URL 等同密钥，禁止写入本文件或仓库任何位置，只存保险箱与调度器 secrets。**
+> 状态（2026-11-10）：`/api/health` 端点与本文配置规格已就绪；两家服务的**账号注册须用户本人完成**（见文末指引），注册后把监控 ID 回填本表。U3 正式告警邮箱未提供前为降级运行（见「降级运行声明」与 `ops/signoffs.md`）。
+
+## 断言原文来源（与 scripts/probe.sh 逐字对齐，禁止凭记忆改写）
+
+`scripts/probe.sh` 现行断言（施工当日抄录）：
+
+1. `/api/board` 返回 200 且 Content-Type 含 `application/json`；
+2. `/api/board` body 可解析为 JSON 且含 keys：`coins`、`updatedAt`、`coverage`；
+3. 负向断言：body 不含 `<!DOCTYPE html`（probe.sh 以 `grep -qi '<!DOCTYPE html'` 大小写不敏感匹配）；
+4. 覆盖率：`coverage.returned` ≥ 期望数（`/data/coins.json` 的 coins 长度）的 **94%**；
+5. 首页返回 200 且含 `市值前 200 币种`；
+6. `/data/coins.json` 返回 200 且 JSON 可解析；
+7. 新鲜度：`updatedAt` 距今 **≤15 分钟（900 秒）** 为 pass；`mode=stale` 且 `staleAgeSec ≤3600` 为 warn；`mode=snapshot` 为 fail。
+
+外部探针的 keyword 只能做**字符串存在性**判断，算不了时间差——新鲜度因此不靠 keyword，改走 `/api/health` 的状态码语义（M4）与 HC1 的定时全量探针。
+
+## UptimeRobot 监控（M1–M4，间隔均为 5 分钟，免费档下限）
+
+| ID | 类型 | 对象 | 配置（断言定版） | 失败语义 |
+|---|---|---|---|---|
+| M1 首页存活 | HTTP | `GET https://top200.oppcal.com/` | 期望状态码 200 | 站点/部署整体不可用 |
+| M2 接口正向断言 | Keyword | `GET https://top200.oppcal.com/api/board` | Keyword = `"mode":"live"`；Alert when: **Keyword Not Exists** | 函数在但返回降级/空数据/结构变更（200 但内容坏） |
+| M3 接口负向断言 | Keyword | `GET https://top200.oppcal.com/api/board`（与 M2 独立监控：免费档单监控只能绑 1 个 keyword） | Keyword = `<!DOCTYPE`；Alert when: **Keyword Exists** | 函数异常时回吐 HTML 错误页而非 JSON（状态码可能仍是 200，只有负向断言能抓住） |
+| M4 新鲜度 | HTTP | `GET https://top200.oppcal.com/api/health` | 期望状态码 200，非 200 即告警 | 数据陈旧或覆盖不全（判定逻辑在 health.js 内：age ≤900s 且 coverage 200/200 才返回 200，否则 503） |
+
+### keyword 定版说明（来源与局限，勿删）
+
+- **M2 的 `"mode":"live"` 来源**：probe.sh 正向断言的语义是「200 + JSON + keys 齐 + coverage ≥94%」，其中可被 keyword 存在性检查等价表达的核心标记，是 `functions/api/board.js` 以 `JSON.stringify` 序列化输出的字段片段 `"mode":"live"`（无空格，与线上响应体逐字一致）。**局限**：① keyword 查不了 keys 齐全与 coverage 数值，那部分由 HC1 每小时跑 probe.sh 全量断言兜底；② `mode:"live"` 也可能来自 120 秒缓存内的响应，新鲜度精细判定归 M4/HC1，M2 只负责「接口活着且处于 live 形态」。
+- **M3 的 `<!DOCTYPE` 来源**：与 probe.sh/smoke.sh 的负向断言同源（probe.sh 原文匹配串为 `<!DOCTYPE html`，大小写不敏感）。UptimeRobot keyword 定版取较短的 `<!DOCTYPE` 以覆盖各种 HTML 错误页变体；注意 UptimeRobot 的 keyword 匹配大小写行为以其控制台当日说明为准，演练 2（见 PHASE2_PLAN W2-13 验收）须实测触发一次。
+- M1 的首页标题断言（probe.sh 第 5 条 `市值前 200 币种`）在 UptimeRobot 侧由 M1 的 200 状态 + W2-17 静态注入后的内容检查在 HC1 全量探针中覆盖，不另建 keyword 监控（免费档监控数虽够，但避免断言重复维护）。
+
+## healthchecks.io 检查（HC1–HC3，免费 Hobbyist 档）
+
+| ID | Check | 周期/宽限 | Ping 方式 | 缺席/失败语义 |
+|---|---|---|---|---|
+| HC1 定时全量探针 | 每 1 小时 | period 1h、grace 15 分钟 | 定时调度跑 `scripts/probe.sh` 全量断言（含新鲜度时间差判定），成功 ping success URL、任一断言失败 ping `/fail` 并附前 10 行日志 | probe 调度挂了（缺席）与断言真失败（/fail 立即告警）都能报，补上 keyword 算不了的新鲜度 |
+| HC2 部署后检查 | 事件型 | 不用周期缺席判定：创建后设超长 period（如 90 天）仅作占位，只用显式信号 | 部署管线尾部经 `scripts/hc_ping.sh success\|fail` ping（URL 只从部署环境变量 `HEALTHCHECKS_DEPLOY_PING_URL` 读，接入钩子由协调者串进 `scripts/deploy.sh`：冒烟通过 → success，冒烟失败 → fail；变量未设置时脚本打印 `skipped-no-url` 并以 0 退出，不阻断部署） | 部署后检查真失败时立即告警；「部署了但没跑检查」靠管线强制串联冒烟+ping 防堵，不靠缺席判定 |
+| HC3 2026-11-21 复核守夜 | 一次性 cron 型 | cron 表达式 `0 9 21 11 *`、时区 **Asia/Shanghai**、grace 6 小时 | 复核任务（`ops/reviews/2026-11-21-review.md` 清单）执行完成并留痕后 ping success；若当天取消复核，须手动 ping 或删除该 check 并留痕 | 到期未复核 → 当日下午即告警；复核完成后删除/停用 HC3，不得自行滚动生成下一个复核点 |
+
+## 告警收敛（两家平台同口径）
+
+- 联系人只设 1 个：U3 邮箱（两边各设同一邮箱）；不启 SMS/语音。
+- 两边均开启恢复（UP/recovery）通知；无恢复邮件的 DOWN 视为未闭环。
+- 部署窗口防误报：部署前 pause M1–M4、部署 + probe 通过后 resume（写进 `ops/checklists.md` 部署后清单）；不用「忽略告警」代替。
+- 同根因合并：同一时间窗多条告警以 M4/HC1 为主线，只向用户转达一条汇总（见 `ops/checklists.md` 告警转达清单）。
+
+## 用户注册指引（须用户本人操作，约 10 分钟）
+
+> 为什么必须本人注册：账号所有权、密码与服务条款同意只能由账号持有人完成；agent 代注册会造成账号归属与告警错投风险，也违反两家服务的账号规范。agent 只做陪跑指导与注册后的配置核对。
+
+### UptimeRobot Free（约 5 分钟）
+
+需要：一只能收验证邮件的邮箱（建议即日后作告警的邮箱）＋自设密码；**无需银行卡**。
+
+1. 打开 uptimerobot.com，点 Get Started Free / Sign Up（约 1 分钟）。
+2. 填邮箱与密码，提交后去邮箱点验证链接（约 2 分钟）。
+3. 登录后先不建监控，把账号邮箱告知 agent，由 agent 给出 M1–M4 逐项填写清单陪跑创建（约 2 分钟/个，可与 agent 同步完成）。
+4. 在 Settings / Alert Contacts 确认告警联系人邮箱无误，并开启恢复通知。
+
+### healthchecks.io Hobbyist（约 3–5 分钟）
+
+需要：同一邮箱即可；**无需银行卡**。
+
+1. 打开 healthchecks.io，点 Sign Up，填邮箱（约 1 分钟）。
+2. 它以邮件链接方式登录/验证，按邮件指引完成（约 2 分钟）。
+3. 登录后由 agent 给出 HC1–HC3 逐项清单陪跑创建（period/grace/cron/时区照本文件表格填）。
+4. 每个 check 的 ping URL **只复制到保险箱/部署环境变量**，不要发到聊天、不要截图外传（截图存档时打码）。
+
+注册完成后：把两边各监控的 ID（不是 ping URL）回填本文件表格旁注，并在 `ops/signoffs.md` 销项降级运行行。
+
+## U3 未提供时的降级运行声明
+
+- 探针本体（M1–M4、HC1–HC3 配置规格与 `/api/health` 端点）照常先建，不整体顺延：监控历史曲线与断言验证价值自建成日起累积（UptimeRobot 免费档仅保留 3 个月）。
+- 降级形态：告警联系人先只挂注册邮箱，`PROBE_ALERT_EMAIL` 保持预留位；此阶段「告警」实际等于平台仪表盘/状态页可见性，**夜间故障可能无人收信、无时效保证**。
+- 该残余风险在 `ops/signoffs.md` 记一行「W2-13 降级运行中」，每次运营触点复提，直到 U3 正式邮箱落地后一周内补投递配置与触发演练并销项。
