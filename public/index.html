@@ -65,6 +65,9 @@
   .detail-row dt{color:var(--dim);font-size:11px}
   .detail-row dd{margin:2px 0 8px;font-size:13px}
   @media (max-width:640px){.detail-row dl{grid-template-columns:1fr}}
+  /* W2-06 定版取舍：星标点击域全端统一 44px（行高因此约 +7px），换取全端一致可点性，不为桌面端缩小 */
+  .star{background:none;border:none;color:var(--dim);cursor:pointer;min-width:44px;min-height:44px;font-size:15px;padding:2px 4px;vertical-align:middle}
+  .star[aria-pressed="true"]{color:var(--acc)}
   /* W2-09 立规：本期新增动效默认不加；将来若加，必须写在 @media (prefers-reduced-motion: no-preference) 内，reduce 档保持瞬时切换 */
   @media (max-width:640px){
     .hm{display:none}
@@ -100,6 +103,7 @@
       <option value="">置信度：全部</option><option>高</option><option>中</option><option>低</option>
     </select>
     <button class="act" id="refreshBtn">刷新行情</button>
+    <button class="tab" id="watchToggle" type="button" aria-pressed="false">只看自选（0）</button>
   </div>
   <div class="result-meta" id="resultMeta"></div>
 
@@ -136,6 +140,59 @@
 let COINS = [], BOARD = null;
 let boardVer = 0, showAllManual = false, hashTarget = null;
 let expandedIds = new Set();
+let watchSet = new Set(), watchOnly = false, storageOK = true, watchSaveTimer = null;
+const WATCH_KEY = "top200.watchlist.v1";
+function loadWatch() {
+  watchSet = new Set();
+  try {
+    localStorage.setItem("__top200_probe__", "1");
+    localStorage.removeItem("__top200_probe__");
+  } catch (e) { storageOK = false; return; }
+  try {
+    const raw = localStorage.getItem(WATCH_KEY);
+    if (!raw) return;
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return;
+    const valid = new Set(COINS.map((c) => c.coingeckoId));
+    for (const v of arr) if (typeof v === "string" && valid.has(v)) watchSet.add(v);
+  } catch (e) { watchSet = new Set(); }
+}
+function saveWatch() {
+  if (!storageOK) return;
+  if (watchSaveTimer) clearTimeout(watchSaveTimer);
+  watchSaveTimer = setTimeout(() => {
+    watchSaveTimer = null;
+    try { localStorage.setItem(WATCH_KEY, JSON.stringify([...watchSet])); } catch (e) {}
+  }, 100);
+}
+function updateWatchToggle() {
+  const b = $("watchToggle"); if (!b) return;
+  b.textContent = "只看自选（" + watchSet.size + "）";
+  b.setAttribute("aria-pressed", watchOnly ? "true" : "false");
+  b.classList.toggle("on", watchOnly);
+}
+function toggleStar(id, btn) {
+  const has = watchSet.has(id);
+  if (has) watchSet.delete(id); else watchSet.add(id);
+  saveWatch();
+  if (btn) {
+    btn.textContent = has ? "☆" : "★";
+    btn.setAttribute("aria-pressed", has ? "false" : "true");
+  }
+  updateWatchToggle();
+  if (watchOnly && has) {
+    const row = btn && btn.closest ? btn.closest("tr") : null;
+    if (row && row.parentNode) {
+      const next = row.nextElementSibling;
+      if (next && next.classList && next.classList.contains("detail-row")) next.remove();
+      row.remove();
+    }
+    if (watchSet.size === 0) { render(); return; }
+    const a = currentFiltered();
+    if (a.length === 0) { render(); return; }
+    $("resultMeta").textContent = metaText(COINS.length, a.length, a.length);
+  }
+}
 
 const $ = (id) => document.getElementById(id);
 function fmtPrice(p) {
@@ -336,7 +393,7 @@ function computeLiveRanks() {
 }
 function effectiveLimit() {
   const q = $("q").value.trim(), conf = $("confSel").value;
-  return (q || conf || showAllManual || hashTarget) ? Infinity : 50;
+  return (q || conf || watchOnly || showAllManual || hashTarget) ? Infinity : 50;
 }
 function renderShowAllBar(total, shownCount) {
   const btn = $("showAllBtn"); if (!btn) return;
@@ -406,7 +463,7 @@ function rowHTML(c) {
   return "<tr>" +
     "<td>" + (d.liveRank != null ? d.liveRank : "—") + "</td>" +
     "<td class='hm'>" + c.estRank + "</td>" +
-    "<td><button class='exp' type='button' data-exp='" + esc(c.coingeckoId) + "' aria-expanded='" + (expandedIds.has(c.coingeckoId) ? "true" : "false") + "' aria-controls='d-" + esc(c.coingeckoId) + "' aria-label='展开 " + esc(c.name) + " 详情'>" + (expandedIds.has(c.coingeckoId) ? "▾" : "▸") + "</button><strong>" + esc(c.name) + "</strong> <span class='sym'>" + esc(c.symbol) + "</span></td>" +
+    "<td><button class='exp' type='button' data-exp='" + esc(c.coingeckoId) + "' aria-expanded='" + (expandedIds.has(c.coingeckoId) ? "true" : "false") + "' aria-controls='d-" + esc(c.coingeckoId) + "' aria-label='展开 " + esc(c.name) + " 详情'>" + (expandedIds.has(c.coingeckoId) ? "▾" : "▸") + "</button><button class='star' type='button' data-star='" + esc(c.coingeckoId) + "' aria-pressed='" + (watchSet.has(c.coingeckoId) ? "true" : "false") + "' aria-label='收藏 " + esc(c.name) + "'>" + (watchSet.has(c.coingeckoId) ? "★" : "☆") + "</button><strong>" + esc(c.name) + "</strong> <span class='sym'>" + esc(c.symbol) + "</span></td>" +
     "<td>" + fmtPrice(d.price) + missingTag + "</td>" +
     "<td class='hm " + (l && l.change24h != null ? (l.change24h >= 0 ? "up" : "dn") : "") + "'>" + (l ? fmtPct(l.change24h) : "—") + "</td>" +
     "<td class='hm'>" + fmtMcap(d.mcap) + "</td>" +
@@ -421,25 +478,30 @@ function rowHTML(c) {
 function sortSuffix() {
   return sortState.key === "rank" && sortState.dir === "asc" ? "" : " · 按" + SORT_DEFS[sortState.key].label + (sortState.dir === "asc" ? "升序" : "降序");
 }
+function currentFiltered() {
+  const q = normQ($("q").value), conf = $("confSel").value;
+  return COINS.filter((c) => (!q || c._d.searchBlob.includes(q)) && (!conf || c.confidence === conf) && (!watchOnly || watchSet.has(c.coingeckoId)));
+}
 function metaText(total, filtered, shown) {
-  const hasFilter = !!(normQ($("q").value) || $("confSel").value);
+  const hasFilter = !!(normQ($("q").value) || $("confSel").value || watchOnly);
   let t;
   if (!hasFilter && shown >= filtered) t = "共 " + total + " 条";
   else if (!hasFilter) t = "共 " + total + " 条 · 当前显示前 " + shown + " 条";
   else if (shown >= filtered) t = "共 " + total + " 条 · 当前显示 " + filtered + " 条";
   else t = "当前显示 " + shown + "/" + filtered + " 条（共 " + total + " 条）";
+  if (watchOnly) t += " · 仅自选";
   return t + sortSuffix();
 }
+const WATCH_EMPTY_HTML = "<tr><td colspan='12' style='text-align:center;white-space:normal;padding:18px 10px'><div style='font-size:14px;color:var(--txt)'>还没有自选币种</div><div style='margin-top:4px'>点币种名前的 ☆，即可把关注的币收进自选，回到这里只看它们</div><button class='tab' type='button' data-watchall='1' style='margin-top:8px'>查看全部币种</button></td></tr>";
 const EMPTY_HTML = "<tr><td colspan='12' style='text-align:center;white-space:normal;padding:18px 10px'><div style='font-size:14px;color:var(--txt)'>没有符合条件的币种</div><div style='margin-top:4px'>试试缩短关键词，或清除筛选</div><button class='tab' type='button' data-clear='1' style='margin-top:8px'>清除搜索与筛选</button></td></tr>";
 function render() {
   applyBoardState();
-  const q = normQ($("q").value);
-  const conf = $("confSel").value;
-  let a = COINS.filter((c) => (!q || c._d.searchBlob.includes(q)) && (!conf || c.confidence === conf));
+  let a = currentFiltered();
   a.sort(cmpCoins);
   const limit = effectiveLimit();
   const shown = limit === Infinity ? a : a.slice(0, limit);
-  $("tbodyA").innerHTML = a.length === 0 ? EMPTY_HTML : shown.map((c) => rowHTML(c) + (expandedIds.has(c.coingeckoId) ? detailHTML(c) : "")).join("");
+  $("tbodyA").innerHTML = a.length === 0 ? (watchOnly && watchSet.size === 0 ? WATCH_EMPTY_HTML : EMPTY_HTML) : shown.map((c) => rowHTML(c) + (expandedIds.has(c.coingeckoId) ? detailHTML(c) : "")).join("");
+  updateWatchToggle();
   $("resultMeta").textContent = metaText(COINS.length, a.length, shown.length);
   renderShowAllBar(a.length, shown.length);
 }
@@ -481,6 +543,7 @@ async function init() {
     $("tbodyA").innerHTML = "<tr><td colspan='12' style='text-align:center'>数据加载失败，请刷新</td></tr>";
     return;
   }
+  loadWatch();
   rebuildDerived();
   render();
   loadBoard();
@@ -504,8 +567,12 @@ if (theadEl) theadEl.addEventListener("click", (ev) => {
 $("tbodyA").addEventListener("click", (ev) => {
   const eb = ev.target.closest("[data-exp]");
   if (eb) { toggleExpand(eb.dataset.exp, eb); return; }
+  const sb = ev.target.closest("[data-star]");
+  if (sb) { toggleStar(sb.dataset.star, sb); return; }
+  const wa = ev.target.closest("[data-watchall]");
+  if (wa) { watchOnly = false; render(); return; }
   const cb = ev.target.closest("[data-clear]");
-  if (cb) { $("q").value = ""; $("confSel").value = ""; showAllManual = false; render(); }
+  if (cb) { $("q").value = ""; $("confSel").value = ""; watchOnly = false; showAllManual = false; render(); }
 });
 document.addEventListener("keydown", (ev) => {
   if (ev.key !== "Escape" || !ev.target || !ev.target.closest) return;
@@ -519,6 +586,7 @@ document.addEventListener("keydown", (ev) => {
   }
 });
 $("refreshBtn").onclick = loadBoard;
+$("watchToggle").onclick = () => { watchOnly = !watchOnly; showAllManual = false; render(); };
 $("showAllBtn").onclick = () => { showAllManual = $("showAllBtn").dataset.act !== "less"; render(); };
 init();
 </script>
