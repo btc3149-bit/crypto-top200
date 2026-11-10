@@ -19,6 +19,49 @@
 //     逻辑；若运行时优先调用 onRequestGet，GET 直接走 onRequestGet。
 //     两种优先级语义下 GET 都不会误入 405 兜底。
 
+// W2-02（契约 v2）：BOARD_READ_MODE 三态（env，缺省 legacy）
+//   legacy = 本文件原抓取逻辑（行为等价，生产安全底线，G3 前默认）
+//   kv     = 只读 KV blob 组装契约 v2（见 handleKv），不触发任何上游抓取
+//   dual   = 对外仍返回 legacy 结果，KV 组装仅记差异日志（G2 双读观察）
+// W2-18 §18.3：SECURITY_HEADERS 与 200/405/错误分支同出口（见 jsonResponse/methodNotAllowedResponse）。
+// W2-19 §19.2：Sec-Fetch-Site 影子计数（ENFORCE_SFS=false，只记结构化日志不拦截）。
+import {
+  validateBlob,
+  freshnessFor,
+  globalForContract,
+  toMs,
+  FETCH_INTERVAL_SEC,
+  KV_KEYS,
+} from "../../shared/board-schema.js";
+
+const SECURITY_HEADERS = {
+  "X-Content-Type-Options": "nosniff",
+  "Referrer-Policy": "no-referrer",
+  "Content-Security-Policy": "default-src 'none'",
+};
+const ENFORCE_SFS = false; // W2-19 影子期：只计数不拦截；正式期置 true 后仅拦显式 cross-site
+const BLOB_CACHE_KEY_URL = "https://board-cache.internal/kv-blob/v1-board-current";
+let MEM_BLOB = null; // kv 路径内存回退：最近一次成功读到的 blob
+let MEM_HEALTH = { at: 0, data: null };
+
+function sfsShadowCheck(request) {
+  let sfs = null;
+  try {
+    sfs = request && request.headers && typeof request.headers.get === "function" ? request.headers.get("Sec-Fetch-Site") : null;
+  } catch (_) {
+    sfs = null;
+  }
+  if (sfs) {
+    try {
+      console.log(JSON.stringify({ level: "info", event: "sfs_shadow", secFetchSite: sfs, enforce: ENFORCE_SFS }));
+    } catch (_) {}
+  }
+  if (ENFORCE_SFS && sfs === "cross-site") {
+    return jsonResponse({ error: "forbidden_cross_site" }, { status: 403 });
+  }
+  return null;
+}
+
 const CACHE_TTL_SEC = 120; // 新鲜期：120 秒内直接用缓存
 const CACHE_KEEP_SEC = 86400; // Cache API 条目保留上限（仅内部存储用）
 const STALE_MAX_SEC = 21600; // stale 硬上限：6 小时，超限不得端出旧价格
@@ -74,6 +117,7 @@ function jsonResponse(body, { status = 200, extraHeaders = {} } = {}) {
     headers: {
       "content-type": "application/json",
       "cache-control": CACHE_CONTROL_VALUE,
+      ...SECURITY_HEADERS,
       ...extraHeaders,
     },
   });
@@ -85,6 +129,7 @@ function methodNotAllowedResponse() {
     headers: {
       "content-type": "application/json",
       "cache-control": CACHE_CONTROL_VALUE,
+      ...SECURITY_HEADERS,
       allow: "GET",
     },
   });
@@ -486,14 +531,239 @@ async function handleGet(context) {
   }
 }
 
+
+// ===================== W2-02 kv / dual 只读路径（契约 v2） =====================
+// 主体行数说明：以下 kv 路径主体约 200 行（目标 ≤260）；其上 legacy 平移不计入。
+async function readBlobLayers(context) {
+  const { env } = context;
+  const cache = typeof caches !== "undefined" && caches.default ? caches.default : null;
+  const cacheKey = new Request(BLOB_CACHE_KEY_URL, { method: "GET" });
+  // L-a: Cache API（存原始 blob，信封逐请求重算，禁止缓存成品 JSON）
+  if (cache) {
+    try {
+      const hit = await cache.match(cacheKey);
+      if (hit) {
+        const blob = await hit.json();
+        if (blob && validateBlob(blob).ok) return { blob, servedFrom: "cache" };
+        logKvError("BLOB_INVALID", "cache");
+      }
+    } catch (_) {}
+  }
+  // L-b: KV
+  if (env && env.BOARD_KV) {
+    try {
+      const blob = await env.BOARD_KV.get(KV_KEYS.current, { type: "json", cacheTtl: 60 });
+      if (blob) {
+        if (validateBlob(blob).ok) {
+          MEM_BLOB = blob;
+          if (cache) {
+            try {
+              await cache.put(
+                cacheKey,
+                new Response(JSON.stringify(blob), {
+                  headers: { "content-type": "application/json", "cache-control": `max-age=${CACHE_TTL_SEC}` },
+                })
+              );
+            } catch (_) {}
+          }
+          return { blob, servedFrom: "kv" };
+        }
+        logKvError("BLOB_INVALID", "kv");
+      } else {
+        logKvError("KV_MISS", "kv");
+      }
+    } catch (_) {
+      logKvError("KV_ERROR", "kv");
+    }
+  }
+  // L-c: 内存 last-good
+  if (MEM_BLOB && validateBlob(MEM_BLOB).ok) return { blob: MEM_BLOB, servedFrom: "memory" };
+  return { blob: null, servedFrom: "snapshot" };
+}
+
+function logKvError(code, layer) {
+  try {
+    console.error(JSON.stringify({ level: "error", event: "board_kv_read", code, layer }));
+  } catch (_) {}
+}
+
+async function readHealthSummary(env) {
+  if (!env || !env.BOARD_KV) return null;
+  if (MEM_HEALTH.data && Date.now() - MEM_HEALTH.at < 60000) return MEM_HEALTH.data;
+  try {
+    const h = await env.BOARD_KV.get(KV_KEYS.health, { type: "json", cacheTtl: 60 });
+    MEM_HEALTH = { at: Date.now(), data: h || null };
+    return MEM_HEALTH.data;
+  } catch (_) {
+    return MEM_HEALTH.data;
+  }
+}
+
+function assembleV2(blob, servedFrom, health, now) {
+  const fetchedAtMs = toMs(blob.fetchedAt);
+  const fresh = freshnessFor(fetchedAtMs, now);
+  if (fresh.clockSkew) {
+    try {
+      console.error(JSON.stringify({ level: "error", event: "CLOCK_SKEW", fetchedAt: blob.fetchedAt, servedAt: now }));
+    } catch (_) {}
+  }
+  const quotaMode = (blob.fetchMeta && blob.fetchMeta.quota && blob.fetchMeta.quota.quotaMode) || "normal";
+  const intervalSec = FETCH_INTERVAL_SEC[quotaMode] || FETCH_INTERVAL_SEC.normal;
+  const consecutiveFailures =
+    health && typeof health.consecutiveFailures === "number"
+      ? health.consecutiveFailures
+      : blob.healthSummary && typeof blob.healthSummary.consecutiveFailures === "number"
+        ? blob.healthSummary.consecutiveFailures
+        : 0;
+  const fetchInfo = {
+    fetchRunId: blob.fetchRunId || null,
+    durationMs: blob.fetchMeta ? blob.fetchMeta.durationMs : null,
+    upstreamStatus: blob.fetchMeta ? blob.fetchMeta.upstreamStatus : null,
+    attempts: blob.fetchMeta ? blob.fetchMeta.attempts : null,
+  };
+  const freshness = {
+    level: fresh.level,
+    fetchedAt: blob.fetchedAt || null,
+    nextExpectedFetchAt: fetchedAtMs != null ? new Date(fetchedAtMs + intervalSec * 1000).toISOString() : null,
+    servedFrom,
+    consecutiveFailures,
+  };
+  if (fresh.level === "L3") {
+    return {
+      contractVersion: 2,
+      source: "snapshot",
+      mode: "snapshot",
+      updatedAt: fetchedAtMs,
+      servedAt: now,
+      stale: true,
+      staleAgeSec: fresh.staleAgeSec,
+      coverage: { expected: blob.coverage ? blob.coverage.expected : 0, returned: 0, missingIds: (blob.rows || []).map((r) => r.id) },
+      global: null,
+      coins: {},
+      count: 0,
+      snapshotDate: SNAPSHOT_DATE,
+      freshness: { ...freshness, servedFrom: "snapshot" },
+      fetch: fetchInfo,
+    };
+  }
+  const coins = {};
+  for (const r of blob.rows || []) {
+    if (!r || !r.id) continue;
+    coins[r.id] = { price: r.price, mcapUsd: r.mcapUsd, rank: r.rank, change24h: r.change24h };
+  }
+  const { global } = globalForContract(blob.global, now);
+  return {
+    contractVersion: 2,
+    source: blob.source,
+    mode: fresh.mode,
+    updatedAt: toMs(blob.marketsUpdatedAt) != null ? toMs(blob.marketsUpdatedAt) : fetchedAtMs,
+    servedAt: now,
+    stale: fresh.stale,
+    staleAgeSec: fresh.staleAgeSec,
+    coverage: blob.coverage,
+    global,
+    coins,
+    count: Object.keys(coins).length,
+    snapshotDate: SNAPSHOT_DATE,
+    freshness,
+    fetch: fetchInfo,
+  };
+}
+
+function snapshotV2Body(now, health) {
+  return {
+    contractVersion: 2,
+    source: "snapshot",
+    mode: "snapshot",
+    updatedAt: null,
+    servedAt: now,
+    stale: true,
+    staleAgeSec: 0,
+    coverage: { expected: 0, returned: 0, missingIds: [] },
+    global: null,
+    coins: {},
+    count: 0,
+    snapshotDate: SNAPSHOT_DATE,
+    freshness: {
+      level: "L3",
+      fetchedAt: null,
+      nextExpectedFetchAt: null,
+      servedFrom: "snapshot",
+      consecutiveFailures: health && typeof health.consecutiveFailures === "number" ? health.consecutiveFailures : 0,
+    },
+    fetch: { fetchRunId: null, durationMs: null, upstreamStatus: null, attempts: null },
+  };
+}
+
+async function handleKv(context) {
+  const now = Date.now();
+  const health = await readHealthSummary(context.env);
+  const { blob, servedFrom } = await readBlobLayers(context);
+  if (!blob) return jsonResponse(snapshotV2Body(now, health));
+  return jsonResponse(assembleV2(blob, servedFrom, health, now));
+}
+
+async function dualCompare(context, legacyRes) {
+  try {
+    const { blob, servedFrom } = await readBlobLayers(context);
+    if (!blob) {
+      console.log(JSON.stringify({ level: "info", event: "dual_compare", kvPresent: false }));
+      return;
+    }
+    const kvBody = assembleV2(blob, servedFrom, await readHealthSummary(context.env), Date.now());
+    let legacyBody = null;
+    try {
+      legacyBody = await legacyRes.clone().json();
+    } catch (_) {}
+    if (!legacyBody || !legacyBody.coins) return;
+    const diffs = [];
+    for (const [id, c] of Object.entries(kvBody.coins || {})) {
+      const l = legacyBody.coins[id];
+      if (l && l.price && c.price) diffs.push(Math.abs(c.price - l.price) / l.price);
+    }
+    diffs.sort((a, b) => a - b);
+    const median = diffs.length ? diffs[Math.floor(diffs.length / 2)] : null;
+    console.log(
+      JSON.stringify({
+        level: "info",
+        event: "dual_compare",
+        kvPresent: true,
+        kvRunId: blob.fetchRunId || null,
+        kvCoverage: kvBody.coverage ? kvBody.coverage.returned : null,
+        legacyCoverage: legacyBody.coverage ? legacyBody.coverage.returned : null,
+        priceDiffMedian: median,
+        compared: diffs.length,
+      })
+    );
+  } catch (_) {
+    // 双读比对失败不得影响对外响应
+  }
+}
+
+async function dispatchGet(context) {
+  const mode = (context.env && context.env.BOARD_READ_MODE) || "legacy";
+  if (mode === "kv") return handleKv(context);
+  if (mode === "dual") {
+    const res = await handleGet(context);
+    await dualCompare(context, res);
+    return res;
+  }
+  return handleGet(context);
+}
+// ===================== /W2-02 kv 路径 =====================
+
 export async function onRequestGet(context) {
   const method = context && context.request && context.request.method ? context.request.method : "GET";
   if (method !== "GET") return methodNotAllowedResponse();
-  return handleGet(context);
+  const blocked = sfsShadowCheck(context.request);
+  if (blocked) return blocked;
+  return dispatchGet(context);
 }
 
 export async function onRequest(context) {
   const method = context && context.request && context.request.method ? context.request.method : "GET";
   if (method !== "GET") return methodNotAllowedResponse();
-  return handleGet(context);
+  const blocked = sfsShadowCheck(context.request);
+  if (blocked) return blocked;
+  return dispatchGet(context);
 }

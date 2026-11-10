@@ -5,7 +5,15 @@ name = "crypto-top200"
 pages_build_output_dir = "public"
 compatibility_date = "2026-11-01"
 
-# 可选：CoinGecko Demo API key（免费申请，能提高接口限额；不设也能用公共接口）
-# 不要把 key 直接写进这个文件！部署后在 Cloudflare 控制台
-# 项目 → Settings → Environment variables 里添加 COINGECKO_API_KEY（类型选 Secret），
-# 或用命令行：npx wrangler pages secret put COINGECKO_API_KEY --project-name crypto-top200
+# W2-01：KV 只读绑定（Function 只 get，写方为 fetcher Worker crypto-top200-fetcher）。
+# namespace BOARD_KV 与 fetcher 侧共用同一 id，禁止另建。
+[[kv_namespaces]]
+binding = "BOARD_KV"
+id = "ad1b72702c5c4f229999bea5b118d1bc"
+
+# BOARD_READ_MODE（Pages 环境变量，缺省 legacy）：legacy | dual | kv（W2-01 灰度 G2/G3 由协调者切换）。
+
+# COINGECKO_API_KEY 为必填 Secret（Pages 控制台/wrangler secret put 注入，不写在本文件）。
+# 实测（2026-11）：未带 key 的匿名调用已被 CoinGecko 上游拦截，代码不得回退匿名模式；
+# 未配置时 Function 应明确报错（数据源未配置），不得静默降级。轮换剧本见二期设计 W2-20。
+# 注：legacy 模式现行代码在 key 缺失时仍按匿名尝试——该口径差异已登记，留待 G4 下线旧路径时一并收口（见施工报告偏差项）。
