@@ -59,6 +59,12 @@
   .result-meta{color:var(--dim);font-size:12px;margin:0 0 8px}
   .conf-低{font-weight:600}
   .mult-warn{color:var(--dim)}
+  .exp{background:none;border:1px solid var(--line);color:var(--dim);border-radius:6px;cursor:pointer;min-width:28px;min-height:28px;padding:2px 6px;margin-right:4px;vertical-align:middle}
+  .detail-row td{background:var(--chip);text-align:left;white-space:normal;padding:12px 14px}
+  .detail-row dl{display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;margin:0}
+  .detail-row dt{color:var(--dim);font-size:11px}
+  .detail-row dd{margin:2px 0 8px;font-size:13px}
+  @media (max-width:640px){.detail-row dl{grid-template-columns:1fr}}
   /* W2-09 立规：本期新增动效默认不加；将来若加，必须写在 @media (prefers-reduced-motion: no-preference) 内，reduce 档保持瞬时切换 */
   @media (max-width:640px){
     .hm{display:none}
@@ -129,6 +135,7 @@
 "use strict";
 let COINS = [], BOARD = null;
 let boardVer = 0, showAllManual = false, hashTarget = null;
+let expandedIds = new Set();
 
 const $ = (id) => document.getElementById(id);
 function fmtPrice(p) {
@@ -338,6 +345,50 @@ function renderShowAllBar(total, shownCount) {
   else if (showAllManual && !filtered && total > 50) { btn.textContent = "收起为前 50 条"; btn.dataset.act = "less"; btn.classList.remove("hidden"); }
   else { btn.dataset.act = ""; btn.classList.add("hidden"); }
 }
+function athFullText(c) {
+  if (c.athFlag === "unverified" || c.athPrice == null) return "未核实" + (c.athDate ? " · " + esc(c.athDate) : "");
+  const t = c.athFlag === "approx" ? "约值（聚合口径）" : "已核实";
+  return fmtPrice(c.athPrice) + "（" + t + "）" + (c.athDate ? " · " + esc(c.athDate) : "");
+}
+// detailHTML：colspan 须与主表列数同步，当前 12
+function detailHTML(c) {
+  const d = c._d;
+  const snapTitle = c.dataDate === "2026-11-10" ? "核验（2026-11-10）" : "快照（" + esc(c.dataDate || "2026-11-08") + "）";
+  const rankTxt = c.rankNow != null ? String(c.rankNow) : esc(c.rankNote || "—");
+  const rankNoteTxt = c.rankNow != null && c.rankNote ? "<div style='color:var(--dim);font-size:12px'>注：" + esc(c.rankNote) + "</div>" : "";
+  const athDropTxt = d.athDrop == null ? "未核实/无 ATH 数据" : (d.athDrop * 100).toFixed(1) + "%";
+  const warn = d.multMid != null && d.multMid < 1 ? "<div style='margin-bottom:8px'>当前价格已高于 2029 预估中点</div>" : "";
+  const snapMult = c.multLo != null && c.multHi != null ? c.multLo + "–" + c.multHi + "×" : "—";
+  return "<tr class='detail-row' id='d-" + esc(c.coingeckoId) + "'><td colspan='12'>" + warn +
+    "<dl>" +
+    "<div><dt>隐含市值区间（2029）</dt><dd>" + (c.impliedMcapLoUsd == null && c.impliedMcapHiUsd == null ? "未披露" : fmtMcap(c.impliedMcapLoUsd) + " – " + fmtMcap(c.impliedMcapHiUsd)) + "</dd></div>" +
+    "<div><dt>" + snapTitle + "价 / 市值</dt><dd>" + fmtPrice(c.snapshotPrice) + " / " + (c.snapshotMcapUsd == null ? "未披露" : fmtMcap(c.snapshotMcapUsd)) + "</dd></div>" +
+    "<div><dt>快照倍数</dt><dd>" + snapMult + "</dd></div>" +
+    "<div><dt>报告现排名</dt><dd>" + rankTxt + rankNoteTxt + "</dd></div>" +
+    "<div><dt>ATH</dt><dd>" + athFullText(c) + "</dd></div>" +
+    "<div><dt>距 ATH</dt><dd>" + athDropTxt + "</dd></div>" +
+    "<div><dt>2029 预估区间</dt><dd>" + fmtPrice(c.estLo) + "–" + fmtPrice(c.estHi) + "</dd></div>" +
+    "<div><dt>置信度</dt><dd>" + (c.confidence === "低" ? "低 · 谨慎" : esc(c.confidence)) + "</dd></div>" +
+    "<div><dt>核心依据</dt><dd>" + esc(c.reason) + "</dd></div>" +
+    "<div><dt>CoinGecko</dt><dd><a href='https://www.coingecko.com/en/coins/" + esc(c.coingeckoId) + "' target='_blank' rel='noopener' style='color:var(--acc)'>在 CoinGecko 查看 " + esc(c.symbol) + " ↗</a></dd></div>" +
+    "</dl><div style='color:var(--dim);font-size:12px;margin-top:4px'>† 聚合口径约值，不作估算主锚；「未核实」= ATH 未经可靠来源核实，表中不显示数值。</div></td></tr>";
+}
+function toggleExpand(id, btn) {
+  const c = COINS.find((x) => x.coingeckoId === id);
+  if (!c) return;
+  const open = !expandedIds.has(id);
+  if (open) expandedIds.add(id); else expandedIds.delete(id);
+  if (btn) {
+    btn.setAttribute("aria-expanded", open ? "true" : "false");
+    btn.textContent = open ? "▾" : "▸";
+    const mainRow = btn.closest ? btn.closest("tr") : null;
+    if (mainRow && mainRow.parentNode) {
+      const next = mainRow.nextElementSibling;
+      if (open) { if (!next || !next.classList || !next.classList.contains("detail-row")) mainRow.insertAdjacentHTML("afterend", detailHTML(c)); }
+      else if (next && next.classList && next.classList.contains("detail-row")) next.remove();
+    }
+  }
+}
 function multCellHTML(c) {
   const d = c._d;
   if (d.multLo == null) return "—";
@@ -355,7 +406,7 @@ function rowHTML(c) {
   return "<tr>" +
     "<td>" + (d.liveRank != null ? d.liveRank : "—") + "</td>" +
     "<td class='hm'>" + c.estRank + "</td>" +
-    "<td><strong>" + esc(c.name) + "</strong> <span class='sym'>" + esc(c.symbol) + "</span></td>" +
+    "<td><button class='exp' type='button' data-exp='" + esc(c.coingeckoId) + "' aria-expanded='" + (expandedIds.has(c.coingeckoId) ? "true" : "false") + "' aria-controls='d-" + esc(c.coingeckoId) + "' aria-label='展开 " + esc(c.name) + " 详情'>" + (expandedIds.has(c.coingeckoId) ? "▾" : "▸") + "</button><strong>" + esc(c.name) + "</strong> <span class='sym'>" + esc(c.symbol) + "</span></td>" +
     "<td>" + fmtPrice(d.price) + missingTag + "</td>" +
     "<td class='hm " + (l && l.change24h != null ? (l.change24h >= 0 ? "up" : "dn") : "") + "'>" + (l ? fmtPct(l.change24h) : "—") + "</td>" +
     "<td class='hm'>" + fmtMcap(d.mcap) + "</td>" +
@@ -388,7 +439,7 @@ function render() {
   a.sort(cmpCoins);
   const limit = effectiveLimit();
   const shown = limit === Infinity ? a : a.slice(0, limit);
-  $("tbodyA").innerHTML = a.length === 0 ? EMPTY_HTML : shown.map((c) => rowHTML(c)).join("");
+  $("tbodyA").innerHTML = a.length === 0 ? EMPTY_HTML : shown.map((c) => rowHTML(c) + (expandedIds.has(c.coingeckoId) ? detailHTML(c) : "")).join("");
   $("resultMeta").textContent = metaText(COINS.length, a.length, shown.length);
   renderShowAllBar(a.length, shown.length);
 }
@@ -451,8 +502,21 @@ if (theadEl) theadEl.addEventListener("click", (ev) => {
   setSort(btn.dataset.sort);
 });
 $("tbodyA").addEventListener("click", (ev) => {
+  const eb = ev.target.closest("[data-exp]");
+  if (eb) { toggleExpand(eb.dataset.exp, eb); return; }
   const cb = ev.target.closest("[data-clear]");
   if (cb) { $("q").value = ""; $("confSel").value = ""; showAllManual = false; render(); }
+});
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Escape" || !ev.target || !ev.target.closest) return;
+  const btn = ev.target.closest("[data-exp]");
+  if (btn) { if (expandedIds.has(btn.dataset.exp)) toggleExpand(btn.dataset.exp, btn); return; }
+  const row = ev.target.closest(".detail-row");
+  if (row && row.id) {
+    const id = row.id.slice(2);
+    const b = document.querySelector("[data-exp='" + id + "']");
+    if (b) { toggleExpand(id, b); b.focus(); }
+  }
 });
 $("refreshBtn").onclick = loadBoard;
 $("showAllBtn").onclick = () => { showAllManual = $("showAllBtn").dataset.act !== "less"; render(); };
