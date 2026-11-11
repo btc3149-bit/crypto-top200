@@ -46,8 +46,8 @@ echo "[deploy] 数据门禁通过 sha256=$SRC_HASH"
 
 # (b2) W2-18 安全头一致性门禁：public/_headers 必须与当前 index.html 的生成结果一致。
 # 不一致即中止部署——先运行 node ops/headers/gen-headers.mjs 重新生成，禁止手改 public/_headers。
-if ! node ops/headers/gen-headers.mjs --check; then
-  echo "[deploy] 错误：public/_headers 与 index.html 不一致，请先运行 node ops/headers/gen-headers.mjs 重新生成后再部署。" >&2
+if ! node ops/headers/gen-headers.mjs --check --variant=on; then  # WA-ON：2026-11-11 U7 签收后启用统计，变体与开关状态同发版（W2-18 §18.4）
+  echo "[deploy] 错误：public/_headers 与 index.html 不一致，请先运行 node ops/headers/gen-headers.mjs --variant=on 重新生成后再部署。" >&2
   exit 1
 fi
 echo "[deploy] W2-18 _headers --check 通过"

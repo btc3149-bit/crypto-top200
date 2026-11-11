@@ -1,3 +1,5 @@
+- 2026-11-11：W2-01 抓取链 G1 影子观察启动——freeidx-api 按站长决定只保留每日 03:01 的 cron（删另两条），fetcher 每 10 分钟 cron 注册成功，08:20 首轮抓取成功、首次影子比对 pass。
+- 2026-11-11：W2-14 Web Analytics 启用——U7 经站长签收（ops/signoffs.md）；统计站点经 API 创建（手动注入 beacon 于首页与隐私页），隐私页状态句改「已启用」并更新日期，CSP 切 WA-ON 变体（deploy.sh --check 同步），生产冒烟与 smoke-headers（variant=on）全过。备注：控制台开关路线因 Cloudflare 登录侧拦截（Turnstile/Google 回调）未能走通，改走 API + 手动 beacon 路线达成同一启用状态。
 # Changelog
 
 本项目每次生产部署记一行：日期、版本/摘要、部署 ID。数据变更细节另见 `CHANGELOG-补位.md` 与 Git tag。

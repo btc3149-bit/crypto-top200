@@ -5,7 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>隐私说明 · 市值前200币种 · 下一轮牛市预估排名（实时行情）</title>
 <meta name="description" content="市值前200加密货币下一轮牛市预估排名站的隐私说明：本站无账号、无广告、无 Cookie 统计，仅有聚合流量统计与榜单数据代理两条数据流。">
-<!-- 草稿状态：本页 canonical 为自指草稿，随正式部署与全站 SEO 基础件（W2-16）一并合入时复核 -->
 <link rel="canonical" href="https://top200.oppcal.com/privacy">
 <style>
   :root{--bg:#0b0e14;--card:#131824;--line:#232b3d;--txt:#e8ecf4;--dim:#8b96ad;--acc:#f0b90b;--up:#2ebd85;--dn:#f6465d;--chip:#1c2333}
@@ -24,9 +23,8 @@
 <body>
 <div class="wrap">
   <h1>隐私说明</h1>
-  <p class="sub">最后更新：2026-11-10 ｜ 适用域名：仅 <strong>top200.oppcal.com</strong></p>
-  <!-- [状态句替换位] 统计启用后（须先经站长签收，见 ops/signoffs.md 的 U7 行），把下一句替换为「已启用」版本并更新页首日期，再重新部署。 -->
-  <p class="sub">当前状态：<strong>网站统计（Web Analytics）尚未启用</strong>。本页如实描述当前实际数据流；统计启用时，本页将先行更新再开启开关。</p>
+  <p class="sub">最后更新：2026-11-11 ｜ 适用域名：仅 <strong>top200.oppcal.com</strong></p>
+  <p class="sub">当前状态：<strong>网站统计（Web Analytics）已启用</strong>（2026-11-11 经站长签收后启用）。本页如实描述当前实际数据流。</p>
 
   <section>
     <h2>一、本页说明什么</h2>
@@ -35,12 +33,12 @@
 
   <section>
     <h2>二、一句话总览</h2>
-    <p>本站无账号、无广告、无 Cookie 统计；只有两条数据流：聚合流量统计（Cloudflare Web Analytics，<strong>尚未启用</strong>，见第三节）与榜单数据代理（CoinGecko 行情经本站服务端转发，见第四节）。</p>
+    <p>本站无账号、无广告、无 Cookie 统计；只有两条数据流：聚合流量统计（Cloudflare Web Analytics，见第三节）与榜单数据代理（CoinGecko 行情经本站服务端转发，见第四节）。</p>
   </section>
 
   <section>
-    <h2>三、数据流一 · 网站流量统计（Cloudflare Web Analytics，尚未启用）</h2>
-    <p>本站计划使用 Cloudflare Web Analytics 做聚合流量统计，<strong>目前尚未启用</strong>。启用后它的数据流如下（按 Cloudflare 官方口径）：页面加载时从 <code>static.cloudflareinsights.com</code> 加载一个轻量脚本（beacon），把本次浏览的聚合信号回传本站的 <code>/cdn-cgi/rum</code> 路径。</p>
+    <h2>三、数据流一 · 网站流量统计（Cloudflare Web Analytics）</h2>
+    <p>本站使用 Cloudflare Web Analytics 做聚合流量统计。它的数据流如下（按 Cloudflare 官方口径）：页面加载时从 <code>static.cloudflareinsights.com</code> 加载一个轻量脚本（beacon），把本次浏览的聚合信号回传本站的 <code>/cdn-cgi/rum</code> 路径。</p>
     <p>采集项仅为聚合统计所需：页面路径、来源站（referrer）、国家/地区、设备/浏览器/操作系统粗分类、页面加载性能与 Core Web Vitals（LCP/INP/CLS 等）。它<strong>无 Cookie、无本地存储、无指纹识别、不跨站追踪、不记录 URL 查询串</strong>。数据留存口径：未采样的原始 beacon 数据保留 7 天，之后聚合保存，仪表盘可查过去 6 个月。本站能看到的只是聚合报表，<strong>看不到单个访客的记录</strong>。用途仅为了解访问量与页面性能，不用于广告或画像。</p>
     <p>另请知悉读数边界：广告拦截器会屏蔽该脚本域名，部分网络环境下脚本也可能加载失败，这些访问不会计入统计——统计数字只看趋势，不代表全部访客。</p>
   </section>
@@ -70,7 +68,7 @@
 
   <section>
     <h2>七、屏蔽方法与不影响使用</h2>
-    <p>统计启用后，如您不希望被计入统计，可用广告拦截器屏蔽 <code>cloudflareinsights.com</code>，或在浏览器中全局拦截第三方脚本。屏蔽后本站全部功能（榜单、自选）照常可用，仅该次访问不计入统计。</p>
+    <p>如您不希望被计入统计，可用广告拦截器屏蔽 <code>cloudflareinsights.com</code>，或在浏览器中全局拦截第三方脚本。屏蔽后本站全部功能（榜单、自选）照常可用，仅该次访问不计入统计。</p>
   </section>
 
   <section>
@@ -84,5 +82,6 @@
     <a href="/">返回榜单首页</a> ｜ 本站仅供信息参考，不构成投资建议。加密货币投资可损失全部本金，请独立判断、量力而行。
   </footer>
 </div>
+<!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "5dacd62b1be14a548d01963327abd6f8"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>
