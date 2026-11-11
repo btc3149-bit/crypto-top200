@@ -15,8 +15,10 @@ id = "ad1b72702c5c4f229999bea5b118d1bc"
 [vars]
 PAPRIKA_ENABLED = "false"
 BOARD_SOURCE = "auto"
-BOARD_FETCH_DISABLED = "1"
-# BOARD_TARGET_KEY = "current" # G1 影子期置 "shadow"（只写 v1:board:shadow）
+BOARD_TARGET_KEY = "shadow"
+
+[triggers]
+crons = ["*/10 * * * *"]
 
 # Secrets（值不写在本文件，经 wrangler secret put 注入，均由协调者处理）：
 # COINGECKO_API_KEY — 与 Pages Secret 独立的一份注入
