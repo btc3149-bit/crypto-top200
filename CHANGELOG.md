@@ -18,3 +18,4 @@
   - README 全量改写（拖放法整节标注已废弃）。
   - **生产部署 ID `d43eb23f-a50b-4c0b-81ee-acde211a74aa`**（预览 `28099b90…`、`cf2e2c19…`）：Functions 已编译生效，`/api/board` 恢复 JSON 契约（新版 board.js：allSettled 解耦、覆盖率门禁、6h stale 上限、429 熔断、错误收敛）；回滚演练完成（退回旧部署 `70a735d5…` 验证后恢复）。
   - **遗留（U2）**：CoinGecko 对 Cloudflare 出口 IP 的匿名调用返回 403/429（tail 日志实证），实时数据恢复待站长提供 CoinGecko Demo key 后以 Secret 注入并重新部署即可转 live；当前线上为新版代码 + 诚实标注的快照模式。
+- **2026-11-12 — U4 研究报告回链上线**：用户确认公开分享的周期报告页链接后，填入 `scripts/pipeline_config.py` 的 REPORT_URL（唯一控制点）、重跑 render-snapshot 渲染两处回链落点、按 WA-ON 变体重新生成 `_headers` 并生产部署，冒烟 6/6；线上首页回链实测在位，HC2 部署报到已 ping（success）。同日另有 health.js HEAD 支持修复部署（见 ops/probe-config.md M4 落地状态）。
