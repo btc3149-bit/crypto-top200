@@ -19,6 +19,7 @@ import json
 import re
 import sys
 from datetime import datetime, timezone
+import math
 from decimal import Decimal, ROUND_HALF_UP
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -62,18 +63,29 @@ def fmt_price(p):
         return js_to_fixed(p, 2)
     if p >= 0.01:
         return js_to_fixed(p, 4)
-    # Number(p.toPrecision(4)).toString()
-    d = Decimal(p)
-    exp = d.adjusted()
-    q = Decimal(1).scaleb(exp - 3)
-    r = d.quantize(q, rounding=ROUND_HALF_UP)
-    if r != 0 and abs(r) < Decimal("0.000001"):
-        # JS 对 <1e-6 用指数记法，如 1.235e-7
-        tup = r.normalize().as_tuple()
-        digits = "".join(str(t) for t in tup.digits)
-        mant = digits[0] + ("." + digits[1:] if len(digits) > 1 else "")
-        return f"{mant}e{tup.exponent + len(digits) - 1}"
-    s = format(r, "f")
+    # W3-13：下标零计数法（与前端 fmtPrice 同口径）：
+    # 0.0₅4960 表示 0.000004960（下标 = 小数点后首个有效数字之前的 0 的总数）
+    exp = math.floor(math.log10(p))
+    z = -exp - 1
+    m = p / (10 ** exp)
+    digits = js_to_fixed(m, 3)
+    if float(digits) >= 10:
+        digits = js_to_fixed(m / 10, 3)
+        z -= 1
+    sub = "".join("₀₁₂₃₄₅₆₇₈₉"[int(ch)] for ch in str(z))
+    return "0.0" + sub + digits.replace(".", "")
+
+
+def _sig3(x):
+    # W3-13：恒定 3 位有效数字（与前端 sig3 同口径）
+    if x == 0:
+        return "0"
+    e = math.floor(math.log10(abs(x)))
+    if e >= 3:
+        f = 10 ** (e - 2)
+        r = Decimal(x / f).quantize(Decimal(1), rounding=ROUND_HALF_UP) * f
+        return str(int(r))
+    s = js_to_fixed(x, 2 - e)
     if "." in s:
         s = s.rstrip("0").rstrip(".")
     return s
@@ -82,11 +94,10 @@ def fmt_price(p):
 def fmt_mcap(v):
     if v is None or v != v or v in (float("inf"), float("-inf")) or v <= 0:
         return "—"
+    # W3-13：单位只留万亿/亿（不再出现四位数「万」读数）
     if v >= 1e12:
-        return "$" + js_to_fixed(v / 1e12, 2) + "万亿"
-    if v >= 1e8:
-        return "$" + js_to_fixed(v / 1e8, 0 if v >= 1e10 else 2) + "亿"
-    return "$" + js_to_fixed(v / 1e4, 0) + "万"
+        return "$" + _sig3(v / 1e12) + "万亿"
+    return "$" + _sig3(v / 1e8) + "亿"
 
 
 _ESC = {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}
@@ -97,15 +108,19 @@ def esc(s):
 
 
 def ath_cell_html(c):
-    date = f"<br><span class='sym'>{esc(c.get('athDate'))}</span>" if c.get("athDate") else ""
     if c.get("athFlag") == "unverified":
-        return "<span class='badge unverified'>未核实</span>" + date
+        return "<span class='badge unverified'>未核实</span>"
     if c.get("athPrice") is None:
-        return "—" + date
+        return "—"
+    sp = c.get("snapshotPrice")
+    ap = c.get("athPrice")
+    drop = ""
+    if sp is not None and ap:
+        drop = f"<br><span class='sym'>{(sp - ap) / ap * 100:.1f}%</span>"
     if c.get("athFlag") == "approx":
-        return (fmt_price(c["athPrice"])
-                + "<sup class='ath-flag' title='聚合口径约值' aria-label='约值'>†</sup>" + date)
-    return fmt_price(c["athPrice"]) + date
+        return (fmt_price(ap)
+                + "<button type='button' class='ath-flag' data-athflag='1' aria-label='聚合口径约值，查看图例说明'>†</button><span class='sr-only'>（约值）</span>" + drop)
+    return fmt_price(ap) + drop
 
 
 def _mult(c):
@@ -131,7 +146,7 @@ def mult_cell_html(c):
 def conf_cell_html(c):
     conf = c.get("confidence")
     label = "低 · 谨慎" if conf == "低" else esc(conf)
-    return f"<td class='conf-{esc(conf)}'>{label}</td>"
+    return f"<td class='c-conf conf-{esc(conf)}'>{label}</td>"
 
 
 def compute_live_ranks(coins):
@@ -146,25 +161,24 @@ def compute_live_ranks(coins):
 def row_html(c, live_rank):
     cid = esc(c.get("coingeckoId"))
     rank_now = c.get("rankNow")
-    verified = "<br><span class='sym'>11-10核验</span>" if c.get("dataDate") == "2026-11-10" else ""
     return (
         f"<tr data-snapshot=\"1\" id='row-{cid}'>"
-        f"<td>{live_rank if live_rank is not None else '—'}</td>"
-        f"<td class='hm'>{c.get('estRank')}</td>"
-        f"<td><button class='exp' type='button' data-exp='{cid}' aria-expanded='false' "
-        f"aria-controls='d-{cid}' aria-label='展开 {esc(c.get('name'))} 详情'>▸</button>"
+        f"<td class='c-rank'>{live_rank if live_rank is not None else '—'}</td>"
+        f"<td class='c-coin'><button class='exp' type='button' data-exp='{cid}' aria-expanded='false' "
+        f"aria-label='展开 {esc(c.get('name'))} 详情'>▸</button>"
         f"<button class='star' type='button' data-star='{cid}' aria-pressed='false' "
         f"aria-label='收藏 {esc(c.get('name'))}'>☆</button>"
         f"<strong>{esc(c.get('name'))}</strong> <span class='sym'>{esc(c.get('symbol'))}</span></td>"
-        f"<td>{fmt_price(c.get('snapshotPrice'))}</td>"
-        f"<td class='hm '>—</td>"
-        f"<td class='hm'>{fmt_mcap(c.get('snapshotMcapUsd'))}</td>"
-        f"<td class='hm'>{rank_now if rank_now is not None else '—'}{verified}</td>"
-        f"<td class='hm'>{ath_cell_html(c)}</td>"
-        f"<td>{fmt_price(c.get('estLo'))}–{fmt_price(c.get('estHi'))}</td>"
-        f"<td>{mult_cell_html(c)}</td>"
+        f"<td class='hm c-estrank'>{c.get('estRank')}</td>"
+        f"<td class='hm c-ranknow'>{rank_now if rank_now is not None else '—'}</td>"
+        f"<td class='c-price'>{fmt_price(c.get('snapshotPrice'))}</td>"
+        f"<td class='hm c-chg '>—</td>"
+        f"<td class='hm c-mcap'>{fmt_mcap(c.get('snapshotMcapUsd'))}</td>"
+        f"<td class='hm c-ath'>{ath_cell_html(c)}</td>"
+        f"<td class='c-est'>{fmt_price(c.get('estLo'))}–{fmt_price(c.get('estHi'))}</td>"
+        f"<td class='c-mult'>{mult_cell_html(c)}</td>"
         f"{conf_cell_html(c)}"
-        f"<td class='reason hm'>{esc(c.get('reason'))}</td></tr>"
+        f"<td class='reason hm c-reason'>{esc(c.get('reason'))}</td></tr>"
     )
 
 
@@ -196,12 +210,13 @@ def report_link_html(url, kind):
     """REPORT_URL 非空时生成回链；站外（非 top200.oppcal.com）新窗口+noopener，仅 https。"""
     external = not re.match(r"^https://top200\.oppcal\.com(?:[/:?#]|$)", url)
     attrs = ' target="_blank" rel="noopener"' if external else ""
+    note = '<span class="sr-only">（在新窗口打开）</span>' if external else ""
     anchor = f"方法与数据口径：《{REPORT_NAME}》"
     if kind == "sub":
         return (f'<!-- REPORTLINK:SUB -->\n<div class="sub report-link">'
-                f'<a href="{esc(url)}"{attrs}>{esc(anchor)}</a></div>')
+                f'<a href="{esc(url)}"{attrs}>{esc(anchor)}{note}</a></div>')
     return (f'<!-- REPORTLINK:METHOD -->\n<p class="report-link">延伸阅读：'
-            f'<a href="{esc(url)}"{attrs}>{esc(anchor)}</a></p>')
+            f'<a href="{esc(url)}"{attrs}>{esc(anchor)}{note}</a></p>')
 
 
 def apply_report_links(html, url):

@@ -2,7 +2,8 @@
 // ① 静态断言：标记区 <tr> =200、生成注释、noscript 定版、表注、无 href="#"；
 // ② 逐行 diff：注入行（去掉 data-snapshot="1"）vs node 桩跑前端 rowHTML（快照模式，同份 coins.json）；
 // ③ 失败路径桩测：board 500 / coins 取数失败 → tbody 不被触碰、横幅切「暂不可用」定版文案；
-// ④ 成功路径：整表替换（快照行清零）→ 展开全部 200 行 → 连点刷新 3 次行数恒 200 且 id 无重复。
+// ④ 成功路径：W3-05 口径——首次实时到达保住全部 200 行（快照标记清零、按实时序排列），
+//    刷新 3 次行数恒 200 且 id 无重复。（W2-17 的「默认前 50 条」口径自 W3-05 起废止。）
 // 运行：node tests/snapshot-verify.mjs（退出码 0 全过）
 
 import assert from "node:assert/strict";
@@ -181,7 +182,7 @@ const jsonRes = (body, ok = true, status = 200) => ({ ok, status, json: async ()
   });
 }
 
-// ---------- 场景 C：成功整表替换 + 刷新 3 次幂等 ----------
+// ---------- 场景 C：成功原地修补口径 + 刷新 3 次幂等 ----------
 {
   const liveCoins = {};
   for (const c of coinsDoc.coins) {
@@ -209,16 +210,19 @@ const jsonRes = (body, ok = true, status = 200) => ({ ok, status, json: async ()
   const rowIds = () =>
     [...registry.get("tbodyA").innerHTML.matchAll(/id='row-([^']+)'/g)].map((m) => m[1]);
 
-  await test("④ 成功路径：整表替换（快照行清零）+ 展开 200 行 + 刷新×3 恒 200 无重复", async () => {
+  await test("④ 成功路径：首次实时到达保 200 行（快照标记清零+实时序）+ 刷新×3 恒 200 无重复", async () => {
     assert.ok(
       !registry.get("tbodyA").innerHTML.includes('data-snapshot="1"'),
-      "成功后快照行应被整表替换"
+      "成功后快照行标记应清零（原地修补或整表渲染均须去除）"
     );
-    assert.equal(rowIds().length, 50, "默认视图为现行前 50 条口径");
-    const btn = registry.get("showAllBtn");
-    assert.equal(typeof btn.onclick, "function");
-    btn.onclick(); // 显示全部
-    assert.equal(rowIds().length, 200, "展开后应为 200 行");
+    // W3-05：默认视图首次实时到达即为全部 200 行，不再塌缩为前 50 条。
+    assert.equal(rowIds().length, 200, "首次实时到达后应保持 200 行");
+    assert.equal(new Set(rowIds()).size, 200, "行 id 不得重复");
+    const expectOrder = vm.runInContext(
+      "[...COINS].sort(cmpCoins).map(function (c) { return c.coingeckoId; })",
+      ctx
+    );
+    assert.equal(rowIds().join(","), expectOrder.join(","), "行序应与当前排序（默认实时排名）一致");
     for (let i = 1; i <= 3; i++) {
       await vm.runInContext("loadBoard()", ctx);
       const ids = rowIds();

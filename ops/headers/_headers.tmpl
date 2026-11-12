@@ -14,6 +14,10 @@
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Resource-Policy: same-origin
 
+# W3-16：仅首页精确路径短时 SWR（严禁 /* 统配）；ETag/边缘命中先经 preview 部署验证后上线。
+/
+  Cache-Control: public, max-age=0, s-maxage=60, stale-while-revalidate=300
+
 /data/*
   Content-Type: application/json; charset=utf-8
   Cache-Control: {{DATA_CACHE_CONTROL}}
