@@ -11,3 +11,5 @@
 | — | U4 | 研究报告回链 URL 确认（W2-17 回链落点） | — | pending | 未确认时回链整段不渲染、不留死链（W2-17 定版降级） |
 | 2026-11-11 | U7 | 隐私说明文案签收（W2-14，《隐私说明》全文过目并同意启用统计） | `public/privacy/index.html` 草稿（2026-11-10 版）sha256 `977ce2f2a430a2fd87888e93fc165bc417cd5eb468975f8f0890392068e652ad` | signed | 用户于 2026-11-11 在主聊天明确回复「同意启用统计」；按既定顺序执行：签收 → 开 Pages 项目级 Metrics 开关 → 隐私页状态句改「已启用」并更新页首日期 → CSP 切 WA-ON 变体 → 重新部署 |
 | 2026-11-10 | W2-13 | 外部探针降级运行（U3 未提供期间） | `ops/probe-config.md`（W2-13 配置规格） | signed | 降级期：2026-11-10 当日。**已销项（2026-11-10）**：U3 邮箱落地后已补投递配置（PROBE_ALERT_EMAIL 与两家平台告警联系人口径）并完成触发演练（正常 pass + 故障 fail 两跑，alert 通道均为 armed，留痕 ops/probe-log.jsonl），降级解除 |
+| 2026-11-12 | U-UR | UptimeRobot 注册落地（W2-13 外部监控其一） | — | signed | 云浏览器注册被 Turnstile 风控拦截（代办与用户接管均证伪）后，用户本人在自有浏览器注册成功；Main API Key 存保险箱连接 custom.uptimerobot；M1–M4 经 API 建成并复核全 UP（ID 见 ops/probe-config.md 落地状态）；临时监控端到端触发演练通过 |
+| 2026-11-12 | U-HC | healthchecks.io 注册与接线落地（W2-13 外部监控其二） | — | signed | 账号与 HC1–HC3 已建并逐项核对；完整访问 API key 已轮换（旧 key 撤销）并经保险箱连接 custom.healthchecks 存入；HC1 每小时报到 cron（top200-hc1-hourly-probe）已建、HC2 部署报到已通、HC3 已挂入 11-21 复核任务；/fail 触发演练实测 down→up 闭环通过 |

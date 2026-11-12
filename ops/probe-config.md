@@ -50,6 +50,13 @@
 | HC2 部署后检查 | 事件型 | 不用周期缺席判定：创建后设超长 period（如 90 天）仅作占位，只用显式信号 | 部署管线尾部经 `scripts/hc_ping.sh success\|fail` ping（URL 只从部署环境变量 `HEALTHCHECKS_DEPLOY_PING_URL` 读，接入钩子由协调者串进 `scripts/deploy.sh`：冒烟通过 → success，冒烟失败 → fail；变量未设置时脚本打印 `skipped-no-url` 并以 0 退出，不阻断部署） | 部署后检查真失败时立即告警；「部署了但没跑检查」靠管线强制串联冒烟+ping 防堵，不靠缺席判定 |
 | HC3 2026-11-21 复核守夜 | 一次性 cron 型 | cron 表达式 `0 9 21 11 *`、时区 **Asia/Shanghai**、grace 6 小时 | 复核任务（`ops/reviews/2026-11-21-review.md` 清单）执行完成并留痕后 ping success；若当天取消复核，须手动 ping 或删除该 check 并留痕 | 到期未复核 → 当日下午即告警；复核完成后删除/停用 HC3，不得自行滚动生成下一个复核点 |
 
+### 落地状态（2026-11-12 更新）
+
+- **账号与钥匙**：账号已注册（kwl134999@gmail.com，免费档）；HC1–HC3 三个检查的参数与上表逐项核对一致。完整访问 API key 已轮换一次（旧 key 撤销、新 key 经用户从弹窗复制）并存入保险箱自定义连接 `custom.healthchecks`；ping URL 仍按红线只由助手程序在运行时经 API 现查现用，不落盘、不入仓库。
+- **HC1 已接线**：手动首 ping 已转 UP；每小时报到由 cron `top200-hc1-hourly-probe` 承担（跑 probe.sh 全量断言，pass → success ping，fail → fail ping 附日志，并向用户汇总）。2026-11-12 已做 /fail 触发演练：HC1 实测 down → success 恢复 up，告警与恢复邮件由 healthchecks 投递至 kwl134999@gmail.com（收件箱由用户目视确认）。
+- **HC2 已接线**：部署管线的 env 变量路径保留给外部部署环境；助手本人执行的部署改走等价路径——部署冒烟通过后用连接器助手脚本按检查名 ping（`hc_api.py ping HC2-top200-deploy success`），2026-11-12 已为当日 health.js 修复部署补发 success ping 并转 UP。
+- **HC3 已接线**：一次性复核任务 `crypto-bottom-window-review`（2026-11-21 09:17）的交付步骤已追加"复核消息发出后 ping HC3 success"，避免到期未报到误告警。
+
 ## 告警收敛（两家平台同口径）
 
 - 联系人只设 1 个：**kwl134999@gmail.com**（U3 邮箱，2026-11-10 用户提供；UptimeRobot 与 healthchecks.io 两边各设同一地址为唯一告警联系人，本地探针以环境变量 `PROBE_ALERT_EMAIL` 同值接入）；不启 SMS/语音。
