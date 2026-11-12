@@ -28,6 +28,14 @@
 | M3 接口负向断言 | Keyword | `GET https://top200.oppcal.com/api/board`（与 M2 独立监控：免费档单监控只能绑 1 个 keyword） | Keyword = `<!DOCTYPE`；Alert when: **Keyword Exists** | 函数异常时回吐 HTML 错误页而非 JSON（状态码可能仍是 200，只有负向断言能抓住） |
 | M4 新鲜度 | HTTP | `GET https://top200.oppcal.com/api/health` | 期望状态码 200，非 200 即告警 | 数据陈旧或覆盖不全（判定逻辑在 health.js 内：age ≤900s 且 coverage 200/200 才返回 200，否则 503） |
 
+### 落地状态（2026-11-12 更新）
+
+- **账号**：云浏览器注册被 Cloudflare Turnstile 风控拦截（代办与用户接管均证伪），最终由用户本人在自有浏览器注册成功（2026-11-12，邮箱 kwl134999@gmail.com，免费档）；Main API Key 已存入保险箱自定义连接 `custom.uptimerobot`，监控全部经 API 建立与维护。
+- **告警联系人**：id `9028550`（kwl134999@gmail.com），M1–M4 均已挂载。
+- **监控 ID**：M1 `804645009`（注册流程自带的 HTTP 监控收编改名并补挂联系人）、M2 `804645065`、M3 `804645066`、M4 `804645067`，间隔均为 300 秒；2026-11-12 16:36 复核四者状态均为 UP。
+- **M4 的 HEAD 坑（已修）**：UptimeRobot 的 HTTP 监控默认以 HEAD 探测，`/api/health` 原只实现 GET、对 HEAD 返回 405，M4 一度误报 DOWN 并发出真实告警。已给 `functions/api/health.js` 增加 HEAD 支持（与 GET 同状态同头、无 body）并重新部署，M4 随即恢复 UP；此间的 DOWN/UP 邮件为该误报与恢复通知，非网站故障。
+- **端到端演练（已做）**：2026-11-12 临时建 keyword 监控 `804645068`（首页 + `<!DOCTYPE`、Exists 即告警），约 2 分钟内转 DOWN（status 9），证明检测与告警投递链路触发，隨即删除；测试告警邮件投递至 kwl134999@gmail.com（收件箱由用户目视确认）。M3 本体口径与该演练同构（keyword + Exists），视为已实测。
+
 ### keyword 定版说明（来源与局限，勿删）
 
 - **M2 的 `"mode":"live"` 来源**：probe.sh 正向断言的语义是「200 + JSON + keys 齐 + coverage ≥94%」，其中可被 keyword 存在性检查等价表达的核心标记，是 `functions/api/board.js` 以 `JSON.stringify` 序列化输出的字段片段 `"mode":"live"`（无空格，与线上响应体逐字一致）。**局限**：① keyword 查不了 keys 齐全与 coverage 数值，那部分由 HC1 每小时跑 probe.sh 全量断言兜底；② `mode:"live"` 也可能来自 120 秒缓存内的响应，新鲜度精细判定归 M4/HC1，M2 只负责「接口活着且处于 live 形态」。

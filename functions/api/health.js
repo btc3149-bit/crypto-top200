@@ -14,7 +14,9 @@
 //
 // 安全与隐私：响应只含 mode / ageSec / coverage 等非敏感字段，不透传 coins 数据、
 // 不含任何密钥或上游信息；响应不缓存（Cache-Control: no-store）。
-// 方法语义与 board.js 同款：onRequestGet 承载 GET，onRequest 兜底非 GET 405。
+// 方法语义：onRequestGet 承载 GET；onRequestHead 承载 HEAD（与 GET 同状态同头、无 body，
+// 供 UptimeRobot HTTP 监控的默认 HEAD 探测使用——2026-11-12 M4 实测 405 后补）；
+// onRequest 兜底其余方法 405。
 
 const FRESHNESS_THRESHOLD_SEC = 900; // 与 scripts/probe.sh 新鲜度阈值同值（≤15 分钟）
 const EXPECTED_COUNT = 200; // 方案 W2-13 定版口径：条数＝200
@@ -35,7 +37,7 @@ function methodNotAllowedResponse() {
     headers: {
       "content-type": "application/json",
       "cache-control": "no-store",
-      allow: "GET",
+      allow: "GET, HEAD",
     },
   });
 }
@@ -116,14 +118,25 @@ async function handleGet(context) {
   }
 }
 
+// HEAD 与 GET 同判定：复用 handleGet 的状态与响应头，body 置空（HTTP 语义）。
+async function handleHead(context) {
+  const res = await handleGet(context);
+  return new Response(null, { status: res.status, headers: res.headers });
+}
+
 export async function onRequestGet(context) {
   const method = context && context.request && context.request.method ? context.request.method : "GET";
   if (method !== "GET") return methodNotAllowedResponse();
   return handleGet(context);
 }
 
+export async function onRequestHead(context) {
+  return handleHead(context);
+}
+
 export async function onRequest(context) {
   const method = context && context.request && context.request.method ? context.request.method : "GET";
-  if (method !== "GET") return methodNotAllowedResponse();
-  return handleGet(context);
+  if (method === "GET") return handleGet(context);
+  if (method === "HEAD") return handleHead(context);
+  return methodNotAllowedResponse();
 }
