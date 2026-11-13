@@ -2,7 +2,7 @@
 // smoke-headers.mjs — W2-18 §18.5 冒烟断言（对任意 base URL 运行，Node 标准库 only）
 //
 // 用法：
-//   node ops/headers/smoke-headers.mjs <baseUrl> [--variant=off|on] [--only=S1,S2,S4] [--csp-header=report-only]
+//   node ops/headers/smoke-headers.mjs <baseUrl> [--variant=off|on] [--only=S1,S2,S4,S6] [--csp-header=report-only]
 //
 // 断言组：
 //   S1 响应头存在性：/ 的 CSP 静态指令 + §18.1.3 全表逐项等于定版值、HSTS 只出现一次；
@@ -14,6 +14,9 @@
 //   S4 API 头组：/api/board GET 期望 200、非 GET（POST）期望 405，两路均断言 §18.3 头组在位。
 //   S5（仅 --variant=on 时有实质内容）：beacon 证据需浏览器 Network 面板（见 §18.4-2），
 //      本脚本只能查注入痕迹，RUM 204 恒为 SKIPPED 待浏览器侧补验。
+//   S6（W4-13 / F4-14）：/privacy/ 样式不被自家 CSP 拦截：抓 /privacy/ 的 HTML 与其 CSP 头
+//      （/* 组与首页同一策略），用同一提取算法重算该页全部 <style> 块 hash，断言逐个在
+//      CSP style-src 放行清单内；另断言 style-src 本体无 'unsafe-inline'。专抓生成器漏页。
 //
 // 退出码：任一 FAIL → 1；SKIP 不影响退出码。
 
@@ -22,7 +25,7 @@ import { createHash } from "node:crypto";
 const args = process.argv.slice(2);
 const base = (args.find((a) => !a.startsWith("--")) || "").replace(/\/+$/, "");
 if (!base) {
-  console.error("用法：node ops/headers/smoke-headers.mjs <baseUrl> [--variant=off|on] [--only=S1,S2,S4] [--csp-header=report-only]");
+  console.error("用法：node ops/headers/smoke-headers.mjs <baseUrl> [--variant=off|on] [--only=S1,S2,S4,S6] [--csp-header=report-only]");
   process.exit(2);
 }
 const variant = (args.find((a) => a.startsWith("--variant=")) || "--variant=off").split("=")[1];
@@ -162,6 +165,23 @@ async function main() {
     } else {
       const html = homeBuf.toString("utf8");
       ok(!html.includes("cloudflareinsights"), "WA-OFF：线上 HTML 无 cloudflareinsights 请求痕迹");
+    }
+  }
+
+  if (want("S6")) {
+    console.log("S6 隐私页样式 CSP 放行（/privacy/，W4-13/F4-14）：");
+    const privRes = await fetch(base + "/privacy/", { redirect: "follow" });
+    ok(privRes.status === 200, "GET /privacy/ 状态 200", `实际 ${privRes.status}`);
+    const privBuf = Buffer.from(await privRes.arrayBuffer());
+    const privCsp = privRes.headers.get(cspHeaderName) || "";
+    ok(privCsp.length > 0, `CSP 头（${cspHeaderName}）存在`);
+    const styleSeg = cspDirective(privCsp, "style-src");
+    const allowed = hashTokens(styleSeg);
+    ok(!styleSeg.split(/\s+/).includes("'unsafe-inline'"), "style-src 本体无 'unsafe-inline'");
+    const live = extractHashes(privBuf);
+    ok(live.styles.length > 0, "/privacy/ 提取到内联 <style> 块", `实际 ${live.styles.length} 个`);
+    for (const t of [...new Set(live.styles)]) {
+      ok(allowed.includes(t), "隐私页 style hash 在 style-src 放行清单内（样式不会被 CSP 拦截）", t);
     }
   }
 

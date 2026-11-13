@@ -7,8 +7,10 @@
 //   node ops/headers/gen-headers.mjs --report-only [--out=ops/headers/_headers.report-only.txt]
 //   node ops/headers/gen-headers.mjs --no-csp   （§18.9 应急：仅删 CSP 一行，其余头保留）
 //
-// 规则（PHASE2_PLAN.md W2-18）：
-// - index.html 以字节流读入，不做任何规范化/换行转换（hash 对字节敏感）。
+// 规则（PHASE2_PLAN.md W2-18；W4-13 扩范围）：
+// - public/ 下全部 HTML 文件以字节流读入，不做任何规范化/换行转换（hash 对字节敏感）。
+//   产物 _headers 的 /* 组对全站生效，提取范围必须与策略生效范围一致（F4-14）：
+//   递归发现全部 .html、按相对路径排序，多文件 hash 取并集去重（首现顺序，稳定可复现）。
 // - 提取全部无 src 的 <script> 块（含 type="application/ld+json" 的 JSON-LD 块）
 //   与全部 <style> 块的原始字节，逐块算 SHA-256（Base64）拼入 CSP。
 // - 审计闸门：检出内联事件属性 / javascript: / eval( / new Function / document.write(
@@ -21,13 +23,14 @@
 // - 变体即契约（§18.4）：--variant 默认 off（WA-OFF）。WA 未启用时禁止生成 WA-ON 上线。
 
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync, existsSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { readFileSync, writeFileSync, existsSync, readdirSync } from "node:fs";
+import { dirname, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(HERE, "..", "..");
-const INDEX_PATH = resolve(ROOT, "public", "index.html");
+const PUBLIC_DIR = resolve(ROOT, "public");
+const INDEX_PATH = resolve(PUBLIC_DIR, "index.html"); // 模板 {{INDEX_SHA256}} 注释位仍填首页 sha256（向后兼容）
 const TMPL_PATH = resolve(HERE, "_headers.tmpl");
 const DEFAULT_OUT = resolve(ROOT, "public", "_headers");
 const DEFAULT_REPORT_ONLY_OUT = resolve(HERE, "_headers.report-only.txt");
@@ -66,13 +69,31 @@ function fail(msg) {
   process.exit(1);
 }
 
-// ---------- 字节级读入与块提取 ----------
+// ---------- 全站 HTML 发现与字节级读入（W4-13） ----------
 // latin1 解码保证字符串下标与字节下标 1:1 对齐，切片后按 latin1 回编即原始字节，hash 不失真。
-const indexBuf = readFileSync(INDEX_PATH);
-const doc = indexBuf.toString("latin1");
-const indexSha256 = createHash("sha256").update(indexBuf).digest("hex");
+function discoverHtmlFiles(dir) {
+  const found = [];
+  for (const entry of readdirSync(dir, { withFileTypes: true })) {
+    const full = resolve(dir, entry.name);
+    if (entry.isDirectory()) found.push(...discoverHtmlFiles(full));
+    else if (entry.isFile() && entry.name.toLowerCase().endsWith(".html")) found.push(full);
+  }
+  return found;
+}
+// 按相对路径（POSIX 分隔）字典序排序：与文件系统枚举顺序无关，结果稳定可复现。
+const pages = discoverHtmlFiles(PUBLIC_DIR)
+  .map((abs) => ({ abs, rel: relative(PUBLIC_DIR, abs).split(sep).join("/") }))
+  .sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0))
+  .map(({ abs, rel }) => {
+    const buf = readFileSync(abs);
+    return { abs, rel, label: `public/${rel}`, buf, doc: buf.toString("latin1") };
+  });
+if (pages.length === 0) fail("public/ 下未发现任何 HTML 文件——发现逻辑疑似失效，拒绝生成。");
+const indexPage = pages.find((p) => p.abs === INDEX_PATH);
+if (!indexPage) fail("public/index.html 不存在——模板 {{INDEX_SHA256}} 注释位无源可填，拒绝生成。");
+const indexSha256 = createHash("sha256").update(indexPage.buf).digest("hex");
 
-function extractBlocks() {
+function extractBlocks(doc) {
   const scripts = [];
   const styles = [];
   const re = /<(script|style)\b([^>]*)>([\s\S]*?)<\/\1\s*>/gi;
@@ -93,12 +114,18 @@ function extractBlocks() {
   return { scripts, styles };
 }
 
-const { scripts, styles } = extractBlocks();
-
-// 与脚本/样式内容剥离后的纯标记文本（审计事件属性、style 属性用，避免把 JS 字符串误判为标记属性）
-const markupOnly = doc
-  .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, (m0) => m0.slice(0, m0.indexOf(">") + 1) + "</script>")
-  .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, (m0) => m0.slice(0, m0.indexOf(">") + 1) + "</style>");
+// 逐文件提取后按「文件排序 → 文档内顺序」汇总；块带来源文件标签，审计报错可定位到页。
+const scripts = [];
+const styles = [];
+for (const page of pages) {
+  const r = extractBlocks(page.doc);
+  for (const s of r.scripts) scripts.push({ ...s, file: page.label });
+  for (const s of r.styles) styles.push({ ...s, file: page.label });
+  // 与脚本/样式内容剥离后的纯标记文本（审计事件属性、style 属性用，避免把 JS 字符串误判为标记属性）
+  page.markupOnly = page.doc
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script\s*>/gi, (m0) => m0.slice(0, m0.indexOf(">") + 1) + "</script>")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style\s*>/gi, (m0) => m0.slice(0, m0.indexOf(">") + 1) + "</style>");
+}
 
 function lineOf(text, offset) {
   return text.slice(0, offset).split("\n").length;
@@ -118,16 +145,16 @@ function scanAll(text, re, label, scope) {
     auditErrors.push(`[${label}] ${scope} 第 ${lineOf(text, m.index)} 行：${excerpt(text, m.index)}`);
   }
 }
-// 内联事件属性（onclick= 等）：只扫标记区——hash 覆盖不了事件属性，放行即防护塌方，必须先重构
-scanAll(markupOnly, /\son[a-z]+\s*=/gi, "内联事件属性", "index.html");
-// javascript: URL：全文扫（标记与脚本体都不许出现）
-scanAll(doc, /javascript\s*:/gi, "javascript: URL", "index.html");
-// eval / new Function / document.write：扫 script 块内容（'unsafe-eval' 永不放行）
+// 内联事件属性（onclick= 等）：逐文件只扫标记区——hash 覆盖不了事件属性，放行即防护塌方，必须先重构
+for (const page of pages) scanAll(page.markupOnly, /\son[a-z]+\s*=/gi, "内联事件属性", page.label);
+// javascript: URL：逐文件全文扫（标记与脚本体都不许出现）
+for (const page of pages) scanAll(page.doc, /javascript\s*:/gi, "javascript: URL", page.label);
+// eval / new Function / document.write：扫全部 script 块内容（'unsafe-eval' 永不放行）
 for (const s of scripts) {
   const bodyText = s.body.toString("latin1");
-  scanAll(bodyText, /\beval\s*\(/g, "eval(", "script 块");
-  scanAll(bodyText, /new\s+Function\s*\(/g, "new Function", "script 块");
-  scanAll(bodyText, /document\s*\.\s*write\s*\(/g, "document.write(", "script 块");
+  scanAll(bodyText, /\beval\s*\(/g, "eval(", `${s.file} script 块`);
+  scanAll(bodyText, /new\s+Function\s*\(/g, "new Function", `${s.file} script 块`);
+  scanAll(bodyText, /document\s*\.\s*write\s*\(/g, "document.write(", `${s.file} script 块`);
 }
 if (auditErrors.length > 0) {
   console.error(`[gen-headers] 审计闸门未通过（${auditErrors.length} 处），不生成任何产物：`);
@@ -141,7 +168,7 @@ if (scripts.length === 0) {
 
 // ---------- style 属性清单与例外决策（§18.1.2） ----------
 const STYLE_ATTR_RE = /\sstyle\s*=\s*("[^"]*"|'[^']*')/g;
-const styleAttrMarkup = (markupOnly.match(STYLE_ATTR_RE) || []).length;
+const styleAttrMarkup = pages.reduce((n, p) => n + (p.markupOnly.match(STYLE_ATTR_RE) || []).length, 0);
 const styleAttrInScripts = scripts.reduce(
   (n, s) => n + (s.body.toString("latin1").match(STYLE_ATTR_RE) || []).length,
   0
@@ -150,8 +177,10 @@ const styleAttrException = styleAttrMarkup + styleAttrInScripts > 0;
 
 // ---------- CSP 拼装（§18.1.2 逐指令定版） ----------
 const sha256Token = (buf) => `'sha256-${createHash("sha256").update(buf).digest("base64")}'`;
-const scriptHashes = scripts.map((s) => sha256Token(s.body)).join(" ");
-const styleHashes = styles.map((s) => sha256Token(s.body)).join(" ");
+// 多文件取并集去重：Set 保首现顺序（文件排序 → 文档内顺序），结果稳定可复现。
+const dedupJoin = (blocks) => [...new Set(blocks.map((s) => sha256Token(s.body)))].join(" ");
+const scriptHashes = dedupJoin(scripts);
+const styleHashes = dedupJoin(styles);
 const scriptSrc = `'self' ${scriptHashes}` + (variant === "on" ? " https://static.cloudflareinsights.com" : "");
 const styleSrc = `'self' ${styleHashes}`;
 const styleAttrSuffix = styleAttrException ? "; style-src-attr 'unsafe-inline'" : "";
@@ -204,12 +233,12 @@ if (check) {
   if (!existsSync(outPath)) fail(`--check：${outPath} 不存在，请先运行生成。`);
   const existing = readFileSync(outPath, "utf8");
   if (normalize(existing) === normalize(output)) {
-    console.log(`[gen-headers] --check 通过：${outPath} 与当前 index.html（${VARIANT_LABEL}${reportOnly ? "+report-only" : ""}${noCsp ? "+no-csp" : ""}）一致。`);
+    console.log(`[gen-headers] --check 通过：${outPath} 与当前全站 HTML（${VARIANT_LABEL}${reportOnly ? "+report-only" : ""}${noCsp ? "+no-csp" : ""}）一致。`);
     process.exit(0);
   }
   const a = normalize(existing).split("\n");
   const b = normalize(output).split("\n");
-  console.error(`[gen-headers] --check 不一致：${outPath} 与按当前 index.html 生成的结果不同：`);
+  console.error(`[gen-headers] --check 不一致：${outPath} 与按当前全站 HTML 生成的结果不同：`);
   for (let i = 0; i < Math.max(a.length, b.length); i++) {
     if (a[i] !== b[i]) {
       console.error(`  第 ${i + 1} 行 现有：${a[i] ?? "<无此行>"}`);
@@ -223,9 +252,9 @@ if (check) {
 writeFileSync(outPath, output);
 console.log(`[gen-headers] 已生成 ${outPath}`);
 console.log(`  变体：${VARIANT_LABEL}${reportOnly ? "（Report-Only 预演）" : ""}${noCsp ? "（--no-csp 应急：无 CSP 行）" : ""}`);
-console.log(`  index.html：${indexBuf.length} 字节 sha256=${indexSha256}`);
+console.log(`  全站 HTML ${pages.length} 个：${pages.map((p) => `${p.label}（${p.buf.length} 字节）`).join("、")}`);
 console.log(
-  `  script 块 ${scripts.length} 个（${scripts.map((s) => `${s.type || "inline"}/${s.body.length}B`).join(", ")}），style 块 ${styles.length} 个（${styles.map((s) => `${s.body.length}B`).join(", ")}）`
+  `  script 块 ${scripts.length} 个（${scripts.map((s) => `${s.file}:${s.type || "inline"}/${s.body.length}B`).join(", ")}），style 块 ${styles.length} 个（${styles.map((s) => `${s.file}:${s.body.length}B`).join(", ")}）`
 );
 console.log(
   `  style 属性：静态标记 ${styleAttrMarkup} 处 + JS 生成 ${styleAttrInScripts} 处 → style-src-attr 例外${styleAttrException ? "已启用（TODO-W2-18）" : "未触发"}`
