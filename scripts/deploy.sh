@@ -28,6 +28,21 @@ cd "$(dirname "$0")/.."
 PROJECT_ROOT="$(pwd)"
 echo "[deploy] 环境=$ENV_NAME 分支=$BRANCH 项目根=$PROJECT_ROOT"
 
+# >>> W4-04 测试门禁（开始）——本段自成一段：激活 rebase 时整段搬到数据门禁之前即可<<<
+# 部署前先跑全部测试套件（scripts/run-tests.sh），fail-closed：任一失败即中止、非零退出、不产生部署。
+# 留痕绕过通道：DEPLOY_SKIP_TESTS=1（仿 DEPLOY_SKIP_META_CHECK；使用时须在 CHANGELOG 该行注明绕过原因）。
+if [ "${DEPLOY_SKIP_TESTS:-0}" = "1" ]; then
+  echo "[deploy] 警告：DEPLOY_SKIP_TESTS=1 已设置，跳过 W4-04 测试门禁（留痕通道：请在 CHANGELOG 该行注明绕过原因）"
+else
+  TEST_GATE_START=$SECONDS
+  if ! bash scripts/run-tests.sh; then
+    echo "[deploy] 错误：W4-04 测试门禁未通过，部署中止，未产生任何部署。" >&2
+    exit 1
+  fi
+  echo "[deploy] W4-04 测试门禁通过（耗时 $((SECONDS - TEST_GATE_START))s）"
+fi
+# <<< W4-04 测试门禁（结束）>>>
+
 # (b) 数据一致性门禁（v2）：只验不改。不一致即中止，同步是 build.py 的职责。
 SRC_HASH="$(sha256sum data/coins.json | cut -d' ' -f1)"
 OUT_HASH="$(sha256sum public/data/coins.json | cut -d' ' -f1)"
