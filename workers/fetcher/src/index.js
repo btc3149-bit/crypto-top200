@@ -1,4 +1,4 @@
-// workers/fetcher/src/index.js — crypto-top200-fetcher（W2-01/W2-02/W2-03；W4-01/W4-10）
+// workers/fetcher/src/index.js — crypto-top200-fetcher（W2-01/W2-02/W2-03；W4-01/W4-10/W4-08）
 // 全球唯一抓取者：Cron */10 * * * * → 抓 CoinGecko（markets 每 run、global 30min）
 // → 覆盖率 ≥94% 且结构校验通过才写 KV 单 blob；任一失败保留旧 blob、只更新 health。
 // W4-10 KV 版本化：成功写 blob 前，先把上一版 blob 原样存入对应的 prev 键
@@ -17,6 +17,7 @@ KV_KEYS,
 COVERAGE_RATIO,
 buildBlob,
 validateBlob,
+fieldQualityFor,
 emptyHealth,
 healthStatusFor,
 toIso,
@@ -275,6 +276,28 @@ upstreamStatus: mVal.upstreamStatus,
 }),
 { provider, quotaMode: quotaPre.quotaMode}
 );
+}
+
+// W4-08 字段级非空率门禁（写 KV 前校验，与 board/validateBlob 共用 fieldQualityFor，阈值 99%）：
+// fail 档（价格/市值/rank 任一非空率 <99%）→ 拒绝写坏 blob，走 finishFail 记 health 错误
+// （consecutiveFailures+1、lastError.code=field_quality_insufficient），旧 blob 保留；
+// warn 档（≥99% 但 <100%，例：200 币 2 个 rank=null）→ 只记 WARN 日志，照常写 blob。
+const fieldQuality = fieldQualityFor(mVal.rows || []);
+if (fieldQuality.status === "fail") {
+return finishFail(
+failResult({
+runId,
+startedAt,
+stage: "validate",
+code: "field_quality_insufficient",
+message: `field non-empty rates below 99% gate: price=${fieldQuality.rates.price} mcapUsd=${fieldQuality.rates.mcapUsd} rank=${fieldQuality.rates.rank} (failing: ${fieldQuality.failingFields.join(",")})`,
+upstreamStatus: mVal.upstreamStatus,
+}),
+{ provider, quotaMode: quotaPre.quotaMode}
+);
+}
+if (fieldQuality.status === "warn") {
+logEvent({ level: "warn", event: "field_quality_warn", runId, rates: fieldQuality.rates, warnFields: fieldQuality.warnFields});
 }
 
 // 成功：组装 blob（buildBlob 单入口 + _src 断言）→ 校验 → 写 KV
