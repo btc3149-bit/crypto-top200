@@ -8,7 +8,8 @@
 //   S1 响应头存在性：/ 的 CSP 静态指令 + §18.1.3 全表逐项等于定版值、HSTS 只出现一次；
 //      /data/coins.json 分组头组在位。
 //   S2 线上字节自洽：抓线上 / 的 HTML 原始字节，用与 gen-headers.mjs 同一提取算法重算
-//      hash 集合，断言与线上 CSP 头中的 hash 集合完全相等（专抓边缘改写/产物不一致）。
+//      hash 集合，断言页面每个 hash 都在 CSP 放行清单内（子集断言；W4-13 起 CSP 为全站
+//      并集，单页集合是其子集，原「完全相等」口径已废止）。专抓边缘改写/产物不一致。
 //   S3 功能探针：需无头浏览器（表格渲染行数、控制台零 CSP 违规）。本脚本为标准库 only、
 //      无 puppeteer/CDP 客户端，恒为 SKIPPED 并注明须由协调者/浏览器侧补验，不得假报通过。
 //   S4 API 头组：/api/board GET 期望 200、非 GET（POST）期望 405，两路均断言 §18.3 头组在位。
@@ -130,8 +131,12 @@ async function main() {
     const live = extractHashes(homeBuf);
     const cspScript = hashTokens(cspDirective(csp, "script-src"));
     const cspStyle = hashTokens(cspDirective(csp, "style-src"));
-    ok(sameSet([...live.scripts].sort(), cspScript), "script hash 集合完全相等", `线上重算 ${live.scripts.length} 个 / CSP ${cspScript.length} 个`);
-    ok(sameSet([...live.styles].sort(), cspStyle), "style hash 集合完全相等", `线上重算 ${live.styles.length} 个 / CSP ${cspStyle.length} 个`);
+    // W4-13 集成修正：CSP 自 W4-13 起为全站 HTML 的 hash 并集，单页重算集合只是其子集，
+    // 原「完全相等」断言必然误报。改子集断言：页面每个 hash 必须在 CSP 放行清单内
+    // （与 S6 同口径；CSP 侧多出的 hash 来自其他页面，属预期）。
+    const isSubset = (pageHashes, cspHashes) => [...pageHashes].every((h) => cspHashes.includes(h));
+    ok(isSubset(live.scripts, cspScript), "script hash 逐个在 CSP 放行清单内（子集断言）", `线上重算 ${live.scripts.length} 个 / CSP ${cspScript.length} 个`);
+    ok(isSubset(live.styles, cspStyle), "style hash 逐个在 CSP 放行清单内（子集断言）", `线上重算 ${live.styles.length} 个 / CSP ${cspStyle.length} 个`);
   }
 
   if (want("S3")) {
