@@ -11,7 +11,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
-from pipeline_config import AUDIT_BAND, DEVIATION_TOL  # noqa: E402
+from pipeline_config import AUDIT_BAND, DEVIATION_TOL, REPORT_URL  # noqa: E402
 
 VERSION = "1.0.0"
 CALLS = {"cg_markets_top250": 0, "cg_markets_ids": 0, "cg_list": 0, "coincap_assets": 0}
@@ -29,6 +29,17 @@ def fetch_json(url, headers=None, timeout=90):
 def cg_headers():
     key = os.environ.get("COINGECKO_API_KEY", "")
     return {"x-cg-demo-api-key": key} if key else {}
+
+def fetch_http_status(url, timeout=30):
+    """只取 HTTP 状态码（跟随重定向，不下载 body），取不到返回 None。供 REPORT_URL 外链健康检查用（W4-26）。"""
+    cmd = ["curl", "-sL", "-o", "/dev/null", "-w", "%{http_code}", "-m", str(timeout), url]
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        return None
+    try:
+        return int(r.stdout.strip())
+    except ValueError:
+        return None
 
 def main():
     args = sys.argv[1:]
@@ -144,6 +155,19 @@ def main():
         if e.get("status") == "active" and e.get("reviewDue", "9999") < run_date.isoformat():
             due.append(e["symbol"])
 
+    # REPORT_URL 外链健康（W4-26 / F4-40）：只读检查，不影响名单进出逻辑、不写任何生产数据。
+    # REPORT_URL 唯一控制点在 pipeline_config.py；为空表示未配置回链，记跳过、不算 WARN。
+    report_url_warn = 0
+    if not REPORT_URL:
+        report_url_line = "未配置（REPORT_URL 为空，跳过）"
+    else:
+        report_status = fetch_http_status(REPORT_URL)
+        if report_status == 200:
+            report_url_line = "OK（HTTP 200）"
+        else:
+            report_url_warn = 1
+            report_url_line = f"WARN（HTTP {report_status if report_status is not None else '无响应/请求失败'}，非 200）"
+
     state["updatedAt"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
     state["lastRunWeek"] = week_label
     state_path.parent.mkdir(parents=True, exist_ok=True)
@@ -154,7 +178,7 @@ def main():
         f"# 名单周检 {week_label}（运行：{now} · 执行：weekly_check.py v{VERSION} · 数据：CoinGecko {'Demo key' if os.environ.get('COINGECKO_API_KEY') else '匿名'}）",
         "",
         "## 结论",
-        f"告警 {len(alerts)} 条 / 候选移入 {len(cand_in)} 个 / 候选移出 {len(cand_out)} 个 / 人工队列 {len(queue)} 条 / override 到期 {len(due)} 条" + (f"；incomplete 缺项 {len(incomplete)}：{'；'.join(incomplete)}" if incomplete else ""),
+        f"告警 {len(alerts)} 条 / 候选移入 {len(cand_in)} 个 / 候选移出 {len(cand_out)} 个 / 人工队列 {len(queue)} 条 / override 到期 {len(due)} 条" + (f"；外链 WARN {report_url_warn} 条（REPORT_URL 非 200，见运行元信息）" if report_url_warn else "") + (f"；incomplete 缺项 {len(incomplete)}：{'；'.join(incomplete)}" if incomplete else ""),
         "",
         "## A. 告警",
         *([f"- {s}（id={i}，上周状态：{p}）：{a}" for s, i, p, a in alerts] or ["- 无"]),
@@ -177,13 +201,14 @@ def main():
         "## E. 运行元信息",
         f"端点调用次数：{json.dumps(CALLS, ensure_ascii=False)}",
         f"C6 CoinCap 第二源：状态={c6_status}，已比对 {c6_checked} 币，跳过 {c6_skipped} 币（跳过不算失败）",
+        f"REPORT_URL 外链健康：{report_url_line}（控制点 scripts/pipeline_config.py，非 200 记 WARN 并计入结论提示）",
         f"incomplete 缺项：{incomplete if incomplete else '无'}",
         f"state.json 变更摘要：watchOut {len(new_out)} 个、watchIn {len(new_in)} 个、driftMarked 累计 {len(state['driftMarked'])} 个、lastRunWeek={week_label}",
         "注记：本周为首跑基准周（state 以 2026-11-10 名单为第 0 周基准），进出连续计数从 1 起算属预期；周号按 ISO 8601（2026-11-10 属 ISO 第 46 周）。",
     ]
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"weekly_check {week_label}: alerts={len(alerts)} cand_in={len(cand_in)} cand_out={len(cand_out)} queue={len(queue)} due={len(due)} incomplete={len(incomplete)}")
+    print(f"weekly_check {week_label}: alerts={len(alerts)} cand_in={len(cand_in)} cand_out={len(cand_out)} queue={len(queue)} due={len(due)} incomplete={len(incomplete)} report_url_warn={report_url_warn}")
     print(f"report -> {out_path}")
     return 0
 
