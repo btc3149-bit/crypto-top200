@@ -4,10 +4,13 @@
 # 每次运行把一行 JSON 结果（时间戳、各断言结果、总判定）追加写入项目 ops/probe-log.jsonl。
 #
 # 新鲜度判定：
-# - updatedAt 距今 ≤15 分钟 → PASS
+# - updatedAt 距今 ≤staleSec（shared/health-thresholds.json 定版 900 秒，与 /api/health 同值）→ PASS
 # - mode=stale 且 staleAgeSec ≤3600 → WARN（降级警告，不算 FAIL；无 mode 字段时以 stale=true + 年龄 ≤3600 等价判定）
 # - mode=snapshot → FAIL（接口未生效、只有快照）
 # - 其余（年龄超限 / body 不可解析等）→ FAIL
+# 覆盖率判定：returned ≥ 期望数 × passRatio（同一 JSON 定版 1.0，即必须等于期望数，不再用旧 94%）。
+# W4-02 额度预警：另读 /api/health 的 quota.daysToExhaust——≤7 天在输出中附 WARNING 段
+# （verdict 至多降为 warn）；≤3 天使总判定 fail（退出码 1）。字段缺失（旧版 health）时跳过、不报错。
 # 总判定：任一 FAIL → fail；无 FAIL 但有 WARN → warn；全过 → pass。退出码：fail 时 1，其余 0。
 #
 # 告警邮箱预留：读环境变量 PROBE_ALERT_EMAIL。未设置时结果行标注 "alert": "skipped-no-email"；
@@ -30,9 +33,15 @@ case "${PROBE_ALERT_EMAIL:-}" in
 *) ALERT="would-email";;
 esac
 
+# W4-06：阈值与 health.js / smoke.sh 共用同一口径源（读不到时 fail-closed 取最严值）。
+COVERAGE_PASS_RATIO="$(python3 -c "import json; print(json.load(open('shared/health-thresholds.json',encoding='utf-8'))['coverage']['passRatio'])" 2>/dev/null || echo 1.0)"
+STALE_SEC="$(python3 -c "import json; print(json.load(open('shared/health-thresholds.json',encoding='utf-8'))['staleSec'])" 2>/dev/null || echo 900)"
+
 curl -sS -m 30 -D "$TMPD/board.headers" -o "$TMPD/board.json" -w "%{http_code}" "${BASE}/api/board" > "$TMPD/board.code" 2>/dev/null || echo "000" > "$TMPD/board.code"
 curl -sS -m 30 -o "$TMPD/home.html" -w "%{http_code}" "${BASE}/" > "$TMPD/home.code" 2>/dev/null || echo "000" > "$TMPD/home.code"
 curl -sS -m 30 -o "$TMPD/coins.json" -w "%{http_code}" "${BASE}/data/coins.json" > "$TMPD/coins.code" 2>/dev/null || echo "000" > "$TMPD/coins.code"
+# W4-02：/api/health 的 quota 字段（健康时 200、不健康时 503，两者 body 均含 quota；旧版无此字段则跳过）
+curl -sS -m 30 -o "$TMPD/health.json" "${BASE}/api/health" > /dev/null 2>&1 || true
 BOARD_CODE="$(cat "$TMPD/board.code")"
 HOME_CODE="$(cat "$TMPD/home.code")"
 DATA_CODE="$(cat "$TMPD/coins.code")"
@@ -59,8 +68,8 @@ if grep -qi '<!DOCTYPE html' "$BOARD_BODY"; then
 C_NOHTML="fail"
 fi
 
-# 4) coverage.returned ≥ 期望数（/data/coins.json 的 coins 长度）的 94%
-C_COV="$(python3 -c "import json,sys; e=len(json.load(open(sys.argv[2],encoding='utf-8'))['coins']); r=json.load(open(sys.argv[1],encoding='utf-8'))['coverage']['returned']; print('pass' if r >= e * 0.94 else 'fail')" "$BOARD_BODY" "$DATA_BODY" 2>/dev/null || echo fail)"
+# 4) coverage.returned ≥ 期望数（/data/coins.json 的 coins 长度）× passRatio（JSON 定版 1.0）
+C_COV="$(python3 -c "import json,sys; e=len(json.load(open(sys.argv[2],encoding='utf-8'))['coins']); r=json.load(open(sys.argv[1],encoding='utf-8'))['coverage']['returned']; print('pass' if r >= e * float(sys.argv[3]) else 'fail')" "$BOARD_BODY" "$DATA_BODY" "$COVERAGE_PASS_RATIO" 2>/dev/null || echo fail)"
 
 # 5) 首页 200 且含标题关键字
 C_HOME="fail"
@@ -88,11 +97,20 @@ fail/fail)
 FRESH_OUT="fail:board body 不是 JSON（疑似 HTML 冒充接口）"
 ;;
 *)
-FRESH_OUT="$(python3 -c "import json,sys,time,datetime; b=json.load(open(sys.argv[1],encoding='utf-8')); mode=b.get('mode'); raw=b.get('updatedAt'); ts=(raw/1000.0 if raw > 1e12 else float(raw)) if isinstance(raw,(int,float)) else (datetime.datetime.fromisoformat(raw.replace('Z','+00:00')).timestamp() if isinstance(raw,str) else None); age=(time.time()-ts) if ts is not None else None; sa=b.get('staleAgeSec'); print('fail:mode=snapshot（接口未生效，只有快照数据）' if mode=='snapshot' else 'fail:updatedAt 缺失或不可解析' if age is None else 'pass:updatedAt 距今 ' + str(int(age)) + 's（≤15 分钟）' if age <= 900 else 'warn:mode=stale，staleAgeSec=' + str(sa) + '（≤3600，降级警告）' if (mode=='stale' and sa is not None and sa <= 3600) else 'warn:stale=true，数据年龄 ' + str(int(sa if sa is not None else age)) + 's（≤3600，降级警告）' if (b.get('stale') is True and (sa if sa is not None else age) <= 3600) else 'fail:updatedAt 距今 ' + str(int(age)) + 's，超过新鲜度上限')" "$BOARD_BODY" 2>/dev/null || echo "fail:新鲜度计算失败（updatedAt 不可解析）")"
+FRESH_OUT="$(python3 -c "import json,sys,time,datetime; lim=int(sys.argv[2]); b=json.load(open(sys.argv[1],encoding='utf-8')); mode=b.get('mode'); raw=b.get('updatedAt'); ts=(raw/1000.0 if raw > 1e12 else float(raw)) if isinstance(raw,(int,float)) else (datetime.datetime.fromisoformat(raw.replace('Z','+00:00')).timestamp() if isinstance(raw,str) else None); age=(time.time()-ts) if ts is not None else None; sa=b.get('staleAgeSec'); print('fail:mode=snapshot（接口未生效，只有快照数据）' if mode=='snapshot' else 'fail:updatedAt 缺失或不可解析' if age is None else 'pass:updatedAt 距今 ' + str(int(age)) + 's（≤' + str(lim) + 's）' if age <= lim else 'warn:mode=stale，staleAgeSec=' + str(sa) + '（≤3600，降级警告）' if (mode=='stale' and sa is not None and sa <= 3600) else 'warn:stale=true，数据年龄 ' + str(int(sa if sa is not None else age)) + 's（≤3600，降级警告）' if (b.get('stale') is True and (sa if sa is not None else age) <= 3600) else 'fail:updatedAt 距今 ' + str(int(age)) + 's，超过新鲜度上限')" "$BOARD_BODY" "$STALE_SEC" 2>/dev/null || echo "fail:新鲜度计算失败（updatedAt 不可解析）")"
 ;;
 esac
 C_FRESH="${FRESH_OUT%%:*}"
 FRESH_NOTE="${FRESH_OUT#*:}"
+
+# 8) W4-02 额度预警：读 /api/health 的 daysToExhaust（quota 子对象优先、顶层兜底）；
+# 输出 none | ok:天数 | warn:天数（≤7） | fail:天数（≤3）；字段缺失/不可解析 → none（保持旧行为不报错）
+QUOTA_OUT="$(python3 -c "import json,sys; b=json.load(open(sys.argv[1],encoding='utf-8')); q=b.get('quota') if isinstance(b.get('quota'),dict) else {}; d=q.get('daysToExhaust', b.get('daysToExhaust')); print('none' if not isinstance(d,(int,float)) else 'fail:'+str(int(d)) if d<=3 else 'warn:'+str(int(d)) if d<=7 else 'ok:'+str(int(d)))" "$TMPD/health.json" 2>/dev/null || echo none)"
+C_QUOTA="${QUOTA_OUT%%:*}"
+QUOTA_DAYS="${QUOTA_OUT#*:}"
+case "$C_QUOTA" in
+none) C_QUOTA="skipped"; QUOTA_DAYS="";;
+esac
 
 # 逐项打印
 echo "probe base=$BASE"
@@ -103,6 +121,7 @@ echo " coverage: $C_COV"
 echo " home: $C_HOME"
 echo " data_json: $C_DATA"
 echo " freshness: $C_FRESH ($FRESH_NOTE)"
+echo " quota_days_to_exhaust: $C_QUOTA $QUOTA_DAYS"
 
 # 总判定
 VERDICT="pass"
@@ -116,10 +135,23 @@ case "$v" in
 fail) VERDICT="fail";;
 esac
 done
+# W4-02：额度击穿 ≤7 天 → 附 WARNING 段（verdict 至多降为 warn）；≤3 天 → 总判定 fail（只告警、不自动停抓）
+case "$C_QUOTA" in
+warn)
+echo " WARNING: CoinGecko 额度投影击穿日临近：daysToExhaust=$QUOTA_DAYS 天（预警线 ≤7 天）——详见 /api/health 的 quota.totalProjected / projectedExhaustDate"
+case "$VERDICT" in
+pass) VERDICT="warn";;
+esac
+;;
+fail)
+echo " WARNING: CoinGecko 额度投影击穿日 ≤3 天：daysToExhaust=$QUOTA_DAYS 天——探针判 fail（仅告警，不自动停抓）"
+VERDICT="fail"
+;;
+esac
 echo " verdict: $VERDICT (alert: $ALERT)"
 
 # 追加一行 JSON 结果到 ops/probe-log.jsonl，并把该行打印出来
-python3 -c "import json,sys,datetime; line={'ts': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'base': sys.argv[2], 'checks': {'api_status_content_type': sys.argv[3], 'api_json_keys': sys.argv[4], 'api_no_html': sys.argv[5], 'coverage': sys.argv[6], 'home': sys.argv[7], 'data_json': sys.argv[8], 'freshness': sys.argv[9]}, 'freshnessNote': sys.argv[10], 'verdict': sys.argv[11], 'alert': sys.argv[12]}; open(sys.argv[1],'a',encoding='utf-8').write(json.dumps(line,ensure_ascii=False) + chr(10)); print(json.dumps(line,ensure_ascii=False))" "$LOG_FILE" "$BASE" "$C_API" "$C_KEYS" "$C_NOHTML" "$C_COV" "$C_HOME" "$C_DATA" "$C_FRESH" "$FRESH_NOTE" "$VERDICT" "$ALERT"
+python3 -c "import json,sys,datetime; line={'ts': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'base': sys.argv[2], 'checks': {'api_status_content_type': sys.argv[3], 'api_json_keys': sys.argv[4], 'api_no_html': sys.argv[5], 'coverage': sys.argv[6], 'home': sys.argv[7], 'data_json': sys.argv[8], 'freshness': sys.argv[9], 'quota': sys.argv[13]}, 'quotaDaysToExhaust': (int(sys.argv[14]) if sys.argv[14].isdigit() else None), 'freshnessNote': sys.argv[10], 'verdict': sys.argv[11], 'alert': sys.argv[12]}; open(sys.argv[1],'a',encoding='utf-8').write(json.dumps(line,ensure_ascii=False) + chr(10)); print(json.dumps(line,ensure_ascii=False))" "$LOG_FILE" "$BASE" "$C_API" "$C_KEYS" "$C_NOHTML" "$C_COV" "$C_HOME" "$C_DATA" "$C_FRESH" "$FRESH_NOTE" "$VERDICT" "$ALERT" "$C_QUOTA" "$QUOTA_DAYS"
 
 case "$VERDICT" in
 fail) exit 1;;

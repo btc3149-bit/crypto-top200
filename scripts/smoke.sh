@@ -5,7 +5,9 @@
 #   1. GET /api/board 返回 200 且 Content-Type 含 application/json
 #   2. /api/board body 可解析为 JSON 且含 keys：coins、updatedAt、coverage
 #   3. /api/board body 不含 "<!DOCTYPE html"（负向断言，防 HTML 冒充接口——2026-11-10 故障形态）
-#   4. coverage.returned 与币数一致性：returned ≥ 期望数的 94%（期望数 = 基址 /data/coins.json 的 coins 长度）
+#   4. coverage.returned 与币数一致性：returned ≥ 期望数 × passRatio（期望数 = 基址 /data/coins.json 的 coins 长度；
+#      passRatio 自 shared/health-thresholds.json 读，W4-06 定版 1.0，即 returned 必须等于期望数，
+#      与 /api/health 同口径，不再保留旧 94% 容忍——门禁不得比监控松，见 ops/health-thresholds.md）
 #   5. GET / 返回 200 且含 "市值前 200 币种" 字样
 #   6. GET /data/coins.json 返回 200 且 JSON 可解析
 set -uo pipefail
@@ -15,6 +17,11 @@ BASE="${BASE%/}"
 TMPDIR_SMOKE="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_SMOKE"' EXIT
 FAILURES=0
+
+# W4-06：覆盖率阈值与 health.js / probe.sh 共用同一口径源 shared/health-thresholds.json。
+# 读不到 JSON 时 fail-closed 取 1.0（最严），绝不回退旧 94% 容忍。
+REPO_ROOT_SMOKE="$(cd "$(dirname "$0")/.." && pwd)"
+COVERAGE_PASS_RATIO="$(python3 -c "import json,sys; print(json.load(open(sys.argv[1],encoding='utf-8'))['coverage']['passRatio'])" "$REPO_ROOT_SMOKE/shared/health-thresholds.json" 2>/dev/null || echo 1.0)"
 
 pass() { echo "PASS: $1"; }
 fail() { echo "FAIL: $1"; FAILURES=$((FAILURES + 1)); }
@@ -70,8 +77,8 @@ else
   pass "③ /api/board body 不含 <!DOCTYPE html"
 fi
 
-# ---- 断言 4：coverage.returned ≥ 期望币数（/data/coins.json 的 coins 长度）的 94% ----
-COVERAGE_RESULT="$(python3 - "$BOARD_BODY" "$DATA_BODY" <<'PY'
+# ---- 断言 4：coverage.returned ≥ 期望币数（/data/coins.json 的 coins 长度）× passRatio（JSON 定版 1.0） ----
+COVERAGE_RESULT="$(python3 - "$BOARD_BODY" "$DATA_BODY" "$COVERAGE_PASS_RATIO" <<'PY'
 import json, sys
 try:
     expected = len(json.load(open(sys.argv[2], encoding="utf-8"))["coins"])
@@ -84,11 +91,12 @@ try:
 except Exception as e:
     print(f"FAIL:coverage.returned 不可得（{e}）；期望币数={expected}")
     sys.exit(0)
-threshold = expected * 0.94
+ratio = float(sys.argv[3])
+threshold = expected * ratio
 if returned >= threshold:
-    print(f"OK:returned={returned} 期望={expected} 阈值(94%)={threshold:.1f}")
+    print(f"OK:returned={returned} 期望={expected} 阈值(passRatio={ratio})={threshold:.1f}")
 else:
-    print(f"FAIL:returned={returned} < 期望 {expected} 的 94%（{threshold:.1f}）")
+    print(f"FAIL:returned={returned} < 期望 {expected} × passRatio {ratio}（{threshold:.1f}）")
 PY
 )"
 case "$COVERAGE_RESULT" in
