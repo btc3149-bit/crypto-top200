@@ -11,6 +11,10 @@ rowHTML + fmtPrice/fmtMcap/athCellHTML/multCellHTML/confCellHTML 的输出，
 仅多一个 data-snapshot="1" 属性。一致性由 tests/snapshot-verify.mjs 用 node
 桩跑前端 rowHTML 逐行 diff 保证（diff 必须为 0）。
 
+W4-19：另以标记式幂等渲染维护首屏口径区——DATAASOF「数据截至」行与
+CALIBER 口径摘要折叠块；两者文案均由 coins.json 逐币 dataDate 分布与
+meta.estimateWindow 现算，日期不写死在本脚本内，换数据自动更新。
+
 健壮性（方案写死）：标记缺失/重复、源条数 != EXPECTED_TOTAL、REPORT_URL 非 https
 → 非零退出中止，不写文件。重复运行幂等（只替换标记区与状态横幅文案）。
 退出码：0 成功；2 输入/结构错误。
@@ -18,6 +22,7 @@ rowHTML + fmtPrice/fmtMcap/athCellHTML/multCellHTML/confCellHTML 的输出，
 import json
 import re
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 import math
 from decimal import Decimal, ROUND_HALF_UP
@@ -236,6 +241,67 @@ def apply_report_links(html, url):
     return html
 
 
+# ---------------- W4-19 首屏口径区（DATAASOF + CALIBER） ----------------
+
+def data_asof_summary(coins):
+    """逐币 dataDate 分布 → 口径摘要串（日期与计数全由数据现算，不写死）。
+
+    日期升序排列：最早一档为报告快照口径、其后各档为补位核验口径；
+    无 dataDate 的币如实单列「未标注日期」，分布变化时文案随之变化。
+    """
+    counts = Counter(c.get("dataDate") or None for c in coins)
+    dated = sorted(d for d in counts if d)
+    parts = []
+    for i, d in enumerate(dated):
+        label = "快照" if i == 0 else "核验"
+        parts.append(f"{d} {label}（{counts[d]} 个币）")
+    if None in counts:
+        parts.append(f"未标注日期（{counts[None]} 个币）")
+    return "、".join(parts)
+
+
+def data_asof_html(coins):
+    return (f'<!-- DATAASOF -->\n<div class="data-asof" id="dataAsof">'
+            f"数据截至：{esc(data_asof_summary(coins))} · 逐币日期见展开详情；"
+            f"快照价为报告编制口径，实时价按 CoinGecko 实时行情重算，"
+            f"两者并列时请认口径日期。</div>")
+
+
+def caliber_html(coins, meta):
+    """口径摘要折叠块：预估窗口取 meta.estimateWindow、其余事实与页内方法论同口径。"""
+    window = (meta or {}).get("estimateWindow")
+    window_part = f"<p>预估窗口：{esc(window)}</p>" if window else ""
+    return (f'<!-- CALIBER -->\n<details class="caliber" id="caliberSummary">'
+            f"<summary>先看口径：这是什么数据</summary>"
+            f"{window_part}"
+            f"<p>快照口径日期：{esc(data_asof_summary(coins))}（逐币日期见展开详情）；"
+            f"快照价／市值为报告编制时的固定口径，老币为日收盘快照、补位批为实盘核验，"
+            f"与页面下方方法论一致。</p>"
+            f"<p>实时价与快照价的区别：实时价、市值与倍数按 CoinGecko 实时行情重算，"
+            f"与快照价不是同一时点；行情暂不可达时回退到最近一次缓存并标注「缓存数据」，"
+            f"或以快照价计算并标注。</p>"
+            f"<p>本页为历史周期分析推演，不构成投资建议。</p></details>")
+
+
+def apply_data_asof(html, coins, meta):
+    """DATAASOF / CALIBER 两落点整段渲染，幂等；标记缺失或重复 → ValueError。"""
+    for marker, pat, repl in (
+        ("<!-- DATAASOF -->",
+         r'<!-- DATAASOF -->(?:\n<div class="data-asof"[^>]*>.*?</div>)?',
+         data_asof_html(coins)),
+        ("<!-- CALIBER -->",
+         r'<!-- CALIBER -->(?:\n<details class="caliber"[^>]*>.*?</details>)?',
+         caliber_html(coins, meta)),
+    ):
+        if html.count(marker) != 1:
+            raise ValueError(
+                f"口径区落点标记 {marker} 缺失或重复（n={html.count(marker)}）")
+        html, n = re.subn(pat, lambda m: repl, html, count=1, flags=re.S)
+        if n != 1:
+            raise ValueError(f"口径区落点标记 {marker} 渲染失败（n={n}）")
+    return html
+
+
 # ---------------- 主流程 ----------------
 
 class SnapshotError(Exception):
@@ -276,6 +342,7 @@ def run(coins_path, html_path, report_url=None):
     url = REPORT_URL if report_url is None else report_url
     try:
         html = apply_report_links(html, url)
+        html = apply_data_asof(html, coins, doc.get("meta") or {})
     except ValueError as e:
         raise SnapshotError(str(e))
     html_path.write_text(html, encoding="utf-8")
