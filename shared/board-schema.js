@@ -11,8 +11,50 @@ export const KV_KEYS = {
   shadowPrev: "v1:board:shadow:prev",
   health: "v1:meta:health",
   sourceState: "v1:config:source-state",
+  // W4-02：legacy 路径回源计数键（board.js Function 唯一写键，见 board.js 内的约定突破注释）。
+  legacyCredits: "v1:meta:legacy-credits",
 };
 export const COVERAGE_RATIO = 0.94; // 沿用一期门禁
+
+// W4-08 字段级非空率门禁：价格 / 市值 / rank 三字段非空率 ≥99% 方为 pass。
+// 两档口径（定版，见 ops/health-thresholds.md 同批说明）：
+//   - 任一字段非空率 < 99%（FIELD_NONEMPTY_MIN_RATIO）→ fail（blob 不得过门禁）；
+//   - 全部 ≥99% 但任一 <100% → warn（可过门禁，但必须记 WARN——2026-11-13 实测
+//     200 币中 2 个 rank=null 即此档：198/200=99%，旧门禁对此完全失明）；
+//   - 全部 =100% → pass。
+export const FIELD_NONEMPTY_MIN_RATIO = 0.99;
+export const FIELD_GATE_FIELDS = ["price", "mcapUsd", "rank"];
+
+function isNonEmptyFieldValue(v) {
+  if (v == null) return false;
+  if (typeof v === "number" && !Number.isFinite(v)) return false;
+  return true;
+}
+
+// rows: [{price, mcapUsd, rank, ...}]（blob rows 或 legacy coins 字典的 values 均可）。
+// 返回 {total, rates, nonEmpty, status: "pass"|"warn"|"fail", failingFields, warnFields}。
+// total=0 时不判 fail（行数问题归覆盖率门禁管），status="pass" 且 rates 全 1。
+export function fieldQualityFor(rows) {
+  const list = Array.isArray(rows) ? rows : [];
+  const total = list.length;
+  const nonEmpty = { price: 0, mcapUsd: 0, rank: 0 };
+  for (const r of list) {
+    if (!r || typeof r !== "object") continue;
+    for (const f of FIELD_GATE_FIELDS) {
+      if (isNonEmptyFieldValue(r[f])) nonEmpty[f] += 1;
+    }
+  }
+  const rates = {};
+  for (const f of FIELD_GATE_FIELDS) {
+    rates[f] = total ? nonEmpty[f] / total : 1;
+  }
+  const failingFields = FIELD_GATE_FIELDS.filter((f) => rates[f] < FIELD_NONEMPTY_MIN_RATIO);
+  const warnFields = FIELD_GATE_FIELDS.filter(
+    (f) => rates[f] >= FIELD_NONEMPTY_MIN_RATIO && rates[f] < 1
+  );
+  const status = failingFields.length ? "fail" : warnFields.length ? "warn" : "pass";
+  return { total, rates, nonEmpty, status, failingFields, warnFields };
+}
 export const SNAPSHOT_DATE = "2026-11-08";
 
 // W2-02 §2 新鲜度阈值（秒）：集中一处，调参只改此处。
@@ -202,6 +244,11 @@ export function validateBlob(blob) {
         break;
       }
     }
+    // W4-08：字段级非空率门禁（与 fetcher 写前校验、board legacy 判定共用同一函数）。
+    // fail 档（任一字段 <99%）→ error，blob 不得过门禁；warn 档（≥99% 但 <100%）→ warning，不拦。
+    const fq = fieldQualityFor(blob.rows);
+    if (fq.status === "fail") errors.push("field_nonempty_below_gate");
+    else if (fq.status === "warn") warnings.push("field_quality_warn");
   }
   if (blob.global != null) {
     if (typeof blob.global !== "object") errors.push("global_shape");
