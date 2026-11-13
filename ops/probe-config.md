@@ -42,13 +42,14 @@
 - **M3 的 `<!DOCTYPE` 来源**：与 probe.sh/smoke.sh 的负向断言同源（probe.sh 原文匹配串为 `<!DOCTYPE html`，大小写不敏感）。UptimeRobot keyword 定版取较短的 `<!DOCTYPE` 以覆盖各种 HTML 错误页变体；注意 UptimeRobot 的 keyword 匹配大小写行为以其控制台当日说明为准，演练 2（见 PHASE2_PLAN W2-13 验收）须实测触发一次。
 - M1 的首页标题断言（probe.sh 第 5 条 `市值前 200 币种`）在 UptimeRobot 侧由 M1 的 200 状态 + W2-17 静态注入后的内容检查在 HC1 全量探针中覆盖，不另建 keyword 监控（免费档监控数虽够，但避免断言重复维护）。
 
-## healthchecks.io 检查（HC1–HC3，免费 Hobbyist 档）
+## healthchecks.io 检查（HC1–HC4，免费 Hobbyist 档）
 
 | ID | Check | 周期/宽限 | Ping 方式 | 缺席/失败语义 |
 |---|---|---|---|---|
 | HC1 定时全量探针 | 每 1 小时 | period 1h、grace 15 分钟 | 定时调度跑 `scripts/probe.sh` 全量断言（含新鲜度时间差判定），成功 ping success URL、任一断言失败 ping `/fail` 并附前 10 行日志 | probe 调度挂了（缺席）与断言真失败（/fail 立即告警）都能报，补上 keyword 算不了的新鲜度 |
 | HC2 部署后检查 | 事件型 | 不用周期缺席判定：创建后设超长 period（如 90 天）仅作占位，只用显式信号 | 部署管线尾部经 `scripts/hc_ping.sh success\|fail` ping（URL 只从部署环境变量 `HEALTHCHECKS_DEPLOY_PING_URL` 读，接入钩子由协调者串进 `scripts/deploy.sh`：冒烟通过 → success，冒烟失败 → fail；变量未设置时脚本打印 `skipped-no-url` 并以 0 退出，不阻断部署） | 部署后检查真失败时立即告警；「部署了但没跑检查」靠管线强制串联冒烟+ping 防堵，不靠缺席判定 |
 | HC3 2026-11-21 复核守夜 | 一次性 cron 型 | cron 表达式 `0 9 21 11 *`、时区 **Asia/Shanghai**、grace 6 小时 | 复核任务（`ops/reviews/2026-11-21-review.md` 清单）执行完成并留痕后 ping success；若当天取消复核，须手动 ping 或删除该 check 并留痕 | 到期未复核 → 当日下午即告警；复核完成后删除/停用 HC3，不得自行滚动生成下一个复核点 |
+| HC4 fetcher 影子链新鲜度（W4-03，2026-11-13 新增） | 每 1 小时 | period 1h、grace 20 分钟 | 每小时只读检查 `scripts/check-shadow-health.py`：读 KV `v1:meta:health`，lastSuccessAt ≤25 分钟且 consecutiveFailures ≤2 → ping success；否则 ping `/fail` 附日志；检查本身读不到 KV（退出码 2）同样 ping `/fail` | fetcher 假死断档 >2 个 run 即经 /fail 告警（不再等结算人工发现，补 F4-03 的最长约 73h 盲窗）；报到 cron 自身缺席则 period+grace 到期缺席告警 |
 
 ### 落地状态（2026-11-12 更新）
 
@@ -56,6 +57,7 @@
 - **HC1 已接线**：手动首 ping 已转 UP；每小时报到由 cron `top200-hc1-hourly-probe` 承担（跑 probe.sh 全量断言，pass → success ping，fail → fail ping 附日志，并向用户汇总）。2026-11-12 已做 /fail 触发演练：HC1 实测 down → success 恢复 up，告警与恢复邮件由 healthchecks 投递至 kwl134999@gmail.com（收件箱由用户目视确认）。
 - **HC2 已接线**：部署管线的 env 变量路径保留给外部部署环境；助手本人执行的部署改走等价路径——部署冒烟通过后用连接器助手脚本按检查名 ping（`hc_api.py ping HC2-top200-deploy success`），2026-11-12 已为当日 health.js 修复部署补发 success ping 并转 UP。
 - **HC3 已接线**：一次性复核任务 `crypto-bottom-window-review`（2026-11-21 09:17）的交付步骤已追加"复核消息发出后 ping HC3 success"，避免到期未报到误告警。
+- **HC4 已接线（2026-11-13，W4-03）**：经 API 创建检查 `HC4-top200-fetcher-shadow`（period 1h、grace 20m、邮件通道已挂），手动首 ping 已转 UP；每小时报到由 cron `top200-hc4-shadow-probe` 承担（只读 KV，全程不写 KV、不触发抓取、零 CoinGecko 额度）。影子链异常不影响当前 legacy 线上路径，但直接关系 G1/G2 证据完整性。
 
 ## 告警收敛（两家平台同口径）
 
