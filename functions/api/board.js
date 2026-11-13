@@ -24,12 +24,14 @@
 //   kv     = 只读 KV blob 组装契约 v2（见 handleKv），不触发任何上游抓取
 //   dual   = 对外仍返回 legacy 结果，KV 组装仅记差异日志（G2 双读观察）
 // W2-18 §18.3：SECURITY_HEADERS 与 200/405/错误分支同出口（见 jsonResponse/methodNotAllowedResponse）。
-// W2-19 §19.2：Sec-Fetch-Site 影子计数（ENFORCE_SFS=false，只记结构化日志不拦截）。
+// W2-19 §19.2 / W4-15：Sec-Fetch-Site 已转正（ENFORCE_SFS=true）：保留结构化日志计数，
+// 且仅拦显式 cross-site；same-origin / same-site / none / 缺失头一律放行。
 import {
   validateBlob,
   freshnessFor,
   globalForContract,
   toMs,
+  fieldQualityFor,
   FETCH_INTERVAL_SEC,
   KV_KEYS,
 } from "../../shared/board-schema.js";
@@ -39,7 +41,7 @@ const SECURITY_HEADERS = {
   "Referrer-Policy": "no-referrer",
   "Content-Security-Policy": "default-src 'none'",
 };
-const ENFORCE_SFS = false; // W2-19 影子期：只计数不拦截；正式期置 true 后仅拦显式 cross-site
+const ENFORCE_SFS = true; // W4-15 转正（原 W2-19 影子期结束）：仅拦显式 cross-site；same-origin / same-site / none / 缺失头一律放行（见 sfsShadowCheck）
 const BLOB_CACHE_KEY_URL = "https://board-cache.internal/kv-blob/v1-board-current";
 let MEM_BLOB = null; // kv 路径内存回退：最近一次成功读到的 blob
 let MEM_HEALTH = { at: 0, data: null };
@@ -91,6 +93,42 @@ class UpstreamError extends Error {
     this.errorType = errorType;
     this.retryAfterSec = retryAfterSec;
     this.is429 = status === 429;
+  }
+}
+
+// ===================== W4-02 legacy 回源计数（KV 写约定局部突破） =====================
+// ⚠️ 约定突破，激活前须协调者/站长复核：wrangler.toml 定版「Function 只 get、写方为
+// fetcher」（W2-01 KV 只读绑定注释）。本计数器是该约定的**局部突破**：board.js Function
+// 只写 KV_KEYS.legacyCredits（v1:meta:legacy-credits）这一个计数键，不写任何数据键
+// （current/shadow/health/sourceState 仍严格只读）。理由：legacy 回源只发生在 Function
+// 侧，fetcher 无从记账；不记账则双路总账（F4-02）永远缺一半。
+// 口径：fetchUpstreamInternal 每被真正执行一轮（= Cache 未命中且非熔断短路、非缓存
+// 命中）计 markets 1 + global 1 = 2 credits（两端在本路径恒并发同发，按已发出计，
+// 与上游成败无关——额度按调用计）。in-flight 合并后的一轮只计一次。
+// 结构：{month: "YYYY-MM"(UTC), credits, updatedAt}；跨月自动重置（读到旧月即从 0 累加）。
+// 计数为估算口径：KV 读-改-写非原子，多 colo 并发可少量漏计；计数失败绝不影响主流程。
+async function addLegacyCredits(env, credits) {
+  try {
+    if (!env || !env.BOARD_KV || typeof env.BOARD_KV.put !== "function") return;
+    const now = Date.now();
+    const month = new Date(now).toISOString().slice(0, 7);
+    let prev = null;
+    try {
+      prev = await env.BOARD_KV.get(KV_KEYS.legacyCredits, { type: "json" });
+      if (typeof prev === "string") prev = JSON.parse(prev);
+    } catch (_) {
+      prev = null;
+    }
+    const base = prev && prev.month === month && typeof prev.credits === "number" ? prev.credits : 0;
+    const next = { month, credits: base + credits, updatedAt: new Date(now).toISOString() };
+    await env.BOARD_KV.put(KV_KEYS.legacyCredits, JSON.stringify(next));
+    try {
+      console.log(
+        JSON.stringify({ level: "info", event: "legacy_credits", month, added: credits, total: next.credits })
+      );
+    } catch (_) {}
+  } catch (_) {
+    // 计数失败不得影响行情主流程（总账少计一轮 < 主流程失败）
   }
 }
 
@@ -222,6 +260,9 @@ async function fetchUpstreamInternal(env, ids) {
     encodeURIComponent(ids.join(","));
   const gl = "https://api.coingecko.com/api/v3/global";
 
+  // W4-02：本轮两端真实回源成立（markets 1 + global 1 = 2 credits），先记账再发请求。
+  await addLegacyCredits(env, 2);
+
   // markets 与 global 并发、各自独立超时、互不连带（allSettled）。
   const marketsPromise = fetchWithTimeout(mk, headers);
   const globalPromise = fetchWithTimeout(gl, headers);
@@ -308,6 +349,33 @@ async function fetchUpstreamInternal(env, ids) {
     });
   }
 
+  // W4-08 字段级非空率门禁（与 fetcher / validateBlob 共用 fieldQualityFor，阈值 99%）：
+  // fail 档 → 与覆盖率不足同处理：记结构化 WARN 并抛错，走既有 stale/快照降级机制，
+  // 绝不把字段全 null 的数据端出为 live；warn 档（≥99% 但 <100%）→ 记 WARN 后照常
+  // 返回 live，fieldQuality 随响应透出供探针/人工核查（例：200 币 2 个 rank=null）。
+  const fieldQuality = fieldQualityFor(Object.values(coins));
+  if (fieldQuality.status !== "pass") {
+    try {
+      console.log(
+        JSON.stringify({
+          level: "warn",
+          event: "field_quality_warn",
+          path: "legacy",
+          status: fieldQuality.status,
+          rates: fieldQuality.rates,
+          failingFields: fieldQuality.failingFields,
+          warnFields: fieldQuality.warnFields,
+        })
+      );
+    } catch (_) {}
+  }
+  if (fieldQuality.status === "fail") {
+    throw new UpstreamError("coingecko markets field quality insufficient", {
+      errorType: "field_quality_insufficient",
+      status: null,
+    });
+  }
+
   const now = Date.now();
   void startedAt;
   return {
@@ -322,6 +390,7 @@ async function fetchUpstreamInternal(env, ids) {
     coins,
     count: Object.keys(coins).length,
     snapshotDate: SNAPSHOT_DATE,
+    fieldQuality,
   };
 }
 
@@ -534,6 +603,26 @@ async function handleGet(context) {
 
 // ===================== W2-02 kv / dual 只读路径（契约 v2） =====================
 // 主体行数说明：以下 kv 路径主体约 200 行（目标 ≤260）；其上 legacy 平移不计入。
+function logFieldQualityWarn(layer, blob) {
+  try {
+    const fq = fieldQualityFor((blob && blob.rows) || []);
+    if (fq.status !== "pass") {
+      console.log(
+        JSON.stringify({
+          level: "warn",
+          event: "field_quality_warn",
+          path: "kv",
+          layer,
+          status: fq.status,
+          rates: fq.rates,
+          failingFields: fq.failingFields,
+          warnFields: fq.warnFields,
+        })
+      );
+    }
+  } catch (_) {}
+}
+
 async function readBlobLayers(context) {
   const { env } = context;
   const cache = typeof caches !== "undefined" && caches.default ? caches.default : null;
@@ -544,7 +633,10 @@ async function readBlobLayers(context) {
       const hit = await cache.match(cacheKey);
       if (hit) {
         const blob = await hit.json();
-        if (blob && validateBlob(blob).ok) return { blob, servedFrom: "cache" };
+        if (blob && validateBlob(blob).ok) {
+          logFieldQualityWarn("cache", blob);
+          return { blob, servedFrom: "cache" };
+        }
         logKvError("BLOB_INVALID", "cache");
       }
     } catch (_) {}
@@ -555,6 +647,7 @@ async function readBlobLayers(context) {
       const blob = await env.BOARD_KV.get(KV_KEYS.current, { type: "json", cacheTtl: 60 });
       if (blob) {
         if (validateBlob(blob).ok) {
+          logFieldQualityWarn("kv", blob);
           MEM_BLOB = blob;
           if (cache) {
             try {
@@ -602,6 +695,9 @@ async function readHealthSummary(env) {
 function assembleV2(blob, servedFrom, health, now) {
   const fetchedAtMs = toMs(blob.fetchedAt);
   const fresh = freshnessFor(fetchedAtMs, now);
+  // W4-08：字段级非空率随 v2 响应透出（fail 档 blob 已被 validateBlob 在读层拦下，
+  // 能走到组装的至多 warn 档；warn 档照常出数但口径可见、可被告警/人工核查）。
+  const fieldQuality = fieldQualityFor(blob.rows || []);
   if (fresh.clockSkew) {
     try {
       console.error(JSON.stringify({ level: "error", event: "CLOCK_SKEW", fetchedAt: blob.fetchedAt, servedAt: now }));
@@ -644,6 +740,7 @@ function assembleV2(blob, servedFrom, health, now) {
       snapshotDate: SNAPSHOT_DATE,
       freshness: { ...freshness, servedFrom: "snapshot" },
       fetch: fetchInfo,
+      fieldQuality,
     };
   }
   const coins = {};
@@ -667,6 +764,7 @@ function assembleV2(blob, servedFrom, health, now) {
     snapshotDate: SNAPSHOT_DATE,
     freshness,
     fetch: fetchInfo,
+    fieldQuality,
   };
 }
 
