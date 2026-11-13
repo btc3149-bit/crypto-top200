@@ -1,6 +1,9 @@
-// workers/fetcher/src/index.js — crypto-top200-fetcher（W2-01/W2-02/W2-03）
+// workers/fetcher/src/index.js — crypto-top200-fetcher（W2-01/W2-02/W2-03；W4-01/W4-10）
 // 全球唯一抓取者：Cron */10 * * * * → 抓 CoinGecko（markets 每 run、global 30min）
 // → 覆盖率 ≥94% 且结构校验通过才写 KV 单 blob；任一失败保留旧 blob、只更新 health。
+// W4-10 KV 版本化：成功写 blob 前，先把上一版 blob 原样存入对应的 prev 键
+// （current→currentPrev、shadow→shadowPrev），供回滚/比对；prev 写入失败不阻断主流程。
+// 写量变化：每成功 run +1 次 KV 写（prev 归档）。
 // 访客请求永不触发抓取；手动补抓仅 POST /run + MANUAL_RUN_TOKEN（Worker Secret）。
 //
 // COINGECKO_API_KEY（fetcher 侧 Secret）：
@@ -113,7 +116,11 @@ const ids = opts.ids || coins.map((c) => c.id);
 
 let health = (await kvGetJson(kv, KV_KEYS.health)) || emptyHealth(nowMs);
 let sourceState = (await kvGetJson(kv, KV_KEYS.sourceState)) || emptySourceState(nowMs);
-const prevBlob = await kvGetJson(kv, KV_KEYS.current);
+// W4-01：目标键在开头统一计算，prevBlob 必须读目标键本身——影子期写 shadow 时
+// 若误读 current，global.asOf 永不刷新、globalDue 每 run 误判到期（每 10min 重抓）。
+const targetKey = env && env.BOARD_TARGET_KEY === "shadow" ? KV_KEYS.shadow : KV_KEYS.current;
+const targetPrevKey = targetKey === KV_KEYS.shadow ? KV_KEYS.shadowPrev : KV_KEYS.currentPrev;
+const prevBlob = await kvGetJson(kv, targetKey);
 
 const finishFail = async (failure, outcomeExtra = {}) => {
 health = {
@@ -304,7 +311,15 @@ failResult({ runId, startedAt, stage: "validate", code: "blob_invalid", message:
 );
 }
 
-const targetKey = env && env.BOARD_TARGET_KEY === "shadow"? KV_KEYS.shadow: KV_KEYS.current;
+// W4-10：覆写目标键前先归档上一版到 prev 键（prevBlob 已在内存，不再读 KV）；
+// 归档失败只记日志、不阻断主 blob 写入（仿 writeHealth 风格）。每成功 run 因此 +1 次 KV 写。
+if (prevBlob) {
+try {
+await kv.put(targetPrevKey, JSON.stringify(prevBlob));
+} catch (_) {
+logError({ event: "prev_put_failed", runId, targetPrevKey});
+}
+}
 try {
 await kv.put(targetKey, JSON.stringify(blob));
 } catch (e) {

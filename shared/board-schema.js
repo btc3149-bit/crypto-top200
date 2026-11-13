@@ -7,6 +7,8 @@ export const SCHEMA_VERSION = 1;
 export const KV_KEYS = {
   current: "v1:board:current",
   shadow: "v1:board:shadow",
+  currentPrev: "v1:board:current:prev",
+  shadowPrev: "v1:board:shadow:prev",
   health: "v1:meta:health",
   sourceState: "v1:config:source-state",
 };
