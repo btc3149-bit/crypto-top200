@@ -87,3 +87,7 @@
 | 7 | W3-15/16/21/24 | 869d5437 | 6/6 | pass | success |
 
 终版线上复核（2026-11-12 20:15 CST）：/api/board mode=live、coverage 200/200；首页静态快照行 200；smoke-headers（WA-ON）全部断言通过（S3/RUM 为既定 SKIP，见真机清单第 6 项）。
+
+## 站长裁决记录（2026-11-13）
+
+- **W3-22：按新线补做。** 用户于 2026-11-13 拍板：批准 gzip 达标线改判 ≤21KB，并批准评估（ops/w322-assessment.md 第五节）的扩围规格——前端 decodeCoinsData 按 meta.fields 字段序补全解码、functions/api/board.js 的 getIds() 同步支持 rows 解码、最后一次性管线联动切换；dataHash 采用口径 A（解码后规范对象数组哈希，不变）。排期：不在 G1 影子观察窗内施工，待 2026-11-14 G1 结算且用户定完 G2 后启动（与 W3-25 同队列）。
