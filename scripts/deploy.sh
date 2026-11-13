@@ -28,6 +28,33 @@ cd "$(dirname "$0")/.."
 PROJECT_ROOT="$(pwd)"
 echo "[deploy] 环境=$ENV_NAME 分支=$BRANCH 项目根=$PROJECT_ROOT"
 
+# (a2) W4-17 工具链预检：package-lock.json 必须存在且 wrangler 版本与 package.json 的 pin 一致
+# （防「本地验过的版本 ≠ 部署用的版本」）；Node 主版本须在 engines 允许范围（22–24，见 .nvmrc）。
+if ! python3 - <<'PYEOF'
+import json, sys
+try:
+    pkg = json.load(open("package.json"))
+    lock = json.load(open("package-lock.json"))
+except Exception as e:
+    print(f"[deploy] 工具链预检失败：无法读取 package.json/package-lock.json：{e}", file=sys.stderr)
+    sys.exit(1)
+pin = pkg.get("devDependencies", {}).get("wrangler")
+locked = (lock.get("packages", {}).get("node_modules/wrangler", {}) or {}).get("version")
+if not pin or locked != pin:
+    print(f"[deploy] 工具链预检失败：wrangler pin={pin} 与 lockfile={locked} 不一致，请先 npm install 对齐后再部署。", file=sys.stderr)
+    sys.exit(1)
+sys.exit(0)
+PYEOF
+then
+  exit 1
+fi
+NODE_MAJOR="$(node -p 'process.versions.node.split(".")[0]' 2>/dev/null || echo 0)"
+case "$NODE_MAJOR" in
+  22|23|24) ;;
+  *) echo "[deploy] 工具链预检失败：Node 主版本 $NODE_MAJOR 不在 engines 允许范围（22–24，见 .nvmrc）。" >&2; exit 1 ;;
+esac
+echo "[deploy] W4-17 工具链预检通过（node v$NODE_MAJOR，wrangler pin 与 lockfile 一致）"
+
 # (b) 数据一致性门禁（v2）：只验不改。不一致即中止，同步是 build.py 的职责。
 SRC_HASH="$(sha256sum data/coins.json | cut -d' ' -f1)"
 OUT_HASH="$(sha256sum public/data/coins.json | cut -d' ' -f1)"
@@ -61,6 +88,26 @@ if ! python3 -c "import json,sys; a=json.load(open('data/coins.json'))['meta']['
 fi
 echo "[deploy] W2-01 fetcher 数据门禁通过"
 
+# (b4) W4-10 第四份副本一致性门禁：workers/fetcher/src/coins-list.js 的 id 集合必须与
+# data/coins.json 完全一致。漏重生成即中止——防 fetcher 静默按旧名单抓取（≤12 币漂移无感）。
+if ! python3 - <<'PYEOF'
+import json, sys
+doc = json.load(open("data/coins.json"))
+want = sorted(c["coingeckoId"] for c in doc["coins"])
+src = open("workers/fetcher/src/coins-list.js", encoding="utf-8").read()
+arr = src[src.index("["):src.rindex("]") + 1]
+got = sorted(e["id"] for e in json.loads(arr))
+if got != want:
+    print(f"[deploy] coins-list.js 名单不一致：coins-list {len(got)} 个 / coins.json {len(want)} 个", file=sys.stderr)
+    sys.exit(1)
+sys.exit(0)
+PYEOF
+then
+  echo "[deploy] 错误：workers/fetcher/src/coins-list.js 名单与 data/coins.json 不一致，请按 docs/fetcher-runbook.md 重新生成 coins-list.js 后再部署。" >&2
+  exit 1
+fi
+echo "[deploy] W4-10 coins-list.js 名单门禁通过（200 个 id 与 data/coins.json 一致）"
+
 # (c) 用 package.json 锁定的 wrangler 版本部署（防 CLI 大版本漂移）
 WRANGLER_VERSION="$(python3 -c "import json; print(json.load(open('package.json'))['devDependencies']['wrangler'])")"
 echo "[deploy] 使用 wrangler@${WRANGLER_VERSION} 部署到项目 crypto-top200（branch=$BRANCH）"
@@ -75,4 +122,12 @@ if ! bash scripts/smoke.sh "$BASE_URL"; then
   exit 1
 fi
 bash scripts/hc_ping.sh success || true
+
+# (e) W4-17 部署后自动核对（checklists ① 首项自动化）：生产部署后自动跑全量探针并留痕。
+# 探针未全过只告警不改判：部署成败以冒烟为准，探针结果写入 ops/probe-log.jsonl 供人工复核。
+if [ "$ENV_NAME" = "production" ]; then
+  if ! bash scripts/probe.sh "$BASE_URL"; then
+    echo "[deploy] 警告：部署后 probe.sh 未全过（详见上方输出与 ops/probe-log.jsonl），请人工复核后再签核本次部署。" >&2
+  fi
+fi
 echo "[deploy] 冒烟通过，$ENV_NAME 部署完成：$BASE_URL"

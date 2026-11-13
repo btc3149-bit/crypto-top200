@@ -487,6 +487,14 @@ def main():
         if rc != 0:
             print("FAIL [emit] check_meta 未通过，不拷贝", file=sys.stderr)
             return 1
+        # W4-10：--emit 路径补跑字段级 validate（G3–G8 门禁组），与全量构建同口径，
+        # 防手改 typo 绕过字段校验直接拷贝上线（此前 --emit 只跑 check_meta）。
+        try:
+            ov = json.load(open(ROOT / "scripts/overrides.json", encoding="utf-8"))
+            validate(doc["coins"], ov["entries"])
+        except GateFail as e:
+            print(f"FAIL [emit] 字段级 validate 未通过，不拷贝：{e}", file=sys.stderr)
+            return 1
         h = emit(doc)
         try:
             render_snapshot.run(ROOT / "data/coins.json", ROOT / "public/index.html")

@@ -1,1 +1,1 @@
-{"devDependencies":{"wrangler":"4.159.0"},"name":"crypto-top200-site","private":true,"scripts":{"deploy":"bash scripts/deploy.sh production","deploy:preview":"bash scripts/deploy.sh preview","smoke":"bash scripts/smoke.sh https://top200.oppcal.com"}}
+{"devDependencies":{"wrangler":"4.159.0"},"engines":{"node":">=22 <25"},"name":"crypto-top200-site","private":true,"scripts":{"deploy":"bash scripts/deploy.sh production","deploy:preview":"bash scripts/deploy.sh preview","smoke":"bash scripts/smoke.sh https://top200.oppcal.com"}}

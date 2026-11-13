@@ -49,7 +49,9 @@ npm run deploy:preview   # 部署到 preview 分支，脚本会自动对预览�
 npm run deploy           # 部署到生产（main 分支），脚本会自动对 https://top200.oppcal.com 跑冒烟
 ```
 
-`scripts/deploy.sh` 内部流程：数据门禁（只验不改：两份 coins.json 哈希一致 + `scripts/check_meta.py` 复验 meta v2，不一致即中止，同步是 build.py 的职责；紧急绕过用 `DEPLOY_SKIP_META_CHECK=1` 单次生效并须在 CHANGELOG 注明）→ 用 `package.json` 锁定的 wrangler 版本执行 `wrangler pages deploy public --project-name crypto-top200`（preview 加 `--branch preview`，production 加 `--branch main`）→ 对对应地址执行 `scripts/smoke.sh`。冒烟失败时脚本非零退出并提示「部署已上线但冒烟失败，需人工处理/回滚」。
+`scripts/deploy.sh` 内部流程：工具链预检（W4-17：Node 主版本须在 `package.json` engines 范围 22–24、`.nvmrc` 定版 24；`package-lock.json` 的 wrangler 版本须与 `package.json` 的 pin 一致，不一致即中止）→ 数据门禁（只验不改：两份 coins.json 哈希一致 + `scripts/check_meta.py` 复验 meta v2 + fetcher 副本 dataHash 与 `coins-list.js` 名单一致性（W4-10），不一致即中止，同步是 build.py 的职责；紧急绕过用 `DEPLOY_SKIP_META_CHECK=1` 单次生效并须在 CHANGELOG 注明）→ 用 `package.json` 锁定的 wrangler 版本执行 `wrangler pages deploy public --project-name crypto-top200`（preview 加 `--branch preview`，production 加 `--branch main`）→ 对对应地址执行 `scripts/smoke.sh`；生产部署冒烟通过后自动复跑 `scripts/probe.sh` 全量断言（W4-17：未全过只告警不改判，结果留痕 `ops/probe-log.jsonl`）。冒烟失败时脚本非零退出并提示「部署已上线但冒烟失败，需人工处理/回滚」。
+
+**preview 的定位（W4-17 定版，回应 F4-19）**：preview 按 §20.3 定版不注入 CoinGecko key（全账号仅 1 把，此决策不变），其 `/api/board` 必然呈 stale/503——preview 只用于**静态与 UI 冒烟**（首页、隐私页、静态注入渲染、响应头），**不验行情新鲜度、冒烟结论不可迁移到生产数据面**。生产保障由 deploy.sh 的部署前门禁（工具链/数据/名单/安全头）+ 部署后 smoke 与 probe 全量断言承接。fetcher 无 preview 形态，其变更只走影子链与 G1→G2→G3 门禁验证。
 
 手动单独冒烟：
 

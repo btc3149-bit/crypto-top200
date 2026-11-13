@@ -5,8 +5,8 @@
 
 ## ① 部署后（每次生产部署必走，≤15 分钟）
 
-- [ ] probe.sh 全量断言通过，结果追加 `ops/probe-log.jsonl`
-- [ ] HC2 success ping 已发出（部署管线自动，人工抽查 healthchecks 日志页有记录；未配置 ping URL 时 `scripts/hc_ping.sh` 打印 `skipped-no-url`，记为降级运行，不算本项失败）
+- [ ] probe.sh 全量断言通过，结果追加 `ops/probe-log.jsonl`（W4-17 起 deploy.sh 在生产部署后**自动执行**并留痕，本项为人工抽查自动结果；自动执行未全过时脚本会打印警告，须人工复核后才签核）
+- [ ] HC2 success ping 已发出（执行路径二选一、有其一留痕即算完成：管线 `scripts/hc_ping.sh` 在部署环境注入 ping URL 时自动；或协调者部署后用 hc_api.py 按名 ping——现行等效路径；未配置 ping URL 时 `scripts/hc_ping.sh` 打印 `skipped-no-url`，记为降级运行，不算本项失败）
 - [ ] 外部探针未处于 pause（部署中若 pause 过 M1–M4，此时恢复）
 - [ ] 若本次部署含数据/函数变更：抽查 `/api/board` 条数＝200、`mode` 字段、新鲜度各一项
 - [ ] 若含静态文件变更：抽查 canonical/OG/favicon 抓取（与 W2-16 验收项共用）
