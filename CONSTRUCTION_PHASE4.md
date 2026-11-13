@@ -129,6 +129,7 @@
 
 - 新建 `scripts/rollback.sh`（施工方主体 + 协调者接手完成演练并入库）：deployment（rollback API，dry-run 防误触、须 ROLLBACK_CONFIRM=1）与 mode（PATCH deployment_configs 改 BOARD_READ_MODE，production 额外要求 ALLOW_PROD_MODE_ROLLBACK=1，PATCH 后回读核对含 secret key 保留检查）两条路径。
 - **演练实测（仅 preview，记录 `ops/disaster-recovery/rollback-drill-2026-11-13.md`，计时已入 signoffs）**：rollback API 对 preview 被平台拒绝（8000040，仅限 production 部署）；preview 等效恢复 = 重部署上一版内容实测 15.5s（含冒烟）；mode 设置+回读 2.4s，演练后已删 key 恢复 preview env 为空。可演练路径远低于 ≤15 分钟目标。**如实保留**：production 实弹回滚未演练（纪律禁动生产），脚本已对生产部署列表 dry-run 验证选目标无误，实弹留 G3 窗口补记。
+- **⚠️ 口径修正（施工方完整演练迟到回收，协调者复现一致，证据见演练记录）**：mode 路径分两层——API 配置层达标（PATCH 按 key 合并、回读一致、2.4–2.8s），但**端到端不生效**：把 preview 项目配置改成 `kv` 后新建的 Wrangler 直推部署，其 env 快照仍为 `{}`、`/api/board` 仍按 legacy 应答（部署快照 + kv 功能探针双证据）。即本管线下模式切换/回滚**不能只靠改 env**，必须部署期注入（`wrangler.toml` `[vars]` + deploy.sh）；rollback.sh 已采纳施工方超集版本（脚本内含醒目警告），runbook 模式回滚条目已同步修正。此项列为 **G3 前置修正项**：G3 切换与回滚预案一律按「改 [vars] + 部署」口径执行，不得引用 API env 路径。演练总时长（施工方全程含排障）约 8.7 分钟，仍在 ≤15 分钟目标内。
 
 ### W4-18（P1）告警投递治理 —— ◐ 治理文档完成；第二通道待站长提供邮箱
 
@@ -176,7 +177,7 @@
 | W4-09 | ✅ 完成（本轮） | 不改变「不自动跑」口径；state 迁移待下次人工运行 |
 | W4-10 | ✅ 完成（本轮） | deploy.sh/build.py 门禁已生效；fetcher prev 部分随 fetcher 部署窗口 |
 | W4-11 | ◐ 配置清单完成；远端+演练待站长选型 | 候选与推荐已入清单，未建远端 |
-| W4-12 | ✅ 完成（本轮，preview 口径） | production 实弹回滚未演练，留 G3 窗口补记 |
+| W4-12 | ✅ 完成（本轮，preview 口径） | production 实弹回滚未演练，留 G3 窗口补记；mode 路径端到端须部署期注入（G3 前置修正项，见逐包记录） |
 | W4-13 | ✅ 完成并上线（本轮） | S2 子集断言为集成修正，已留痕 |
 | W4-14 | ✅ 完成（批 0） | K3 轮换待站长确认 |
 | W4-15 | ◐ SFS 代码就绪（prep 分支）；Zone 限流待站长控制台配合 | 规则定版在 PHASE2_PLAN §19.3 |

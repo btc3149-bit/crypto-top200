@@ -23,11 +23,14 @@
 #   - deployment 真正执行前必须 ROLLBACK_CONFIRM=1，否则只打印目标并退出（退出码 3）。
 #   - mode 改 production 额外要求 ALLOW_PROD_MODE_ROLLBACK=1，缺省拒绝（退出码 3）。
 #
-# mode 路径的生效口径（重要）：
-#   改 deployment_configs 的环境变量只影响「之后新建的部署」——需要一次重新部署
-#   （如 bash scripts/deploy.sh <env>）新值才对新部署生效；当前在线部署不受影响、
-#   不会热切换。以上口径以 Cloudflare 实际行为为准，并留待 preview 演练验证
-#   （演练记录见 ops/disaster-recovery/rollback-drill-2026-11-13.md）。
+# mode 路径的生效口径（重要，2026-11-13 preview 演练已实测修正）：
+#   PATCH deployment_configs 能改项目配置且回读一致，但本项目是 Wrangler 直推
+#   管线：实测新部署的 env_vars 快照仍为空、且把配置改成 kv 后新部署的
+#   /api/board 仍按缺省 legacy 应答——即 API 改 env 对 Wrangler 直推的新部署
+#   不生效，当前在线部署更不会热切换。本管线下真正的模式切换必须在部署时
+#   注入变量（如 wrangler.toml [vars] 写 BOARD_READ_MODE 后跑 deploy.sh），
+#   本子命令只完成 API 配置层变更，不得单独作为 G3 模式回滚的完成依据。
+#   完整证据见 ops/disaster-recovery/rollback-drill-2026-11-13.md。
 #   另经 preview 实测（2026-11-13）：PATCH deployment_configs 的 env_vars 是
 #   「按 key 合并」语义——请求体只带 BOARD_READ_MODE 一个 key 即可，不会动同环境
 #   的其它变量（含 secret_text，脚本更不会回传任何 secret 的值）；给 key 传 null
@@ -59,8 +62,8 @@ deployment（部署回滚，立即生效、无需重新部署）：
 mode（模式回滚：改 BOARD_READ_MODE 环境变量）：
   取值 legacy|dual|kv；--env 默认 production。
   经 API PATCH 项目 deployment_configs（preview/production 分开设置）。
-  注意：改 env 只对之后新建的部署生效，需再跑一次 deploy.sh 才真正切过去；
-  当前在线部署不受影响（口径以 Cloudflare 实际行为为准，见脚本头注释）。
+  注意（实测）：本项目 Wrangler 直推管线下 API 改 env 不会被新部署携带，
+  不能单独完成模式切换，须配合部署时注入变量，见脚本头注释与演练记录。
   production 额外要求 ALLOW_PROD_MODE_ROLLBACK=1，缺省拒绝。
 
 环境变量：
@@ -291,7 +294,7 @@ PYEOF
     exit 1
   fi
   echo "[rollback] mode 已设置：$env_name BOARD_READ_MODE=$mode_val（原有 key 全部保留）"
-  echo "[rollback] 生效口径提醒：该变更只对之后新建的部署生效——需再跑一次 bash scripts/deploy.sh $env_name 才真正切换；当前在线部署不受影响、不热切换。"
+  echo "[rollback] 生效口径警告（2026-11-13 实测）：本项目为 Wrangler 直推管线，API 改 env 不会被新部署携带，Function 运行时读不到——不得单独作为模式切换的完成依据；真正的切换须在部署时注入变量（wrangler.toml [vars] + deploy.sh），详见脚本头注释与演练记录。"
 }
 
 main() {

@@ -47,7 +47,7 @@
 1. 先分清形态再动手（两种形态处置完全不同，不要混用）：
    - 当前影子形态（G1，`BOARD_TARGET_KEY=shadow`）：坏数据只写在 shadow 键（`v1:board:shadow`），线上用户读的是 legacy 路径，无用户影响——不要为影子坏数据动生产。定位是哪一轮 run、哪些字段坏（查 fetcher health 与该轮日志），然后等下一轮成功抓取自然覆盖 shadow 键；下一轮仍坏则暂停以该影子数据作 G2 决策依据，人工核查数据源与抓取逻辑后再恢复观察。
    - G3 后形态（KV 只读已上线、`BOARD_READ_MODE=kv`）：坏数据即生产数据事故，按下条模式回滚处置。
-2. （仅 G3 后形态）模式回滚：把 `BOARD_READ_MODE` 改回 `legacy`。注意这是一次部署操作、不是开关切换——该变量只写在 `wrangler.toml` 注释 / Pages 环境配置侧，改值须重新部署才生效（见 F4-13），按 `scripts/deploy.sh production` 部署并跑冒烟确认已回 legacy 口径。
+2. （仅 G3 后形态）模式回滚：把 `BOARD_READ_MODE` 改回 `legacy`。注意这是一次部署操作、不是开关切换——该变量只写在 `wrangler.toml` 注释 / Pages 环境配置侧，改值须重新部署才生效（见 F4-13），按 `scripts/deploy.sh production` 部署并跑冒烟确认已回 legacy 口径。**2026-11-13 W4-12 演练实测修正**：经 API 改 Pages 项目级 env（deployment_configs）**不会**被 Wrangler 直推的新部署携带（实测部署快照 env 为空、改 kv 后新部署仍按 legacy 应答）——真正的模式切换必须在部署时注入：在 `wrangler.toml` 的 `[vars]` 写明 `BOARD_READ_MODE` 后跑 deploy.sh；`scripts/rollback.sh` 的 mode 子命令只改 API 配置层，**不得单独作为切换/回滚的完成依据**（证据见 `ops/disaster-recovery/rollback-drill-2026-11-13.md`）。
 3. 关于「回滚到上一版数据」：该能力依赖 W4-10 的 KV prev 键（写入前把现键复制为上一版）——**该能力尚未上线、属待建**，当前 KV 只有 current / shadow / health / sourceState 四键，坏数据覆盖后没有上一版可回退，不得按「可一键回滚上一版」处置或对外如此表述。W4-10 上线后本节须同步改写。
 4. 回滚或覆盖恢复后复核：`/api/board` 条数与字段抽查正常、`/api/health` 回 200，再在事件页记录坏数据轮次与影响窗。
 
