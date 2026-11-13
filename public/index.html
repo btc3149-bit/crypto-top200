@@ -111,10 +111,20 @@
   @media (max-width:1500px){.c-reason{display:none}col.c-reason{width:0}}
   @media (max-width:640px){
     .c-conf{display:none}
-    col.c-rank{width:36px}col.c-coin{width:112px}col.c-price{width:68px}col.c-est{width:80px}col.c-mult{width:54px}
+    col.c-rank{width:36px}col.c-coin{width:112px}col.c-price{width:68px}col.c-est{width:80px}col.c-mult{width:88px}
     col.c-estrank{width:0}col.c-ranknow{width:0}col.c-chg{width:0}col.c-mcap{width:0}col.c-ath{width:0}col.c-conf{width:0}
+    /* 2026-11-13 移动端修复（真机 V3-3 失败回炉）：table-layout:fixed 下只用 display:none 隐藏
+       单元格时，Blink 按 colgroup 顺序把列宽顺位配给存活列——价格列吃到报告排名列的 0 宽、
+       预估列吃到报告现排名列的 0 宽、倍数列吃到价格列的 68px，价格/预估两列塌成 0 宽后内容
+       溢出叠印、预估数字逐字竖排撑高整行。隐藏列的 <col> 必须一并 display:none，列宽规格
+       才与存活列一一对齐（无头 Chrome 157 与真机 WebView 同为 Blink，几何实测一致）。 */
+    col.c-estrank,col.c-ranknow,col.c-chg,col.c-mcap,col.c-ath,col.c-conf,col.c-reason{display:none}
     th.c-coin,td.c-coin{left:36px}
     td.c-est{white-space:normal;overflow-wrap:break-word}
+    /* 表头长标签允许在窄列内换行，避免 nowrap 溢出与相邻表头文字叠印；排名列表头文字
+       （预估排名/实时预估排名，最长 6 字）在 36px 列内无法排下，视觉隐藏但读屏保留，只留排序箭头 */
+    th.c-price,th.c-est,th.c-mult{white-space:normal}
+    #thRank{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
     .exp{min-width:44px;min-height:44px}
     .toolbar{gap:6px}
     .toolbar input[type=search]{flex:1 1 150px}
