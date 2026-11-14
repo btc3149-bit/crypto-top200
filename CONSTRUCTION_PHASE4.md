@@ -205,16 +205,16 @@
 
 | 包 | 状态 | 说明 |
 |---|---|---|
-| W4-01 | 代码就绪，**待 G1 结算放行部署** | 批 1；结算汇报后、G2 决策前部署（未变） |
-| W4-02 | 对账待批 1 结算承接；预警落地代码就绪（prep 分支，未部署） | KV 只读约定突破（计数键）激活前须复核 |
+| W4-01 | ✅ 已部署（2026-11-14） | fetcher Version 17019273；+96/天重抓已停、稳态 180~192 credits/天；global 相位注记见文末施工小节 |
+| W4-02 | ✅ 落地（2026-11-14，Muse 侧核账形态） | 每日 cron 核账、判级变化才报；首次核账 WARNING（规划口径投影）；board.js 计数键方案仍待复核、未激活 |
 | W4-03 | ✅ 完成（本轮） | HC4 已建+首 ping UP+每小时 cron 接线，G2 开始前已生效 |
 | W4-04 | 代码就绪（prep 分支，未激活） | 待 rebase 至现行 deploy.sh + preview 演练后激活 |
 | W4-05 | ✅ 完成（本轮） | 契约测试交付；rows 段待 W3-22 施工转绿 |
 | W4-06 | 代码就绪（prep 分支，未部署） | 口径统一+health 补测 20 条随分支，待结算放行 |
-| W4-07 | 待批 1 结算执行（结算任务承接）；compare v2 已备 | v2 实跑 conditional（未对齐/计数 303/400），供结算参考 |
+| W4-07 | ✅ 返工完成（2026-11-14） | compare-shadow 原地升级（top20 入判据/compared 下限/fetchRunId 对齐/自动计数）+ 字段门禁；修复后实跑 conditional（数值+字段全过、skew 43s、计数 442） |
 | W4-08 | ◐ F4-07 修复 ✅ 已上线；非空率门禁代码就绪（prep 分支） | 门禁部分待结算放行 |
 | W4-09 | ✅ 完成（本轮） | 不改变「不自动跑」口径；state 迁移待下次人工运行 |
-| W4-10 | ✅ 完成（本轮） | deploy.sh/build.py 门禁已生效；fetcher prev 部分随 fetcher 部署窗口 |
+| W4-10 | ✅ 完成（本轮） | deploy.sh/build.py 门禁已生效；fetcher prev 部分已于 2026-11-14 随 W4-01 部署上线并实证（shadow:prev 逐 run 归档） |
 | W4-11 | ◐ 推荐已批准（GitHub 私有仓）；本地准备与克隆等效演练完成 | 待站长 GitHub 一步（建空私有仓 + Deploy key），其后助手推送并完成重建演练与 RTO 实测 |
 | W4-12 | ✅ 完成（本轮，preview 口径） | production 实弹回滚未演练，留 G3 窗口补记；mode 路径端到端须部署期注入（G3 前置修正项，见逐包记录） |
 | W4-13 | ✅ 完成并上线（本轮） | S2 子集断言为集成修正，已留痕 |
@@ -265,3 +265,33 @@
 - 站长已建 GitHub 私有仓 btc3149-bit/crypto-top200 并添加 Deploy key（指纹 SHA256:WH8jMeps23gtnNE0v05nV4gKqEVjmDteGQzKfJQ0gjw、Read/write，2026-11-13 添加，截图核对一致）。
 - 助手侧故障定位：沙箱 SSH 须经 nc CONNECT 隧道且须显式指定身份文件（core.sshCommand 已定版：-i id_ed25519 + IdentitiesOnly + ProxyCommand），此前两次 Permission denied 均为助手侧连接方式问题、非钥匙问题。
 - 2026-11-14 全量推送完成：10 分支 + 25 标签，远端 master 与本地 HEAD 一致（43c8b67）；自远端全新克隆演练约 1.8 秒、fsck 干净、77 commits/25 tags 齐全。W4-11 销项（RTO 以本次克隆演练为据；完整生产重建含 Cloudflare 侧配置恢复的部分仍以 ops/disaster-recovery 清单为准）。
+
+## G1 结算后三项前置修复（2026-11-14，站长拍板「先修三项，再进 G2」）
+
+> 状态总表 W4-01 / W4-02 / W4-07 / W4-10 四行已于本节落盘时同步更新。本轮未执行任何 G2/G3 配置变更（未改 BOARD_READ_MODE、未动 Pages 读取路径、fetcher 目标键仍为 shadow）。
+
+### W4-01 fetcher 修复部署（W4-10 fetcher 部分同步上线）—— ✅ 已部署并实测
+
+- **代码与部署**：修复 commit b552973 经审计已合入 master（ancestor 确认），无需 cherry-pick；部署前全量测试全绿（board 7/7、board-v2 12/12、board-fetcher 8/8、fetcher-branches 21/21、frontend-dom 6/6、contract-real-data 4 PASS/2 SKIP、weekly_check 14/14、render_snapshot 8/8）。部署走既有路径 `npx wrangler@4.159.0 deploy -c workers/fetcher/wrangler.toml`（custom.cloudflare 代用值通道），**2026-11-14 09:31 CST 上线，Version ID `17019273-55b2-4228-a2c0-7eb5fd6be992`**；wrangler.toml 未改（BOARD_TARGET_KEY=shadow、Cron */10 不变）。
+- **部署前基线**（01:30Z run，旧代码）：creditsUsedEst=878、当班 2.00 credits/run（bug 形态）；影子 global.asOf == fetchedAt（每 run 重抓签名）。
+- **部署后逐 run 实测**（KV health / shadow / shadow:prev 对照）：
+  - 01:40Z run：+1 credit（879），global 沿用 asOf 01:30:57 不重抓；
+  - 01:50Z run：+1 credit（880），asOf 仍 01:30:57（滞后 20 分钟）；
+  - 02:00Z run：+1 credit（881），asOf 仍 01:30:57（滞后 29 分 59 秒）；
+  - 02:10Z run：+2 credits（883），global 到期刷新，asOf=02:10:56。
+  - 4 个 run 合计 +5 credits（窗口均值 1.25/run），**+96 credits/天的超额重抓已停**；全程 consecutiveFailures=0、lastUpstreamStatus=200、影子覆盖 200/200。
+- **节奏注记（如实记录，留 G2 决策定夺）**：global 到期判定为「asOf 年龄 ≥30min」（src/index.js:189），run 相位使 +30min 的 tick 常以约 29 分 59 秒擦过、顺延至 +40min tick 刷新——稳态刷新间隔 30~40 分钟（约 36~48 次/天），fetcher 日耗 180~192 credits、月化 5,400~5,760，**不高于定版 5,760**；代价是 global 段最长滞后约 40 分钟而非 30 分钟。W4-01 验收字面「48 次/天 ±2」受相位影响未必恒达；本轮未改 b552973 之外的 fetcher 代码，是否接受该偏差或微调到期阈值，留站长 G2 决策时定夺。
+- **W4-10 fetcher 部分**：`v1:board:shadow:prev` 已实证在位并逐 run 滚动归档（01:58Z 读到 01:40 版 blob、02:11Z 读到 02:00 版 blob），回滚/比对的上一版数据源成立；KV 写量 +144/天已生效，账二专项复核按 quota-ledger 节奏在月度复核时做。
+
+### W4-02 双路总账与预警 —— ✅ 落地（Muse 侧定时核账形态）
+
+- **形态选择**：prep 分支的 board.js 回源计数键方案（`v1:meta:legacy-credits`）是对「Function 只 get」约定的局部突破，状态总表原注「激活前须复核」——本轮未激活该方案（留待站长复核），改按规格允许的 Muse 侧路径落地，不新增任何 Cloudflare 侧 cron（账号 cron 占用仍 4/5）。
+- **构成**：① `scripts/quota-check.py`——读 KV health 取 fetcher 实测 creditsUsedEst；legacy 按三场景估算（0 全命中下界 / 576 规划口径（F4-02 定版探针成对估算）/ 1,152 压力口径（PHASE5 修正绝对最坏））；每次运行向 `ops/quota-log.jsonl` 追加一行，两路合计自此有可见载体。② 每日核账 cron `top200-quota-daily-check`（goal-owned，约 10:17 CST）——判级与 quota-ledger §3 对齐（向前击穿 ≤7 天 WARNING、≤3 天 CRITICAL、投影 ≥8,500 WARNING、≥7,000 WATCH），**只报判级变化**（升级必报、回落报恢复、同级静默），避免同根因每日重复打扰。③ 判级基准为「向前投影」：已用只认 fetcher 实测，legacy 已耗不回填场景假设；另设经验护栏（上游 200 ⇒ legacy 真实已耗 < 10,000 − fetcher 实测，给出日均弱上界），与事实矛盾的场景读法只作风险注脚。
+- **首次真实核账**（2026-11-14 10:13 CST，修正版口径）：fetcher 实测 **883**（11 月累计，含修复前 bug 形态消耗；修复后向前速率 192/天）；规划口径投影月合计 **13,868**、向前击穿 **11.87 天**（约 11-26）；压力口径投影 23,607、向前击穿 6.78 天；下界口径（legacy=0）投影 4,129、击穿 47.48 天。**判级 WARNING**（由投影 ≥8,500 触发，非击穿天数触发）。经验护栏：上游 200、连续失败 0 ⇒ 真实合计未撞顶，legacy 真实已耗 <9,117、日均 <696.4——规划/压力场景「自月初全额成立」的读法（击穿 2.05 天 / 已超额）与 13 天实测事实矛盾，不作判级依据。结论：fetcher 单路修复后永不单独击穿；月内风险全部来自 legacy 未计量侧——若其未来真按规划速率（576/天）燃烧，11 月将在约 11-26 撞顶，此即 F4-02 结构性风险，现由每日核账持续监视；根除须等 board.js 计数键方案过复核激活实测计量。
+- **留痕更正**：核账脚本初版曾把场景速率回填已用数、误判 CRITICAL（当日 10:12 首行记录），已当场修正判级基准为向前投影并在脚本头注明；quota-log.jsonl 首行 CRITICAL 系初版口径、不作数，以第二行（WARNING）起为准，两版均留痕不删。
+
+### W4-07 compare-shadow 返工 —— ✅ 完成并实跑
+
+- **改动**：`scripts/compare-shadow.mjs` 原地升级（移植 prep 分支 v2 设计 + 新增字段门禁，原 v1 判据阈值不变）：① top20SameSet 纳入 pass 判据；② compared 下限 188（`--min-compared` 可调），低于判 fail；③ fetchRunId 对齐——shadow.fetchRunId 与 health.lastRunId 互验 + live.fetch.fetchRunId（契约 v2），legacy 无 run id 时 verdict 降级 conditional 并明示 basis，附 timeSkewSec 与 240s 时间容差判定，禁止假装对齐；④ 运行次数自动计数——credits 保守下界 ceil(creditsUsedEst/2) + 窗口调度槽位交叉核对，方法与误差口径随报告输出（caveats）；⑤ 字段级非空抽查入门禁（F4-08）——shadow 任一行 price/mcapUsd 为 null 即判 fail 并列 id；rank=null 计数上报不判 fail（源数据属性）。新增 `--live-file`（预抓取的 live 响应用于近 run 配对）与 `--health` / `--shadow-prev` / `--window-start` / `--required-runs` 参数。退出码：0 pass / 2 conditional / 1 fail。
+- **修复后实跑**（2026-11-14 10:11 CST；影子 = 02:10Z run `20261114T0210Z-336c`，live 为其后约 1 分钟抓取的 /api/board 响应用 --live-file 配对）：**verdict=conditional**，failReasons 空——价差中位数 0%、P95 0%（两路 1 分钟内先后抓同一源、快照价一致）、compared=200 ≥ 188、top20 集合一致、missingIds 一致、字段门禁通过（rank=null 2 个：telcoin-2、wefi，上报不判 fail；live 侧 price null 0 个）；**timeSkew=43s**（G1 结算时为 519s，10 分钟级错位已消除至近 run 配对）；shadowMatchesHealth=true；**runGate 自动计数 442 ≥ 400**（窗口槽位 444 交叉核对一致量级）。conditional 的唯一原因是 legacy 契约不暴露 fetchRunId、run-id 对齐在现行形态下不可能——属预期上限，须待 G2（dual 形态读同一 blob 组装比对）/G3 后才可能取得 verdict=pass。
+- **干跑对照**（修复前基线对，影子 01:30Z run vs live 01:31Z）：verdict=conditional、数值全过、自动计数 439、槽位 440，工具行为与预期一致。
