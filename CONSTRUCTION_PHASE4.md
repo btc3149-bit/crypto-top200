@@ -259,3 +259,9 @@
 - 全套测试全绿无回归：Node 七套件（board 7/7、board-v2 12/12、board-fetcher 8/8、fetcher-branches 21/21、contract-real-data 4 过/2 按设计跳过、frontend-dom 6/6、snapshot-verify 5/5）+ Python 两套件（render_snapshot 8/8、weekly_check 14/14）；
 - 部署后冒烟 6/6、探针 7/7、HC2 ping success；生产 index.html 与本地逐字节一致，且以生产字节复跑 360 实时/412 快照审计全清；
 - 覆盖范围如实标注：无头验证为 Blink 内核（与站长 Android 环境几何完全吻合）；iOS WebKit 对 `col{display:none}` 的行为未实测，待站长真机（Android）复核后 V3-3 关闭。
+
+## W4-11 远端备份关单（2026-11-14）
+
+- 站长已建 GitHub 私有仓 btc3149-bit/crypto-top200 并添加 Deploy key（指纹 SHA256:WH8jMeps23gtnNE0v05nV4gKqEVjmDteGQzKfJQ0gjw、Read/write，2026-11-13 添加，截图核对一致）。
+- 助手侧故障定位：沙箱 SSH 须经 nc CONNECT 隧道且须显式指定身份文件（core.sshCommand 已定版：-i id_ed25519 + IdentitiesOnly + ProxyCommand），此前两次 Permission denied 均为助手侧连接方式问题、非钥匙问题。
+- 2026-11-14 全量推送完成：10 分支 + 25 标签，远端 master 与本地 HEAD 一致（43c8b67）；自远端全新克隆演练约 1.8 秒、fsck 干净、77 commits/25 tags 齐全。W4-11 销项（RTO 以本次克隆演练为据；完整生产重建含 Cloudflare 侧配置恢复的部分仍以 ops/disaster-recovery 清单为准）。
