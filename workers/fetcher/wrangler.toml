@@ -15,7 +15,7 @@ id = "ad1b72702c5c4f229999bea5b118d1bc"
 [vars]
 PAPRIKA_ENABLED = "false"
 BOARD_SOURCE = "auto"
-BOARD_TARGET_KEY = "shadow"
+BOARD_TARGET_KEY = "current"
 
 [triggers]
 crons = ["*/10 * * * *"]
