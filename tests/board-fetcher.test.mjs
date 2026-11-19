@@ -102,7 +102,7 @@ await test("fetcher: 无 key → 配置错误、blob 不覆写、health 失败�
   globalThis.fetch = async () => {
     throw new Error("must not fetch anonymously");
   };
-  const env = { BOARD_KV: kv, PAPRIKA_ENABLED: "false", BOARD_SOURCE: "auto" };
+  const env = { BOARD_KV: kv, PAPRIKA_ENABLED: "false", BOARD_SOURCE: "auto", BOARD_TARGET_KEY: "current" };
   const r1 = await runFetch(env, { coins: COINS, ids: IDS });
   assert.equal(r1.ok, false);
   assert.equal(r1.code, "COINGECKO_API_KEY_MISSING");
@@ -125,7 +125,7 @@ await test("fetcher: 有 key 成功 → 写 blob、health 清零、额度 +2(mar
     if (u.includes("/global")) return jsonRes(GLOBAL_PAYLOAD);
     throw new Error("unexpected " + u);
   };
-  const env = { BOARD_KV: kv, COINGECKO_API_KEY: "test-key-not-real", PAPRIKA_ENABLED: "false", BOARD_SOURCE: "auto" };
+  const env = { BOARD_KV: kv, COINGECKO_API_KEY: "test-key-not-real", PAPRIKA_ENABLED: "false", BOARD_SOURCE: "auto", BOARD_TARGET_KEY: "current" };
   const r = await runFetch(env, { coins: COINS, ids: IDS });
   assert.equal(r.ok, true, JSON.stringify(r));
   const blob = JSON.parse(kv.store.get("v1:board:current"));
@@ -149,7 +149,7 @@ await test("fetcher: 覆盖率不足 → validate 失败不写 blob", async () =
     if (u.includes("/global")) return jsonRes(GLOBAL_PAYLOAD);
     throw new Error("unexpected");
   };
-  const env = { BOARD_KV: kv, COINGECKO_API_KEY: "k", PAPRIKA_ENABLED: "false", BOARD_SOURCE: "auto" };
+  const env = { BOARD_KV: kv, COINGECKO_API_KEY: "k", PAPRIKA_ENABLED: "false", BOARD_SOURCE: "auto", BOARD_TARGET_KEY: "current" };
   const r = await runFetch(env, { coins: COINS, ids: IDS });
   assert.equal(r.ok, false);
   assert.equal(r.stage, "validate");
@@ -164,7 +164,7 @@ await test("fetcher: markets 429 Retry-After=1200 → skipRuns=2，下一 run �
     }
     return jsonRes(GLOBAL_PAYLOAD);
   };
-  const env = { BOARD_KV: kv, COINGECKO_API_KEY: "k", PAPRIKA_ENABLED: "false", BOARD_SOURCE: "auto" };
+  const env = { BOARD_KV: kv, COINGECKO_API_KEY: "k", PAPRIKA_ENABLED: "false", BOARD_SOURCE: "auto", BOARD_TARGET_KEY: "current" };
   const r1 = await runFetch(env, { coins: COINS, ids: IDS });
   assert.equal(r1.ok, false);
   assert.equal(r1.skipRunsSet, 2);

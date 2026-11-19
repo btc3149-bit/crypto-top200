@@ -47,8 +47,8 @@ async function fetchJson(url, stage) {
   }
 }
 
-// coins: [{coingeckoId, paprikaId}]（paprikaId 来自 coins.json，W2-11 落库后生效；
-// 本期映射未落库时主流程以 proposal 兜底为空 → 覆盖率必然不足 → 不写 blob，符合默认关闭语义）
+// coins: [{id, paprikaId}]（与 fetcher COINS 同形，W5-01 统一；paprikaId 来自 coins.json，W2-11 落库后生效；
+// 本期映射未落库时 paprikaId 全 null → 覆盖率必然不足 → 不写 blob，符合默认关闭语义）
 export async function fetchMarkets(coins) {
   const tickers = await fetchJson("https://api.coinpaprika.com/v1/tickers?quotes=USD", "markets");
   if (!Array.isArray(tickers)) {

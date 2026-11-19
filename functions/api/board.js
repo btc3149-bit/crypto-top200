@@ -740,8 +740,20 @@ async function dualCompare(context, legacyRes) {
   }
 }
 
+// W5-02（F5-02）：BOARD_READ_MODE 白名单。未配置（缺省）= legacy 为定版默认；
+// 但「已配置却不在白名单内」（拼写错误如 "kvv"）不得静默走 legacy——记结构化
+// error 日志留痕（event=board_mode_unknown），行为仍回落 legacy：读路径以可用性
+// 优先，切换事故靠日志暴露而非宕机。旧实现对任何非 kv/dual 值一律静默 legacy。
+const BOARD_READ_MODES = new Set(["legacy", "dual", "kv"]);
 async function dispatchGet(context) {
-  const mode = (context.env && context.env.BOARD_READ_MODE) || "legacy";
+  const rawMode = context.env && context.env.BOARD_READ_MODE;
+  const mode = rawMode || "legacy";
+  if (!BOARD_READ_MODES.has(mode)) {
+    console.error(
+      JSON.stringify({ level: "error", event: "board_mode_unknown", mode: String(rawMode), fallback: "legacy" })
+    );
+    return handleGet(context);
+  }
   if (mode === "kv") return handleKv(context);
   if (mode === "dual") {
     const res = await handleGet(context);

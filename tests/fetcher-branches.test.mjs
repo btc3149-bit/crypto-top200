@@ -9,6 +9,7 @@ import { KV_KEYS } from "../shared/board-schema.js";
 import fetcher, { runFetch } from "../workers/fetcher/src/index.js";
 import { emptySourceState, resolveProvider } from "../workers/fetcher/src/source-state.js";
 import * as paprika from "../workers/fetcher/src/providers/coinpaprika.js";
+import { COINS as REAL_COINS } from "../workers/fetcher/src/coins-list.js";
 
 const originalFetch = globalThis.fetch;
 
@@ -96,7 +97,8 @@ function seedHealthCredits(kv, creditsUsedEst, month = "2026-11") {
   }));
 }
 function baseEnv(kv, extra = {}) {
-  return { BOARD_KV: kv, COINGECKO_API_KEY: "test-key-not-real", PAPRIKA_ENABLED: "false", BOARD_SOURCE: "auto", ...extra };
+  // W5-02 起 BOARD_TARGET_KEY 为白名单 fail-closed：测试默认显式声明 current（与生产 wrangler.toml 同口径）
+  return { BOARD_KV: kv, COINGECKO_API_KEY: "test-key-not-real", PAPRIKA_ENABLED: "false", BOARD_SOURCE: "auto", BOARD_TARGET_KEY: "current", ...extra };
 }
 
 const results = [];
@@ -255,12 +257,13 @@ const PAPRIKA_TICKERS = [
   { id: "fil-filecoin", name: "Filecoin", symbol: "FIL", rank: 38, last_updated: "2026-11-10T10:31:16Z", quotes: { USD: { price: 5.67, volume_24h: 120000000, market_cap: 3600000000, percent_change_24h: 4.56 } } },
   { id: "usdt-tether", name: "Tether", symbol: "USDT", rank: 3, quotes: { USD: { price: 1.0, market_cap: 130000000000, percent_change_24h: 0.01 } } },
 ];
+// W5-01：元素形变已全链统一为 fetcher COINS 的 {id, paprikaId}（旧 fixture 曾用 {coingeckoId,...} 假形，正是 F5-01 漏检原因）
 const PAPRIKA_COINS = [
-  { coingeckoId: "bitcoin", paprikaId: "btc-bitcoin" },
-  { coingeckoId: "ethereum", paprikaId: "eth-ethereum" },
-  { coingeckoId: "solana", paprikaId: "sol-solana" },
-  { coingeckoId: "filecoin", paprikaId: "fil-filecoin" },
-  { coingeckoId: "hash-2", paprikaId: null },
+  { id: "bitcoin", paprikaId: "btc-bitcoin" },
+  { id: "ethereum", paprikaId: "eth-ethereum" },
+  { id: "solana", paprikaId: "sol-solana" },
+  { id: "filecoin", paprikaId: "fil-filecoin" },
+  { id: "hash-2", paprikaId: null },
 ];
 const PAPRIKA_GLOBAL = { market_cap_usd: 3123456789012, volume_24h_usd: 98765432100, bitcoin_dominance_percentage: 57.84, cryptocurrencies_number: 12000, market_cap_change_24h: -1.42, volume_24h_change_24h: 3.21, last_updated: 1760000000 };
 
@@ -435,6 +438,64 @@ await test("7b W4-10 prev 归档: 首次运行（无 prevBlob）→ 不写 prev 
   assert.equal(r.ok, true, JSON.stringify(r));
   assert.equal(kv.store.has(KV_KEYS.shadow), true);
   assert.equal(kv.store.has(KV_KEYS.shadowPrev), false);
+});
+
+// ---------- 8. W5-02（F5-02）BOARD_TARGET_KEY 白名单 fail-closed ----------
+await test("8 W5-02 fail-closed: BOARD_TARGET_KEY 误写/空值/缺失 → 拒写任何 blob 键、零上游调用、health 留痕", async () => {
+  for (const bad of ["shadoow", "CURRENT", "", undefined]) {
+    const kv = makeKv();
+    const counts = installCgFetch();
+    const r = await runFetch(baseEnv(kv, { BOARD_TARGET_KEY: bad }), { coins: COINS, ids: IDS, nowMs: NOW_G });
+    assert.equal(r.ok, false, `值 ${JSON.stringify(bad)} 应被拒`);
+    assert.equal(r.code, "BOARD_TARGET_KEY_INVALID");
+    assert.equal(r.stage, "config");
+    assert.equal(counts.total, 0, "配置错误必须在抓取前拦截");
+    for (const k of [KV_KEYS.current, KV_KEYS.shadow, KV_KEYS.currentPrev, KV_KEYS.shadowPrev]) {
+      assert.equal(kv.store.has(k), false, `blob 键 ${k} 零触碰`);
+    }
+    const health = JSON.parse(kv.store.get(KV_KEYS.health));
+    assert.equal(health.lastError.code, "BOARD_TARGET_KEY_INVALID", "health 留痕作日志证据");
+    assert.equal(health.lastError.stage, "config");
+  }
+});
+
+// ---------- 9. W5-01（F5-01）Paprika 真实 COINS 形状契约 ----------
+await test("9a W5-01 契约: 真实 COINS 原样（paprikaId 全 null）喂 fetchMarkets → missingIds 为 200 个真实 id、绝无 undefined", async () => {
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes("api.coinpaprika.com/v1/tickers")) return jsonRes(PAPRIKA_TICKERS);
+    throw new Error("unexpected " + u);
+  };
+  const { rows, coverage } = await paprika.fetchMarkets(REAL_COINS);
+  assert.equal(coverage.expected, 200);
+  assert.equal(coverage.returned, 0);
+  assert.equal(rows.length, 0);
+  assert.deepEqual(coverage.missingIds, REAL_COINS.map((c) => c.id));
+  assert.ok(coverage.missingIds.every((x) => typeof x === "string" && x.length > 0), "missingIds 恒为真实 id（F5-01 回归点）");
+});
+
+await test("9b W5-01 契约: 真实 COINS 元素形 {id,paprikaId} + 命中 ticker → 覆盖率与 rows 按真实 id 计算", async () => {
+  const coins = [
+    { id: REAL_COINS[0].id, paprikaId: "x-first" },
+    { id: REAL_COINS[1].id, paprikaId: "x-second" },
+    { id: REAL_COINS[2].id, paprikaId: "x-third" },
+    { id: REAL_COINS[3].id, paprikaId: null },
+  ];
+  const tickers = [
+    { id: "x-first", rank: 7, quotes: { USD: { price: 1.5, market_cap: 1500, percent_change_24h: 0.5 } } },
+    { id: "x-third", rank: 9, quotes: { USD: { price: 2.5, market_cap: 2500, percent_change_24h: -0.5 } } },
+  ];
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes("api.coinpaprika.com/v1/tickers")) return jsonRes(tickers);
+    throw new Error("unexpected " + u);
+  };
+  const { rows, coverage } = await paprika.fetchMarkets(coins);
+  assert.equal(coverage.expected, 4);
+  assert.equal(coverage.returned, 2, "备源在真实形状下真能产出覆盖（消除假备源）");
+  assert.deepEqual(coverage.missingIds, [REAL_COINS[1].id, REAL_COINS[3].id]);
+  assert.deepEqual(rows.map((r) => r.id).sort(), [REAL_COINS[0].id, REAL_COINS[2].id].sort());
+  assert.ok(rows.every((r) => r._src === "coinpaprika"));
 });
 
 globalThis.fetch = originalFetch;

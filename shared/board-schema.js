@@ -101,8 +101,13 @@ export function normalizeCgGlobal(rawData, asOfMs) {
 }
 
 // CoinPaprika /v1/tickers 归一化（W2-03 §5 字段映射表）
+// W5-01（F5-01）形变全链统一：币种元素标准形为 fetcher COINS 的 {id, paprikaId}。
+// 旧实现按 {coingeckoId, paprikaId} 读 c.coingeckoId，与 COINS 的 {id,...} 永不相遇，
+// 备源一启用覆盖率恒 0、missingIds 全 undefined（假备源）。现以 c.id 为准，
+// c.coingeckoId 仅作旧形兼容别名；missingIds 恒为真实 id。
 export function normalizePaprikaTickers(tickers, coins) {
-  // coins: [{coingeckoId, paprikaId}]；映射缺失（paprikaId=null）的币直接计 missing。
+  // coins: [{id, paprikaId}]；映射缺失（paprikaId=null）的币直接计 missing。
+  const coinId = (c) => (c ? (c.id != null ? c.id : c.coingeckoId) : undefined);
   const byPaprikaId = new Map();
   if (Array.isArray(tickers)) {
     for (const t of tickers) {
@@ -116,18 +121,19 @@ export function normalizePaprikaTickers(tickers, coins) {
     const t = byPaprikaId.get(c.paprikaId);
     if (!t) continue;
     const usd = (t.quotes && t.quotes.USD) || {};
+    const gid = coinId(c);
     rows.push({
-      id: c.coingeckoId,
+      id: gid,
       price: usd.price ?? null,
       mcapUsd: usd.market_cap ?? null,
       rank: t.rank ?? null,
       change24h: usd.percent_change_24h ?? null,
       _src: "coinpaprika",
     });
-    hit.add(c.coingeckoId);
+    hit.add(gid);
   }
   const coverage = computeCoverage(
-    coins.map((c) => c.coingeckoId),
+    coins.map((c) => coinId(c)),
     hit
   );
   return { rows, coverage };

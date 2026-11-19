@@ -118,9 +118,15 @@ let health = (await kvGetJson(kv, KV_KEYS.health)) || emptyHealth(nowMs);
 let sourceState = (await kvGetJson(kv, KV_KEYS.sourceState)) || emptySourceState(nowMs);
 // W4-01：目标键在开头统一计算，prevBlob 必须读目标键本身——影子期写 shadow 时
 // 若误读 current，global.asOf 永不刷新、globalDue 每 run 误判到期（每 10min 重抓）。
-const targetKey = env && env.BOARD_TARGET_KEY === "shadow" ? KV_KEYS.shadow : KV_KEYS.current;
-const targetPrevKey = targetKey === KV_KEYS.shadow ? KV_KEYS.shadowPrev : KV_KEYS.currentPrev;
-const prevBlob = await kvGetJson(kv, targetKey);
+// W5-02（F5-02）白名单 fail-closed：BOARD_TARGET_KEY 只接受精确 "shadow"/"current"。
+// 旧实现是「非 shadow 即 current」的 fail-open——拼写错误/空值会静默覆写生产键。
+// 非法或缺失时 targetKey=null，校验在 finishFail 定义后、任何 blob 写入前执行：
+// 只写 health 留痕（stage=config），绝不触碰 current/shadow/prev 任一 blob 键。
+const targetKeyRaw = env && env.BOARD_TARGET_KEY;
+const targetKey =
+targetKeyRaw === "shadow"? KV_KEYS.shadow: targetKeyRaw === "current"? KV_KEYS.current: null;
+const targetPrevKey = targetKey === KV_KEYS.shadow? KV_KEYS.shadowPrev: KV_KEYS.currentPrev;
+const prevBlob = targetKey? await kvGetJson(kv, targetKey): null;
 
 const finishFail = async (failure, outcomeExtra = {}) => {
 health = {
@@ -145,6 +151,20 @@ await kv.put(KV_KEYS.sourceState, JSON.stringify(sourceState));
 logError({ event: "fetch_run_failed", runId, stage: failure.stage, code: failure.code, upstreamStatus: failure.upstreamStatus});
 return {...failure, runId, consecutiveFailures: health.consecutiveFailures};
 };
+
+// W5-02：目标键非法/缺失 → 配置错误路径，fail-closed 拒写任何 blob 键。
+// finishFail 只落 health（非 blob 键）作错误留痕，并经 logError 产出结构化日志证据。
+if (!targetKey) {
+return finishFail(
+failResult({
+runId,
+startedAt,
+stage: "config",
+code: "BOARD_TARGET_KEY_INVALID",
+message: `BOARD_TARGET_KEY 非法或缺失（收到 ${JSON.stringify(targetKeyRaw ?? null)}），fail-closed：拒绝写入任何 blob 键`,
+})
+);
+}
 
 // 429 跳过计数：跳过的 run 不计入连续失败 N（W2-02 §3.3）
 if ((health.skipRunsRemaining || 0) > 0) {

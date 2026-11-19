@@ -275,6 +275,33 @@ await test("⑦ POST 请求得 405", async () => {
   assert.equal(typeof mod.onRequestGet, "function");
 });
 
+await test("⑧ W5-02: BOARD_READ_MODE 误写（kvv）→ 结构化 error 日志留痕 + 回落 legacy 正常应答", async () => {
+  const mod = await freshBoard();
+  installFetch({});
+  const errs = [];
+  const origErr = console.error;
+  console.error = (...args) => errs.push(args.join(" "));
+  let res;
+  try {
+    res = await mod.onRequestGet({
+      request: new Request("https://example.com/api/board", { method: "GET" }),
+      env: { BOARD_READ_MODE: "kvv" },
+      waitUntil: () => {},
+    });
+  } finally {
+    console.error = origErr;
+  }
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.mode, "live", "未知 mode 回落 legacy 应答（可用性优先）");
+  const logged = errs.map((s) => { try { return JSON.parse(s); } catch (_) { return null; } }).filter(Boolean);
+  const hit = logged.find((o) => o.event === "board_mode_unknown");
+  assert.ok(hit, "必须有 board_mode_unknown 结构化日志（不得静默走错路）");
+  assert.equal(hit.level, "error");
+  assert.equal(hit.mode, "kvv");
+  assert.equal(hit.fallback, "legacy");
+});
+
 restore();
 const failed = results.filter(([, s]) => s !== "PASS");
 console.log(`\n=== ${results.length - failed.length}/${results.length} passed ===`);
