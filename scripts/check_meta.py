@@ -18,6 +18,20 @@ def data_hash(coins):
     payload = json.dumps(coins, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return "sha256:" + hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
+def decode_coins(doc):
+    """W3-22 双形态解码：对象形态（doc["coins"]）直通；rows 紧凑形态按
+    meta.fields 字段序 zip 成规范对象数组。dataHash 口径 A：哈希对象恒为
+    解码后的规范对象数组，与线缆编码无关（形态切换前后 dataHash 不变）。"""
+    if isinstance(doc, dict):
+        coins = doc.get("coins")
+        if isinstance(coins, list):
+            return coins
+        fields = (doc.get("meta") or {}).get("fields")
+        rows = doc.get("rows")
+        if isinstance(fields, list) and isinstance(rows, list):
+            return [dict(zip(fields, r)) for r in rows]
+    return []
+
 def check_meta(path, reports_root=None):
     fails, oks = [], []
     def ok(m): oks.append(m)
@@ -26,7 +40,7 @@ def check_meta(path, reports_root=None):
         doc = json.load(open(path, encoding="utf-8"))
     except Exception as e:
         print(f"FAIL [load] {path}: {e}"); return 1
-    meta, coins = doc.get("meta", {}), doc.get("coins", [])
+    meta, coins = doc.get("meta", {}), decode_coins(doc)
     # schemaVersion
     if meta.get("schemaVersion") == 2: ok("schemaVersion == 2")
     else: fail(f"schemaVersion 应为 2，实际 {meta.get('schemaVersion')!r}")
@@ -87,7 +101,7 @@ def check_overrides(coins_path=None, overrides_path=None):
         doc = json.load(open(coins_path, encoding="utf-8"))
     except Exception as e:
         print(f"FAIL [load] {e}"); return 1
-    live = {c["symbol"]: c["coingeckoId"] for c in doc["coins"]}
+    live = {c["symbol"]: c["coingeckoId"] for c in decode_coins(doc)}
     n_active = n_retired = 0
     for e in ov.get("entries", []):
         sym = e.get("symbol")

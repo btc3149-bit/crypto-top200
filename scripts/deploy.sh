@@ -93,7 +93,11 @@ echo "[deploy] W2-01 fetcher 数据门禁通过"
 if ! python3 - <<'PYEOF'
 import json, sys
 doc = json.load(open("data/coins.json"))
-want = sorted(c["coingeckoId"] for c in doc["coins"])
+if isinstance(doc.get("coins"), list):
+    want = sorted(c["coingeckoId"] for c in doc["coins"])
+else:
+    _idx = doc["meta"]["fields"].index("coingeckoId")
+    want = sorted(r[_idx] for r in doc["rows"])
 src = open("workers/fetcher/src/coins-list.js", encoding="utf-8").read()
 arr = src[src.index("["):src.rindex("]") + 1]
 got = sorted(e["id"] for e in json.loads(arr))

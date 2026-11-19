@@ -74,7 +74,8 @@ fi
 COVERAGE_RESULT="$(python3 - "$BOARD_BODY" "$DATA_BODY" <<'PY'
 import json, sys
 try:
-    expected = len(json.load(open(sys.argv[2], encoding="utf-8"))["coins"])
+    _d = json.load(open(sys.argv[2], encoding="utf-8"))
+    expected = len(_d.get("coins") or _d.get("rows") or [])
 except Exception as e:
     print(f"SKIP:期望数不可得（/data/coins.json 解析失败：{e}）")
     sys.exit(0)

@@ -13,6 +13,18 @@ import vm from "node:vm";
 const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf-8");
 const coinsDoc = JSON.parse(readFileSync(new URL("../data/coins.json", import.meta.url), "utf-8"));
 const generatedAt = coinsDoc.meta.generatedAt;
+// W3-22：coins.json 为 rows 紧凑形态时按 meta.fields 解码（喂给页面脚本的仍是
+// 原始文档，真实解码路径由页面内 decodeCoinsData 承担；此处仅供构造 live 载荷）。
+function decodeCoinsDoc(doc) {
+  if (doc && Array.isArray(doc.coins)) return doc.coins;
+  const fields = doc && doc.meta && Array.isArray(doc.meta.fields) ? doc.meta.fields : null;
+  if (!fields || !Array.isArray(doc.rows)) return [];
+  return doc.rows.map((r) => {
+    const o = {};
+    for (let i = 0; i < fields.length; i++) o[fields[i]] = r[i];
+    return o;
+  });
+}
 
 const results = [];
 async function test(name, fn) {
@@ -185,7 +197,7 @@ const jsonRes = (body, ok = true, status = 200) => ({ ok, status, json: async ()
 // ---------- 场景 C：成功原地修补口径 + 刷新 3 次幂等 ----------
 {
   const liveCoins = {};
-  for (const c of coinsDoc.coins) {
+  for (const c of decodeCoinsDoc(coinsDoc)) {
     liveCoins[c.coingeckoId] = {
       price: c.snapshotPrice * 1.01,
       mcapUsd: c.snapshotMcapUsd,

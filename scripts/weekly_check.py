@@ -23,6 +23,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 from pipeline_config import AUDIT_BAND, DEVIATION_TOL, REPORT_URL  # noqa: E402
+import check_meta  # noqa: E402  （W3-22：rows/对象双形态解码 decode_coins 单一来源）
 
 VERSION = "1.1.0"
 WATCH_BASIS = "iso-week-v2"  # watch 计数口径标记：ISO 自然周（W4-09 前为按跑次累加）
@@ -172,7 +173,7 @@ def main():
     state_path = Path(opt("--state", str(ROOT / "ops/weekly/state.json")))
     out_path = Path(opt("--out", str(ROOT / f"ops/weekly/{week_label}.md")))
     coins_doc = json.load(open(ROOT / "data/coins.json", encoding="utf-8"))
-    coins = coins_doc["coins"]
+    coins = check_meta.decode_coins(coins_doc)
     overrides = json.load(open(opt("--overrides", str(ROOT / "scripts/overrides.json")), encoding="utf-8"))
     state = json.load(open(state_path, encoding="utf-8")) if state_path.exists() else {
         "version": 1, "baselineWeek": week_label, "watchOut": {}, "watchIn": {}, "driftMarked": []}

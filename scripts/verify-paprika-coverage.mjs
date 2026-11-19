@@ -7,15 +7,31 @@
 // 启用前须连续 3 天各跑 1 次、三日均达标；结果存 docs/paprika-coverage-<日期>.md。
 import { readFileSync } from "node:fs";
 
+// W3-22 双形态解码：对象形态直通；rows 形态按 meta.fields 解码（与前端同口径）。
+function decodeCoins(doc) {
+  if (doc && Array.isArray(doc.coins)) return doc.coins;
+  if (doc && Array.isArray(doc.rows)) {
+    const fields = doc.meta && Array.isArray(doc.meta.fields) ? doc.meta.fields : null;
+    if (!fields) return [];
+    return doc.rows.map((r) => {
+      const o = {};
+      for (let i = 0; i < fields.length; i++) o[fields[i]] = r[i];
+      return o;
+    });
+  }
+  return [];
+}
+
 const coinsData = JSON.parse(readFileSync(new URL("../data/coins.json", import.meta.url), "utf-8"));
+const coinsList = decodeCoins(coinsData);
 let mappingSource = "data/coins.json:paprikaId";
-let map = new Map(coinsData.coins.filter((c) => c.paprikaId).map((c) => [c.coingeckoId, c.paprikaId]));
+let map = new Map(coinsList.filter((c) => c.paprikaId).map((c) => [c.coingeckoId, c.paprikaId]));
 if (map.size === 0) {
   const proposal = JSON.parse(readFileSync(new URL("../docs/paprika-mapping-proposal.json", import.meta.url), "utf-8"));
-  map = new Map(proposal.coins.filter((c) => c.paprikaId).map((c) => [c.coingeckoId, c.paprikaId]));
+  map = new Map(decodeCoins(proposal).filter((c) => c.paprikaId).map((c) => [c.coingeckoId, c.paprikaId]));
   mappingSource = "docs/paprika-mapping-proposal.json（提案，未落库）";
 }
-const allIds = coinsData.coins.map((c) => c.coingeckoId);
+const allIds = coinsList.map((c) => c.coingeckoId);
 
 const tickers = await (await fetch("https://api.coinpaprika.com/v1/tickers?quotes=USD")).json();
 if (!Array.isArray(tickers)) throw new Error("paprika tickers payload invalid");

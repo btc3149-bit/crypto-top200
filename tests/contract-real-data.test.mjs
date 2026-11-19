@@ -8,26 +8,22 @@
 //   (b) public/index.html 的 decodeCoinsData——从 HTML 抽出函数源码在 Node 内执行。
 //
 // 红/绿语义（务必先读）：
-//   - 默认运行：对象形态用例（fixture 自检 / getIds / 对象解码 / dataHash 口径 A）
-//     全部应绿；rows 紧凑形态用例以「PENDING-W322」明确标记跳过并打印原因，
-//     不影响退出码。原因是基线 decodeCoinsData 为直通桩（rows 原样返回位置数组，
-//     未按 meta.fields 解码），rows 段在基线必然红——这正是 W3-22 的硬前置留痕：
-//     先红后绿即 W3-22 的验收方式。
-//   - --rows 模式：只运行 rows 段并如实计红/绿（基线退出码 1）。W3-22（前端按
-//     meta.fields 补全解码）合入后此模式应转绿，届时把 rows 段改为默认常驻。
-//   - rows fixture 的字段序：当前真实产物 meta 尚无 fields 字段（对象形态），
-//     故按 W3-22 规格来源构造——scripts/build.py 的 FIELDS23（与
-//     ops/w322-assessment.md 第一/五节定版一致），即未来 rows 产物
-//     meta.fields 的预定值；本文件另有断言校验 FIELDS23 与真实产物逐币键集合
-//     完全一致，字段表漂移会先在这里红。
+//   - W3-22 已于 2026-11-19 合入：真实产物已切换为 rows 紧凑形态，前端
+//     decodeCoinsData 已按 meta.fields 补全解码，board.js getIds 同步支持
+//     rows 解码。故默认运行 = 对象/解码套件 + rows 段，全部应绿；
+//     --rows 模式只运行 rows 段，亦应全绿。
+//   - fixture 加载即解码：realDoc 为按 meta.fields 解码后的规范对象形态
+//     （解码实现独立于被测代码），rawDoc/coinsText 保留原始产物供 ② 与
+//     rows 段喂真实形态；① 另断言产物 meta.fields 与 FIELDS23 逐字一致，
+//     字段表漂移会先在这里红。
 //   - dataHash 口径 A（ops/w322-assessment.md 第四节）：dataHash = 解码后规范
 //     对象数组的 sha256（check_meta.data_hash 口径：json.dumps(sort_keys,
-//     separators=(",",":"), ensure_ascii=False)）。解码无损（逐字段全等）时
-//     解码结果与产物 coins 同一逻辑数据集、哈希必然同值，故口径 A 以
-//     「原始产物规范化哈希 == meta.dataHash」+「解码逐字段全等」两段合证。
+//     separators=(",",":"), ensure_ascii=False)）。④ 以「保留数字字面量解析
+//     → 解码 → 规范化哈希 == meta.dataHash」+「解码逐字段全等（③/R2）」
+//     两段合证：形态切换不改哈希。
 //
-// 运行：node tests/contract-real-data.test.mjs        （默认，rows 段跳过）
-//       node tests/contract-real-data.test.mjs --rows （只跑 rows 段，基线为红）
+// 运行：node tests/contract-real-data.test.mjs        （默认：全套件）
+//       node tests/contract-real-data.test.mjs --rows （只跑 rows 段）
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -35,7 +31,7 @@ import { createHash } from "node:crypto";
 
 const ROWS_MODE = process.argv.includes("--rows");
 
-// FIELDS23：与 scripts/build.py 的 FIELDS23 逐字一致（未来 rows 产物 meta.fields 的定版值）。
+// FIELDS23：与 scripts/build.py 的 FIELDS23、产物 meta.fields 逐字一致（W3-22 定版值）。
 const FIELDS23 = [
   "table", "estRank", "rankNow", "rankNote", "name", "symbol", "coingeckoId",
   "snapshotPrice", "snapshotMcapUsd", "snapshotMcapRaw", "athPrice", "athDate",
@@ -51,7 +47,20 @@ const NULLABLE = new Set([
 ]);
 
 const coinsText = readFileSync(new URL("../public/data/coins.json", import.meta.url), "utf-8");
-const realDoc = JSON.parse(coinsText);
+const rawDoc = JSON.parse(coinsText);
+// W3-22：产物为 rows 紧凑形态，fixture 加载即按 meta.fields 解码为规范对象
+// 形态（realDoc）供默认套件下游使用；解码实现独立于被测代码。
+function decodeDoc(doc) {
+  if (doc && Array.isArray(doc.coins)) return doc.coins;
+  const fields = doc && doc.meta && Array.isArray(doc.meta.fields) ? doc.meta.fields : null;
+  if (!fields || !Array.isArray(doc.rows)) return [];
+  return doc.rows.map((r) => {
+    const o = {};
+    for (let i = 0; i < fields.length; i++) o[fields[i]] = r[i];
+    return o;
+  });
+}
+const realDoc = { meta: rawDoc.meta, coins: decodeDoc(rawDoc) };
 const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf-8");
 const EXPECTED_IDS = realDoc.coins.map((c) => c.coingeckoId);
 
@@ -118,9 +127,21 @@ function canon(v) {
   const ks = Object.keys(v).sort();
   return "{" + ks.map((k) => pyStr(k) + ":" + canon(v[k])).join(",") + "}";
 }
+function decodePreserving(doc) {
+  // 口径 A：哈希对象为解码后的规范对象数组。保留字面量解析树上 rows 仍为
+  // 位置数组（元素为 {__num} 包装或原语），按 meta.fields（字符串数组）zip。
+  if (doc && Array.isArray(doc.coins)) return doc.coins;
+  const fields = doc && doc.meta && Array.isArray(doc.meta.fields) ? doc.meta.fields : null;
+  if (!fields || !Array.isArray(doc.rows)) return [];
+  return doc.rows.map((r) => {
+    const o = {};
+    for (let i = 0; i < fields.length; i++) o[fields[i]] = r[i];
+    return o;
+  });
+}
 function dataHashOfCoins() {
   const doc = parsePreserving(coinsText);
-  return "sha256:" + createHash("sha256").update(canon(doc.coins), "utf-8").digest("hex");
+  return "sha256:" + createHash("sha256").update(canon(decodePreserving(doc)), "utf-8").digest("hex");
 }
 
 // ---------- 测试收集器（沿用 board.test.mjs 风格） ----------
@@ -153,10 +174,12 @@ function jsonRes(body, { status = 200 } = {}) {
 
 // ================= 默认套件（对象形态，应全绿） =================
 async function runMain() {
-  await test("① fixture 自检：真实产物 200 币、id 唯一、逐币键集合 == FIELDS23", () => {
+  await test("① fixture 自检：真实产物 200 币、id 唯一、逐币键集合 == FIELDS23、meta.fields 在位", () => {
     assert.equal(realDoc.coins.length, 200);
     assert.equal(new Set(EXPECTED_IDS).size, 200, "coingeckoId 应 200 个不重复");
     assert.equal(realDoc.meta.totalCoins, 200);
+    assert.deepEqual(realDoc.meta.fields, FIELDS23, "产物 meta.fields 应与 FIELDS23 逐字一致");
+    assert.ok(Array.isArray(rawDoc.rows) && rawDoc.rows.length === 200, "产物应为 rows 紧凑形态");
     assert.ok(typeof realDoc.meta.dataHash === "string" && realDoc.meta.dataHash.startsWith("sha256:"));
     const want = [...FIELDS23].sort().join(",");
     for (const c of realDoc.coins) {
@@ -169,7 +192,7 @@ async function runMain() {
     let capturedIds = null;
     globalThis.fetch = async (url) => {
       const u = String(url);
-      if (u.includes("/data/coins.json")) return jsonRes(realDoc);
+      if (u.includes("/data/coins.json")) return new Response(coinsText, { status: 200, headers: { "content-type": "application/json" } });
       if (u.includes("/coins/markets")) {
         capturedIds = new URL(u).searchParams.get("ids").split(",");
         return jsonRes(capturedIds.map((id, i) => ({
@@ -228,12 +251,12 @@ async function runMain() {
     assert.deepEqual(problems, [], `字段完整性问题:\n${problems.slice(0, 10).join("\n")}`);
   });
 
-  await test("④ dataHash 口径 A：产物 coins 规范化哈希 == meta.dataHash", () => {
+  await test("④ dataHash 口径 A：解码后规范对象数组哈希 == meta.dataHash（形态切换不改哈希）", () => {
     assert.equal(dataHashOfCoins(), realDoc.meta.dataHash);
   });
 }
 
-// ================= rows 紧凑形态段（W3-22 前置；基线为红） =================
+// ================= rows 紧凑形态段（W3-22 已合入，默认常驻） =================
 function buildRowsDoc(coins) {
   return {
     meta: { ...realDoc.meta, fields: [...FIELDS23] },
@@ -256,29 +279,20 @@ async function runRows() {
     const small = realDoc.coins.slice(0, 3);
     assertDecodedEquals(decodeCoinsData(buildRowsDoc(small)), small, "rows-small");
   });
-  await test("R2 rows 全量 200：解码顺序/字段与对象形态逐一全等（口径 A 前提）", () => {
-    assertDecodedEquals(decodeCoinsData(buildRowsDoc(realDoc.coins)), realDoc.coins, "rows-full");
+  await test("R2 rows 全量 200：真实产物解码顺序/字段与规范对象逐一全等（口径 A 前提）", () => {
+    assertDecodedEquals(decodeCoinsData(rawDoc), realDoc.coins, "rows-full");
   });
 }
-
-const PENDING_REASON =
-  "decodeCoinsData 当前为直通桩（public/index.html：rows 原样返回位置数组，未按 meta.fields 解码），" +
-  "此段在基线必然失败，是 W3-22 的硬前置留痕（先红后绿）。单独运行看红：node tests/contract-real-data.test.mjs --rows";
 
 if (ROWS_MODE) {
   await runRows();
 } else {
   await runMain();
-  console.log("SKIP [PENDING-W322] R1 rows 小样本字段对齐 — " + PENDING_REASON);
-  console.log("SKIP [PENDING-W322] R2 rows 全量 200 解码全等 — " + PENDING_REASON);
-  results.push(["R1 rows 小样本 [PENDING-W322]", "SKIP"], ["R2 rows 全量 [PENDING-W322]", "SKIP"]);
+  await runRows();
 }
 
 const failed = results.filter(([, s]) => s === "FAIL");
 const passed = results.filter(([, s]) => s === "PASS");
 const skipped = results.filter(([, s]) => s === "SKIP");
 console.log(`\ncontract-real-data: ${passed.length} PASS / ${failed.length} FAIL / ${skipped.length} SKIP（模式 ${ROWS_MODE ? "--rows" : "默认"}）`);
-if (ROWS_MODE && failed.length) {
-  console.log("注：--rows 在基线为预期红（W3-22 未合入）；W3-22 合入后本模式应全绿。");
-}
 process.exit(failed.length ? 1 : 0);

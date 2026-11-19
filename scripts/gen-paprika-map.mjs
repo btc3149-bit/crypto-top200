@@ -7,7 +7,22 @@
 // 注意：本脚本只产候选，禁止全自动采信；核定结论见 docs/paprika-mapping-proposal.json。
 import { readFileSync, writeFileSync } from "node:fs";
 
-const coins = JSON.parse(readFileSync(new URL("../data/coins.json", import.meta.url), "utf-8")).coins;
+// W3-22 双形态解码：对象形态直通；rows 形态按 meta.fields 解码（与前端同口径）。
+function decodeCoins(doc) {
+  if (doc && Array.isArray(doc.coins)) return doc.coins;
+  if (doc && Array.isArray(doc.rows)) {
+    const fields = doc.meta && Array.isArray(doc.meta.fields) ? doc.meta.fields : null;
+    if (!fields) return [];
+    return doc.rows.map((r) => {
+      const o = {};
+      for (let i = 0; i < fields.length; i++) o[fields[i]] = r[i];
+      return o;
+    });
+  }
+  return [];
+}
+
+const coins = decodeCoins(JSON.parse(readFileSync(new URL("../data/coins.json", import.meta.url), "utf-8")));
 const paprika = await (await fetch("https://api.coinpaprika.com/v1/coins")).json();
 if (!Array.isArray(paprika)) throw new Error("paprika /v1/coins payload invalid");
 const active = paprika.filter((p) => p.is_active);

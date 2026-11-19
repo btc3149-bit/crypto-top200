@@ -282,8 +282,8 @@ await test("4a CoinPaprika 真实解析: tickers 真实形态 → 行数/覆盖�
   assert.deepEqual(coverage.missingIds, ["hash-2"]);
   const btc = rows.find((r) => r.id === "bitcoin");
   assert.deepEqual(
-    { id: btc.id, price: btc.price, mcapUsd: btc.mcapUsd, rank: btc.rank, change24h: btc.change24h, _src: btc._src },
-    { id: "bitcoin", price: 91234.5, mcapUsd: 1800000000000, rank: 1, change24h: -1.23, _src: "coinpaprika" }
+    { id: btc.id, price: btc.price, mcapUsd: btc.mcapUsd, rank: btc.rank, change24h: btc.change24h, volume24h: btc.volume24h, _src: btc._src },
+    { id: "bitcoin", price: 91234.5, mcapUsd: 1800000000000, rank: 1, change24h: -1.23, volume24h: 35000000000, _src: "coinpaprika" }
   );
   const fil = rows.find((r) => r.id === "filecoin");
   assert.equal(fil.price, 5.67);

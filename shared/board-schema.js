@@ -59,8 +59,9 @@ export function computeCoverage(expectedIds, returnedIdSet) {
 }
 
 // 自现行 board.js fetchUpstreamInternal 抽取的字段映射，保持行结构同构：
-// 现行 coins 字典值 {price, mcapUsd, rank, change24h} → blob rows 数组元素
-// {id, price, mcapUsd, rank, change24h, _src}（_src 仅供 fetcher 内部断言，组装对外时剥除）。
+// 现行 coins 字典值 {price, mcapUsd, rank, change24h, volume24h} → blob rows 数组元素
+// {id, price, mcapUsd, rank, change24h, volume24h, _src}（_src 仅供 fetcher 内部断言，组装对外时剥除）。
+// volume24h 为 W3-25 契约增量（上游同一响应 total_volume，纯新增、向后兼容）。
 export function normalizeCgMarkets(markets, expectedIds) {
   const byId = new Map();
   if (Array.isArray(markets)) {
@@ -75,6 +76,7 @@ export function normalizeCgMarkets(markets, expectedIds) {
           m.price_change_percentage_24h_in_currency != null
             ? m.price_change_percentage_24h_in_currency
             : m.price_change_percentage_24h ?? null,
+        volume24h: m.total_volume ?? null,
         _src: "coingecko",
       });
     }
@@ -128,6 +130,7 @@ export function normalizePaprikaTickers(tickers, coins) {
       mcapUsd: usd.market_cap ?? null,
       rank: t.rank ?? null,
       change24h: usd.percent_change_24h ?? null,
+      volume24h: usd.volume_24h ?? null,
       _src: "coinpaprika",
     });
     hit.add(gid);

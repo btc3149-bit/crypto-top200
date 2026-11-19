@@ -22,8 +22,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 import weekly_check as wc  # noqa: E402
+import check_meta  # noqa: E402  （W3-22：rows/对象双形态解码）
 
-COINS = json.load(open(ROOT / "data/coins.json", encoding="utf-8"))["coins"]
+COINS = check_meta.decode_coins(json.load(open(ROOT / "data/coins.json", encoding="utf-8")))
 BY_SYM = {c["symbol"]: c for c in COINS}
 PASS = []
 

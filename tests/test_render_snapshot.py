@@ -51,7 +51,8 @@ with tempfile.TemporaryDirectory() as td:
 
     # ③ 源 199 条 → 失败且不写文件
     bad = dict(src)
-    bad["coins"] = src["coins"][:199]
+    bad["rows"] = src["rows"][:199]
+    bad.pop("coins", None)
     coins_199 = td / "coins199.json"
     coins_199.write_text(json.dumps(bad, ensure_ascii=False), encoding="utf-8")
     h2 = td / "b.html"

@@ -55,8 +55,8 @@
 
 ## 未达 / 暂缓（如实记录）
 
-- **W3-22 未达 ❌**：coins.json 的 rows 位置数组形态未启用。子 agent 隔离实验实测：无损 rows 形态 gzip 下限约 20.0–20.4 KB，方案验收线 ≤16 KB 不可达（根源：reason 等唯一文本的熵下限，评估文档的削减预估与实测不符）；前端 `decodeCoinsData` 现为桩（rows 上线会令逐行 diff 200/200 不一致）；范围外消费方 `functions/api/board.js` 的 `getIds()` 只认对象形态，rows 上线会使 legacy 实时路径恒回退快照。强行启用将违反「/api/board 契约不动」红线，故按失败纪律回退全部实验改动。完整评估与前端补全规格、dataHash 口径建议（口径 A：解码后规范对象数组哈希，dataHash 不变）见 `ops/w322-assessment.md`。后续启用顺序：协调者先落前端+board.js 解码并回归 → 站长裁决 gzip 线（建议按实测改 ≤21 KB）→ 管线一次性联动。
-- **W3-25 暂缓 ⏸**：24h 成交量字段未施工。核查结论：`scripts/compare-shadow.mjs` 只比对价差中位/P95、市值 Top20 集合与覆盖集，新增字段技术上不干扰影子比对口径；但本包须改 fetcher 并重新部署 Worker，正处 G1 影子观察窗（结算 2026-11-14 09:17），按本包自身条件「排在 G1 结算与 G2 决策之后、不得干扰影子观察」，待 G1 结算与站长 G2 决策后再施工（详情行呈现的落点与字段名 `volume24h` 已定版）。
+- **W3-22 未达 ❌（已于 2026-11-19 按新线补做完成，见文末「W3-22 + W3-25 补做记录」）**：coins.json 的 rows 位置数组形态未启用。子 agent 隔离实验实测：无损 rows 形态 gzip 下限约 20.0–20.4 KB，方案验收线 ≤16 KB 不可达（根源：reason 等唯一文本的熵下限，评估文档的削减预估与实测不符）；前端 `decodeCoinsData` 现为桩（rows 上线会令逐行 diff 200/200 不一致）；范围外消费方 `functions/api/board.js` 的 `getIds()` 只认对象形态，rows 上线会使 legacy 实时路径恒回退快照。强行启用将违反「/api/board 契约不动」红线，故按失败纪律回退全部实验改动。完整评估与前端补全规格、dataHash 口径建议（口径 A：解码后规范对象数组哈希，dataHash 不变）见 `ops/w322-assessment.md`。后续启用顺序：协调者先落前端+board.js 解码并回归 → 站长裁决 gzip 线（建议按实测改 ≤21 KB）→ 管线一次性联动。
+- **W3-25 暂缓 ⏸（已于 2026-11-19 与 W3-22 同批完成，见文末补做记录）**：24h 成交量字段未施工。核查结论：`scripts/compare-shadow.mjs` 只比对价差中位/P95、市值 Top20 集合与覆盖集，新增字段技术上不干扰影子比对口径；但本包须改 fetcher 并重新部署 Worker，正处 G1 影子观察窗（结算 2026-11-14 09:17），按本包自身条件「排在 G1 结算与 G2 决策之后、不得干扰影子观察」，待 G1 结算与站长 G2 决策后再施工（详情行呈现的落点与字段名 `volume24h` 已定版）。
 
 ## W3-23 测量结论（只测不改，已回填 ops/perf-baseline.md）
 
@@ -91,3 +91,28 @@
 ## 站长裁决记录（2026-11-13）
 
 - **W3-22：按新线补做。** 用户于 2026-11-13 拍板：批准 gzip 达标线改判 ≤21KB，并批准评估（ops/w322-assessment.md 第五节）的扩围规格——前端 decodeCoinsData 按 meta.fields 字段序补全解码、functions/api/board.js 的 getIds() 同步支持 rows 解码、最后一次性管线联动切换；dataHash 采用口径 A（解码后规范对象数组哈希，不变）。排期：不在 G1 影子观察窗内施工，待 2026-11-14 G1 结算且用户定完 G2 后启动（与 W3-25 同队列）。
+
+## W3-22 + W3-25 补做记录（2026-11-19，用户拍板同批启动）
+
+门禁前置：G3 已于当日 10:42 完成（BOARD_READ_MODE=kv），本批施工在 G3 观察期内动了 fetcher——11-21 G3 切换后复核结论须注明此变更。启动前六项核查全过（git 干净且与远端一致 HEAD 2e43513；/api/health ok；/api/board kv 契约 200/200、stale=false；KV health ok、consecutiveFailures=0；quota-log 最新判级 WARNING 非 CRITICAL）。
+
+### W3-22 数据紧凑形态（按 ≤21KB 新线 + 扩围规格）✅
+
+- 落盘切换：`data/coins.json`、`public/data/coins.json`、`workers/fetcher/coins.json` 三份同字节改为 rows 紧凑形态（`{meta（含 fields=FIELDS23）, rows}`，紧凑分隔符）。内部规范形态不变：`scripts/check_meta.py` 新增 `decode_coins()` 为单一解码来源，build/render_snapshot/weekly_check 共用；`scripts/build.py` 的 `emit()` 落盘时编码 rows、`build_meta()` 写入 fields，--emit 与 prior 读取均走解码。
+- 消费方联动：前端 `decodeCoinsData` 按 meta.fields 补全解码（零硬编码字段表）；`functions/api/board.js` 的 `getIds()` 同步支持 rows 抽列；`scripts/smoke.sh`、`probe.sh`、`deploy.sh` 门禁 (b4) 改 rows-aware；`gen-paprika-map.mjs`、`verify-paprika-coverage.mjs` 加双形态解码。`coins-list.js` 无需重生成（id 集不变，b4 预演 PASS）。
+- dataHash 口径 A 实证：切换前后同为 `sha256:264c2b2074f3677d647309579259c81d2b210661ae3133138747f9e0f9beaac4`；解码往返与旧对象产物逐字段全等（Python roundtrip + contract R2 双证）。
+- 实测 payload（gzip，`gzip -c | wc -c` 仓库产物口径）：coins.json 原始 132,138→53,175 B、gzip 24,513→**20,403 B**（达标线 ≤21,504 ✅、收紧后预算 ≤22,500 ✅）；index.html gzip 47,378 B；首屏合计 **67,781 B ≤ 71,000 ✅**。线上实测（CDN 传输字节）：coins 20,254 B、index 46,928 B、合计 67,182 B，同在预算内。
+- 测试侧：`contract-real-data.test.mjs` 按其文件头定版完成 rows 常驻改造（fixture 加载解码、② 喂原始产物、④ 解码后算哈希），默认运行由 4 PASS/2 SKIP 转为 **6 PASS/0 SKIP**，--rows 2 PASS；board/board-v2 各加 rows 形态 getIds 用例；frontend-dom、snapshot-verify、test_render_snapshot、weekly_check_test 的 fixture 读取改解码。
+
+### W3-25 详情 24h 成交量 ✅
+
+- 契约增量：`shared/board-schema.js` 的 `normalizeCgMarkets`（`total_volume`）与 `normalizePaprikaTickers`（`volume_24h`）新增 `volume24h`；`functions/api/board.js` legacy 映射与 KV 组装 `assembleV2` 同步透传；前端详情行在「实时市值」后新增「24h 成交量（实时）」（fmtMcap 格式化，缺失显「—（无实时数据）」）。纯新增、向后兼容，/api/health 契约不变，compare 字段门禁（price/mcapUsd）不受影响。
+- fetcher 部署版本 `752af715-84a3-4779-802c-829512410693`；新代码首个完整 run（20261119T0540Z）起 KV blob `volume24h` 非空 200/200。
+- 线上抽查（/api/board 与 blob 一致）：BTC $31,802,072,825、ETH $10,652,512,215、FIL $65,485,535；与 CoinGecko 直查（同刻 total_volume：31,783,340,213 / 10,656,697,570 / 65,442,303）同量级、差 <0.1%（时点差）。
+
+### 全量回归与部署后验证
+
+- 测试全绿：board 9/9、board-v2 13/13、board-fetcher 8/8、fetcher-branches 24/24、frontend-dom 6/6、snapshot-verify 5/5、contract-real-data 6 PASS/0 SKIP（--rows 2 PASS）、test_render_snapshot 8/8、weekly_check 14/14、check_meta 11 pass。
+- 部署：fetcher `752af715`（先行）→ Pages `760d8089-7702-465a-9bf7-0033d4b14216`（index.html 有变，先跑 gen-headers --variant=on）。deploy.sh 内建 smoke 全过、probe verdict=pass；HC2-top200-deploy 报到 success。
+- 部署后：/api/board 仍 kv 契约 v2（mode=live、stale=false、coverage 200/200、fetch.fetchRunId 与当前 blob 对齐）；compare-shadow（G3 口径：以 current blob 为比对输入）**verdict=pass**（aligned、timeSkew 0s、compared 200、top20SameSet=true、failReasons 空）；UptimeRobot M1–M4 全 up（status=2）。
+- 备注：① `v1:board:shadow` 自 2026-11-18T23:50Z 起未再更新（G3 后影子链停写、属既定形态），本次 compare 按 G3 验证同口径执行；② 施工期间 KV 直读曾出现边缘一致性抖动（同一键先后读到 0550Z/0520Z 两种 runId），最终以 blob 直读 + /api/board 的 fetchRunId 交叉确认定论，线上服务未受影响。

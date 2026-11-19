@@ -41,6 +41,7 @@ function marketsPayload(ids = IDS) {
     market_cap_rank: i + 1,
     price_change_percentage_24h_in_currency: 1.5,
     price_change_percentage_24h: 1.2,
+    total_volume: 500000 + i,
   }));
 }
 const GLOBAL_PAYLOAD = { data: { total_market_cap: { usd: 999 }, market_cap_percentage: { btc: 55 }, market_cap_change_percentage_24h_usd: 1 } };
@@ -62,7 +63,8 @@ async function test(name, fn) {
 await test("schema: normalizeCgMarkets 行结构与现行 board 同构 + validateBlob", async () => {
   const { rows, coverage } = normalizeCgMarkets(marketsPayload(), IDS);
   assert.equal(coverage.returned, 4);
-  assert.deepEqual(Object.keys(rows[0]).sort(), ["_src", "change24h", "id", "mcapUsd", "price", "rank"]);
+  assert.deepEqual(Object.keys(rows[0]).sort(), ["_src", "change24h", "id", "mcapUsd", "price", "rank", "volume24h"]);
+  assert.equal(rows[0].volume24h, 500000, "W3-25: total_volume → volume24h 映射");
   const blob = buildBlob({
     source: "coingecko",
     fetchRunId: "r1",

@@ -32,6 +32,7 @@ from zoneinfo import ZoneInfo
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "scripts"))
 from pipeline_config import EXPECTED_TOTAL, REPORT_URL  # noqa: E402
+import check_meta  # noqa: E402  （W3-22：rows/对象双形态解码 decode_coins 单一来源）
 
 BEGIN = "<!-- SNAPSHOT:BEGIN -->"
 END = "<!-- SNAPSHOT:END -->"
@@ -314,7 +315,7 @@ def run(coins_path, html_path, report_url=None):
         doc = json.loads(coins_path.read_text(encoding="utf-8"))
     except Exception as e:
         raise SnapshotError(f"快照源读取失败 {coins_path}: {e}")
-    coins = doc.get("coins") or []
+    coins = check_meta.decode_coins(doc)
     if len(coins) != EXPECTED_TOTAL:
         raise SnapshotError(f"源条数 {len(coins)} != {EXPECTED_TOTAL}，中止注入（宁可不发版，不发残表）")
     generated_at = (doc.get("meta") or {}).get("generatedAt")

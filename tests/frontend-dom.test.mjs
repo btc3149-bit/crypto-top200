@@ -31,13 +31,25 @@ import vm from "node:vm";
 const html = readFileSync(new URL("../public/index.html", import.meta.url), "utf-8");
 const coinsDoc = JSON.parse(readFileSync(new URL("../data/coins.json", import.meta.url), "utf-8"));
 const generatedAt = coinsDoc.meta.generatedAt;
-const coinById = new Map(coinsDoc.coins.map((c) => [c.coingeckoId, c]));
+// W3-22：coins.json 为 rows 紧凑形态，按 meta.fields 解码为规范对象（与前端 decodeCoinsData 同口径）。
+function decodeCoinsDoc(doc) {
+  if (doc && Array.isArray(doc.coins)) return doc.coins;
+  const fields = doc && doc.meta && Array.isArray(doc.meta.fields) ? doc.meta.fields : null;
+  if (!fields || !Array.isArray(doc.rows)) return [];
+  return doc.rows.map((r) => {
+    const o = {};
+    for (let i = 0; i < fields.length; i++) o[fields[i]] = r[i];
+    return o;
+  });
+}
+const coinsList = decodeCoinsDoc(coinsDoc);
+const coinById = new Map(coinsList.map((c) => [c.coingeckoId, c]));
 
 // ---------- live 载荷（board 契约形态：coins[id] = {price, mcapUsd, rank, change24h}） ----------
 const BTC_NEW_PRICE = coinById.get("bitcoin").snapshotPrice * 2.5;
 const ETH_CONTRACT_MCAP = 123456789000;
 const liveCoins = {};
-for (const c of coinsDoc.coins) {
+for (const c of coinsList) {
 liveCoins[c.coingeckoId] = {
 price: c.snapshotPrice * 1.01,
 mcapUsd: c.snapshotMcapUsd,

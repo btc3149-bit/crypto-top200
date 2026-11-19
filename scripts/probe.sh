@@ -60,7 +60,7 @@ C_NOHTML="fail"
 fi
 
 # 4) coverage.returned ≥ 期望数（/data/coins.json 的 coins 长度）的 94%
-C_COV="$(python3 -c "import json,sys; e=len(json.load(open(sys.argv[2],encoding='utf-8'))['coins']); r=json.load(open(sys.argv[1],encoding='utf-8'))['coverage']['returned']; print('pass' if r >= e * 0.94 else 'fail')" "$BOARD_BODY" "$DATA_BODY" 2>/dev/null || echo fail)"
+C_COV="$(python3 -c "import json,sys; d=json.load(open(sys.argv[2],encoding='utf-8')); e=len(d.get('coins') or d.get('rows') or []); r=json.load(open(sys.argv[1],encoding='utf-8'))['coverage']['returned']; print('pass' if r >= e * 0.94 else 'fail')" "$BOARD_BODY" "$DATA_BODY" 2>/dev/null || echo fail)"
 
 # 5) 首页 200 且含标题关键字
 C_HOME="fail"

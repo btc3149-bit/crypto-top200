@@ -302,6 +302,27 @@ await test("⑧ W5-02: BOARD_READ_MODE 误写（kvv）→ 结构化 error 日志
   assert.equal(hit.fallback, "legacy");
 });
 
+await test("⑨ W3-22: coins.json 为 rows 紧凑形态 → getIds 按 meta.fields 解码、legacy 正常 live", async () => {
+  const mod = await freshBoard();
+  const FIELDS = ["table", "estRank", "rankNow", "rankNote", "name", "symbol", "coingeckoId", "snapshotPrice", "snapshotMcapUsd", "snapshotMcapRaw", "athPrice", "athDate", "athFlag", "estLo", "estHi", "multLo", "multHi", "impliedMcapLoUsd", "impliedMcapHiUsd", "impliedMcapRaw", "confidence", "reason", "dataDate"];
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes("/data/coins.json")) {
+      return jsonRes({ meta: { fields: FIELDS }, rows: IDS.map((id) => FIELDS.map((f) => (f === "coingeckoId" ? id : null))) });
+    }
+    if (u.includes("/coins/markets")) return jsonRes(marketsPayload().map((m, i) => ({ ...m, total_volume: 7000 + i })));
+    if (u.includes("/global")) return jsonRes(globalPayload());
+    throw new Error("unexpected fetch: " + u);
+  };
+  const res = await callGet(mod);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.mode, "live");
+  assert.equal(body.coverage.returned, IDS.length);
+  assert.deepEqual(Object.keys(body.coins).sort(), [...IDS].sort());
+  assert.equal(body.coins.bitcoin.volume24h, 7000, "W3-25: legacy 路径 total_volume → volume24h");
+});
+
 restore();
 const failed = results.filter(([, s]) => s !== "PASS");
 console.log(`\n=== ${results.length - failed.length}/${results.length} passed ===`);

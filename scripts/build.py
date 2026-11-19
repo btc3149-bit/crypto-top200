@@ -437,6 +437,7 @@ def build_meta(coins, report_paths):
         reports.append({"title": title, "date": "2026-11-10", "path": rel, "sha256": sha})
     meta = {"schemaVersion": 2, "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "dataHash": data_hash(coins),
+            "fields": FIELDS23,
             "estimateWindow": "2029 年 9 月下旬 ~ 10 月中旬（下一轮牛市高点推算窗口）",
             "sourceReports": reports,
             "generator": {"script": "scripts/build.py", "version": VERSION,
@@ -449,7 +450,14 @@ def build_meta(coins, report_paths):
 
 def emit(doc):
     BUILD_DIR.mkdir(exist_ok=True)
-    text = json.dumps(doc, ensure_ascii=False, indent=1)
+    # W3-22：落盘统一编码为 rows 紧凑形态（meta.fields 字段序 + 位置数组行）。
+    # 入参 doc 内部恒为规范对象形态（{"meta","coins"}）；--emit 重读已落盘的
+    # rows 文档时先经 check_meta.decode_coins 解码（口径 A：dataHash 不变）。
+    coins = check_meta.decode_coins(doc)
+    meta = dict(doc.get("meta") or {})
+    meta["fields"] = FIELDS23
+    out = {"meta": meta, "rows": [[c.get(f) for f in FIELDS23] for c in coins]}
+    text = json.dumps(out, ensure_ascii=False, separators=(",", ":"))
     for p in (ROOT / "data/coins.json", ROOT / "public/data/coins.json"):
         p.write_text(text, encoding="utf-8")
     (ROOT / "public/data/DO_NOT_EDIT.md").write_text(
@@ -491,7 +499,7 @@ def main():
         # 防手改 typo 绕过字段校验直接拷贝上线（此前 --emit 只跑 check_meta）。
         try:
             ov = json.load(open(ROOT / "scripts/overrides.json", encoding="utf-8"))
-            validate(doc["coins"], ov["entries"])
+            validate(check_meta.decode_coins(doc), ov["entries"])
         except GateFail as e:
             print(f"FAIL [emit] 字段级 validate 未通过，不拷贝：{e}", file=sys.stderr)
             return 1
@@ -506,7 +514,7 @@ def main():
     offline = "--offline" in args
     prior_path = Path(opt("--prior", str(ROOT / "data/coins.json")))
     prior_doc = json.load(open(prior_path, encoding="utf-8")) if prior_path.exists() else {"coins": [], "meta": {}}
-    prior_coins = prior_doc["coins"]
+    prior_coins = check_meta.decode_coins(prior_doc)
     meta_reports = [ROOT.parent / r["path"] for r in prior_doc.get("meta", {}).get("sourceReports", [])]
     main_p = opt("--reports", str(meta_reports[0]) if len(meta_reports) > 0 else None)
     refill_p = opt("--refill", str(meta_reports[1]) if len(meta_reports) > 1 else None)

@@ -798,6 +798,7 @@ function detailHTML(c) {
   const lv = live(c);
   const chgTxt = lv && lv.change24h != null ? "<span class='" + (lv.change24h >= 0 ? "up" : "dn") + "'>" + fmtPct(lv.change24h) + "</span>" : "—（无实时数据）";
   const mcapTxt = lv && lv.mcapUsd != null ? fmtMcap(lv.mcapUsd) : "—（无实时数据）";
+  const volTxt = lv && lv.volume24h != null ? fmtMcap(lv.volume24h) : "—（无实时数据）";
   return "<tr class='detail-row' id='d-" + esc(c.coingeckoId) + "'><td colspan='12'>" + warn +
     "<dl>" +
     "<div><dt>隐含市值区间（2029）</dt><dd>" + (c.impliedMcapLoUsd == null && c.impliedMcapHiUsd == null ? "未披露" : fmtMcap(c.impliedMcapLoUsd) + " – " + fmtMcap(c.impliedMcapHiUsd)) + "</dd></div>" +
@@ -807,6 +808,7 @@ function detailHTML(c) {
     "<div><dt>报告现排名</dt><dd>" + rankTxt + rankNoteTxt + "</dd></div>" +
     "<div><dt>24h（实时）</dt><dd>" + chgTxt + "</dd></div>" +
     "<div><dt>实时市值</dt><dd>" + mcapTxt + "</dd></div>" +
+    "<div><dt>24h 成交量（实时）</dt><dd>" + volTxt + "</dd></div>" +
     "<div><dt>ATH</dt><dd>" + athFullText(c) + "</dd></div>" +
     "<div><dt>距 ATH</dt><dd>" + athDropTxt + "</dd></div>" +
     "<div><dt>2029 预估区间</dt><dd>" + fmtPrice(c.estLo) + "–" + fmtPrice(c.estHi) + "</dd></div>" +
@@ -1040,9 +1042,19 @@ function onHashChange() {
   if (raw && raw !== "#" && typeof console !== "undefined" && console.info) console.info("[top200] hash target not found:", raw);
 }
 function decodeCoinsData(data) {
-  // 双形态解码器：现行对象形态直通；管线新形态（位置数组）交付后在此按 meta 字段序解码，全站只见规范对象。
+  // 双形态解码器（W3-22 补全）：对象形态直通；rows 位置数组形态按 meta.fields
+  // 字段序逐项 zip 成具名对象（字段序唯一来源是 meta，禁止前端另立字段表），
+  // 值原样透传（null 保持 null、数字不舍入）。全站下游只见规范对象。
   if (data && Array.isArray(data.coins)) return data.coins;
-  if (data && Array.isArray(data.rows)) return data.rows;
+  if (data && Array.isArray(data.rows)) {
+    const fields = data.meta && Array.isArray(data.meta.fields) ? data.meta.fields : null;
+    if (!fields) return [];
+    return data.rows.map((r) => {
+      const o = {};
+      for (let i = 0; i < fields.length; i++) o[fields[i]] = r[i];
+      return o;
+    });
+  }
   return [];
 }
 async function init() {

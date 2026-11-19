@@ -189,7 +189,18 @@ async function getIds(request) {
       });
     }
     const data = await res.json();
-    const list = data && Array.isArray(data.coins) ? data.coins : null;
+    // W3-22：双形态解码——对象形态取 data.coins；rows 紧凑形态按 meta.fields
+    // 中 coingeckoId 的列索引从 data.rows 抽列（与前端 decodeCoinsData 同口径）。
+    let list = null;
+    if (data && Array.isArray(data.coins)) {
+      list = data.coins;
+    } else if (data && Array.isArray(data.rows)) {
+      const fields = data.meta && Array.isArray(data.meta.fields) ? data.meta.fields : null;
+      const idx = fields ? fields.indexOf("coingeckoId") : -1;
+      if (idx >= 0) {
+        list = data.rows.map((r) => ({ coingeckoId: Array.isArray(r) ? r[idx] : null }));
+      }
+    }
     if (!list) {
       throw new UpstreamError("coins.json parse failed", { errorType: "ids_parse_failed" });
     }
@@ -290,6 +301,7 @@ async function fetchUpstreamInternal(env, ids) {
         m.price_change_percentage_24h_in_currency != null
           ? m.price_change_percentage_24h_in_currency
           : m.price_change_percentage_24h,
+      volume24h: m.total_volume ?? null,
     };
   }
 
@@ -649,7 +661,7 @@ function assembleV2(blob, servedFrom, health, now) {
   const coins = {};
   for (const r of blob.rows || []) {
     if (!r || !r.id) continue;
-    coins[r.id] = { price: r.price, mcapUsd: r.mcapUsd, rank: r.rank, change24h: r.change24h };
+    coins[r.id] = { price: r.price, mcapUsd: r.mcapUsd, rank: r.rank, change24h: r.change24h, volume24h: r.volume24h ?? null };
   }
   const { global } = globalForContract(blob.global, now);
   return {

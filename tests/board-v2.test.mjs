@@ -192,6 +192,29 @@ await test("v2 dual 模式: 对外仍 legacy 结果（走抓取路径），KV �
   assert.equal(body.contractVersion, undefined, "dual 对外是 legacy 契约（无 contractVersion）");
 });
 
+await test("v2 dual 模式 + rows 形态 coins.json（W3-22）: getIds 解码 rows、对外仍 legacy 结果", async () => {
+  const mod = await freshBoard();
+  Date.now = () => T0;
+  const FIELDS = ["table", "estRank", "rankNow", "rankNote", "name", "symbol", "coingeckoId", "snapshotPrice", "snapshotMcapUsd", "snapshotMcapRaw", "athPrice", "athDate", "athFlag", "estLo", "estHi", "multLo", "multHi", "impliedMcapLoUsd", "impliedMcapHiUsd", "impliedMcapRaw", "confidence", "reason", "dataDate"];
+  const IDS4 = ["bitcoin", "ethereum", "solana", "filecoin"];
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    const jr = (b) => new Response(JSON.stringify(b), { status: 200, headers: { "content-type": "application/json" } });
+    if (u.includes("/data/coins.json")) return jr({ meta: { fields: FIELDS }, rows: IDS4.map((id) => FIELDS.map((f) => (f === "coingeckoId" ? id : null))) });
+    if (u.includes("/coins/markets"))
+      return jr(IDS4.map((id, i) => ({ id, current_price: 100 + i, market_cap: 1000000 + i, market_cap_rank: i + 1, price_change_percentage_24h_in_currency: 1.5, total_volume: 9000 + i })));
+    if (u.includes("/global")) return jr({ data: { total_market_cap: { usd: 999 }, market_cap_percentage: { btc: 55 }, market_cap_change_percentage_24h_usd: 1 } });
+    throw new Error("unexpected " + u);
+  };
+  const env = { ...kvEnv(makeBlob({})), BOARD_READ_MODE: "dual" };
+  const res = await mod.onRequestGet(ctx(env));
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.mode, "live");
+  assert.equal(body.contractVersion, undefined, "dual 对外是 legacy 契约（无 contractVersion）");
+  assert.equal(body.coins.bitcoin.volume24h, 9000, "W3-25: legacy 路径 total_volume → volume24h");
+});
+
 Date.now = originalDateNow;
 globalThis.fetch = originalFetch;
 const failed = results.filter(([, s]) => s !== "PASS");
