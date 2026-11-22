@@ -6,8 +6,8 @@
 // 运行：node tests/fetcher-branches.test.mjs
 import assert from "node:assert/strict";
 import { KV_KEYS } from "../shared/board-schema.js";
-import fetcher, { runFetch } from "../workers/fetcher/src/index.js";
-import { emptySourceState, resolveProvider } from "../workers/fetcher/src/source-state.js";
+import fetcher, { runFetch, estimateQuotaMode } from "../workers/fetcher/src/index.js";
+import { emptySourceState, resolveProvider, applyOutcome } from "../workers/fetcher/src/source-state.js";
 import * as paprika from "../workers/fetcher/src/providers/coinpaprika.js";
 import { COINS as REAL_COINS } from "../workers/fetcher/src/coins-list.js";
 
@@ -21,12 +21,14 @@ const COINS = [
 ];
 const IDS = COINS.map((c) => c.id);
 
-function makeKv({ failPutKeys = new Set() } = {}) {
+function makeKv({ failPutKeys = new Set(), failGetKeys = new Set() } = {}) {
   const store = new Map();
   return {
     store,
     failPutKeys,
+    failGetKeys,
     async get(key, opts) {
+      if (failGetKeys.has(key)) throw new Error(`mock kv get failed: ${key}`);
       const v = store.get(key);
       if (v == null) return null;
       return opts && opts.type === "json" ? JSON.parse(v) : v;
@@ -172,13 +174,15 @@ await test("1d quota critical: markets 40min 前成功（≥30min）→ 不跳�
 // ---------- 2. global due 两态（W4-01 回归） ----------
 const NOW_G = Date.UTC(2026, 10, 15, 12, 0, 0);
 
-await test("2a global due [shadow]: global.asOf 距 now 10min → 不调 global、沿用 shadow 上一版 global 段", async () => {
+// F6-45 后 globalDue 为墙钟相位口径：now 与 prev asOf 同处一个 epoch 30min 窗口 → 未到期。
+// 本组时刻取 12:10（窗口 12:00–12:30）、prev asOf 12:02（同窗口、龄 8min）。
+await test("2a global due [shadow]: prev asOf 与 now 同墙钟窗口（龄 8min）→ 不调 global、沿用 shadow 上一版 global 段", async () => {
   const kv = makeKv();
-  const prev = makePrevBlob({ nowMs: NOW_G, marketsAgeMs: 10 * 60 * 1000, globalAgeMs: 10 * 60 * 1000 });
+  const prev = makePrevBlob({ nowMs: NOW_G + 10 * 60 * 1000, marketsAgeMs: 8 * 60 * 1000, globalAgeMs: 8 * 60 * 1000 });
   kv.store.set(KV_KEYS.shadow, JSON.stringify(prev));
   // current 键故意不放（或放一份过期的）：W4-01 前误读 current 会误判 due；修复后只读 shadow
   const counts = installCgFetch();
-  const r = await runFetch(baseEnv(kv, { BOARD_TARGET_KEY: "shadow" }), { coins: COINS, ids: IDS, nowMs: NOW_G });
+  const r = await runFetch(baseEnv(kv, { BOARD_TARGET_KEY: "shadow" }), { coins: COINS, ids: IDS, nowMs: NOW_G + 10 * 60 * 1000 });
   assert.equal(r.ok, true, JSON.stringify(r));
   assert.equal(r.targetKey, KV_KEYS.shadow);
   assert.equal(counts.markets, 1);
@@ -201,18 +205,30 @@ await test("2b global due [shadow]: global.asOf 距 now 40min → 调 global 一
   assert.equal(blob.global.asOf, new Date(NOW_G).toISOString());
 });
 
-await test("2c global due [current]: global.asOf 距 now 10min → 不调 global（current 形态行为不变）", async () => {
+await test("2c global due [current]: prev asOf 与 now 同墙钟窗口 → 不调 global（current 形态行为不变）", async () => {
   const kv = makeKv();
-  const prev = makePrevBlob({ nowMs: NOW_G, marketsAgeMs: 10 * 60 * 1000, globalAgeMs: 10 * 60 * 1000 });
+  const prev = makePrevBlob({ nowMs: NOW_G + 10 * 60 * 1000, marketsAgeMs: 8 * 60 * 1000, globalAgeMs: 8 * 60 * 1000 });
   kv.store.set(KV_KEYS.current, JSON.stringify(prev));
   const counts = installCgFetch();
-  const r = await runFetch(baseEnv(kv), { coins: COINS, ids: IDS, nowMs: NOW_G });
+  const r = await runFetch(baseEnv(kv), { coins: COINS, ids: IDS, nowMs: NOW_G + 10 * 60 * 1000 });
   assert.equal(r.ok, true, JSON.stringify(r));
   assert.equal(r.targetKey, KV_KEYS.current);
   assert.equal(counts.global, 0);
   const blob = JSON.parse(kv.store.get(KV_KEYS.current));
   assert.equal(blob.global.totalMarketCapUsd, 111111);
   assert.equal(blob.global.asOf, prev.global.asOf);
+});
+
+await test("2d F6-45 墙钟相位: prev asOf 龄仅 15min 但已跨窗口（11:55 → now 12:10）→ 到期重抓、新段盖 now 戳", async () => {
+  const kv = makeKv();
+  kv.store.set(KV_KEYS.current, JSON.stringify(makePrevBlob({ nowMs: NOW_G + 10 * 60 * 1000, marketsAgeMs: 15 * 60 * 1000, globalAgeMs: 15 * 60 * 1000 })));
+  const counts = installCgFetch();
+  const r = await runFetch(baseEnv(kv), { coins: COINS, ids: IDS, nowMs: NOW_G + 10 * 60 * 1000 });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(counts.global, 1, "跨墙钟窗口即到期（旧 asOf 锚定口径此时龄 15min<30min 不会抓）");
+  const blob = JSON.parse(kv.store.get(KV_KEYS.current));
+  assert.equal(blob.global.totalMarketCapUsd, 999);
+  assert.equal(blob.global.asOf, new Date(NOW_G + 10 * 60 * 1000).toISOString());
 });
 
 // ---------- 3. partial 失败 ----------
@@ -496,6 +512,244 @@ await test("9b W5-01 契约: 真实 COINS 元素形 {id,paprikaId} + 命中 tick
   assert.deepEqual(coverage.missingIds, [REAL_COINS[1].id, REAL_COINS[3].id]);
   assert.deepEqual(rows.map((r) => r.id).sort(), [REAL_COINS[0].id, REAL_COINS[2].id].sort());
   assert.ok(rows.every((r) => r._src === "coinpaprika"));
+});
+
+// ---------- 10. F6-11 失败 run 额度记账 ----------
+await test("10 F6-11: global 成功 + markets 失败(500) → 账面 credits +2、attemptsTotal +2（失败尝试与被丢弃的 global 都记账）", async () => {
+  const kv = makeKv();
+  seedHealthCredits(kv, 100);
+  installCgFetch({ marketsImpl: () => jsonRes({ error: "boom" }, { status: 500 }) });
+  const r = await runFetch(baseEnv(kv), { coins: COINS, ids: IDS, nowMs: NOW_G });
+  assert.equal(r.ok, false);
+  assert.equal(r.stage, "markets");
+  const health = JSON.parse(kv.store.get(KV_KEYS.health));
+  assert.equal(health.quota.creditsUsedEst, 102, "global 成功 1 + markets 失败尝试 1 = +2");
+  assert.equal(health.quota.attemptsTotal, 2);
+});
+
+// ---------- 11. F6-47 KV 读异常 ----------
+await test("11 F6-47: KV 读 health 抛错 → stage=kv-get 失败收尾、health 与 blob 均不覆写、零上游调用", async () => {
+  const kv = makeKv({ failGetKeys: new Set([KV_KEYS.health]) });
+  const healthStr = JSON.stringify({ consecutiveFailures: 5, quota: { month: "2026-11", creditsUsedEst: 42, quotaMode: "normal" } });
+  kv.store.set(KV_KEYS.health, healthStr);
+  const blobStr = JSON.stringify(makePrevBlob({ nowMs: NOW_G }));
+  kv.store.set(KV_KEYS.current, blobStr);
+  const counts = installCgFetch();
+  const r = await runFetch(baseEnv(kv), { coins: COINS, ids: IDS, nowMs: NOW_G });
+  assert.equal(r.ok, false);
+  assert.equal(r.stage, "kv-get");
+  assert.equal(r.code, "kv_read_failed");
+  assert.equal(kv.store.get(KV_KEYS.health), healthStr, "读异常不得覆写 health（失败计数/额度锁定保全）");
+  assert.equal(kv.store.get(KV_KEYS.current), blobStr);
+  assert.equal(counts.total, 0);
+});
+
+// ---------- 12. F6-42 global 429 单独退避 ----------
+await test("12 F6-42: global 429(Retry-After=3600) → run 仍成功、health 记 globalLast429At/globalSkipUntil；退避期内只跳 global、markets 照常", async () => {
+  const kv = makeKv();
+  const counts = installCgFetch({
+    globalImpl: () => new Response(JSON.stringify({ error: "slow" }), { status: 429, headers: { "content-type": "application/json", "Retry-After": "3600" } }),
+  });
+  const r1 = await runFetch(baseEnv(kv), { coins: COINS, ids: IDS, nowMs: NOW_G });
+  assert.equal(r1.ok, true, JSON.stringify(r1));
+  assert.equal(counts.global, 1);
+  const h1 = JSON.parse(kv.store.get(KV_KEYS.health));
+  assert.equal(h1.globalLast429At, new Date(NOW_G).toISOString());
+  assert.equal(h1.globalSkipUntil, new Date(NOW_G + 3600 * 1000).toISOString());
+  const counts2 = installCgFetch();
+  const r2 = await runFetch(baseEnv(kv), { coins: COINS, ids: IDS, nowMs: NOW_G + 10 * 60 * 1000 });
+  assert.equal(r2.ok, true, JSON.stringify(r2));
+  assert.equal(counts2.markets, 1, "markets 不受 global 退避连带");
+  assert.equal(counts2.global, 0, "退避期内 global 单独跳过");
+  const h2 = JSON.parse(kv.store.get(KV_KEYS.health));
+  assert.equal(h2.globalSkipUntil, new Date(NOW_G + 3600 * 1000).toISOString(), "退避状态跨 run 保留在 health");
+});
+
+// ---------- 13. F6-46 retryUntil 时间戳 + 计数口径 ----------
+await test("13 F6-46: markets 429 Retry-After=60 → health.retryUntil=now+60s（非轮数）；窗内跳过、窗外恢复；429 本 run 计入连续失败、被跳 run 不计", async () => {
+  const kv = makeKv();
+  installCgFetch({
+    marketsImpl: () => new Response(JSON.stringify({ error: "slow" }), { status: 429, headers: { "content-type": "application/json", "Retry-After": "60" } }),
+  });
+  const r1 = await runFetch(baseEnv(kv), { coins: COINS, ids: IDS, nowMs: NOW_G });
+  assert.equal(r1.ok, false);
+  const h1 = JSON.parse(kv.store.get(KV_KEYS.health));
+  assert.equal(h1.retryUntil, new Date(NOW_G + 60 * 1000).toISOString());
+  assert.equal(h1.consecutiveFailures, 1, "口径对齐 runbook/W2-02 §3.3：429 本 run 计入、被跳 run 不计");
+  const counts2 = installCgFetch();
+  const r2 = await runFetch(baseEnv(kv), { coins: COINS, ids: IDS, nowMs: NOW_G + 30 * 1000 });
+  assert.equal(r2.skipped, true);
+  assert.equal(r2.reason, "retry_after_skip");
+  assert.equal(counts2.total, 0);
+  assert.equal(JSON.parse(kv.store.get(KV_KEYS.health)).consecutiveFailures, 1, "被跳 run 不计失败");
+  const counts3 = installCgFetch();
+  const r3 = await runFetch(baseEnv(kv), { coins: COINS, ids: IDS, nowMs: NOW_G + 61 * 1000 });
+  assert.equal(r3.ok, true, `Retry-After 60s 过后即恢复（旧轮数口径会停约 20min）: ${JSON.stringify(r3)}`);
+  assert.equal(counts3.markets, 1);
+});
+
+// ---------- 14. F6-45 skip 路径 global 严重过期绕过 ----------
+await test("14 F6-45: retryUntil 未到但 prev global 已过期 3h → 不整 run 跳过、global 与 markets 照抓", async () => {
+  const kv = makeKv();
+  kv.store.set(KV_KEYS.health, JSON.stringify({ consecutiveFailures: 1, retryUntil: new Date(NOW_G + 600 * 1000).toISOString(), quota: { month: "2026-11", creditsUsedEst: 0, quotaMode: "normal" } }));
+  kv.store.set(KV_KEYS.current, JSON.stringify(makePrevBlob({ nowMs: NOW_G, marketsAgeMs: 10 * 60 * 1000, globalAgeMs: 3 * 60 * 60 * 1000 })));
+  const counts = installCgFetch();
+  const r = await runFetch(baseEnv(kv), { coins: COINS, ids: IDS, nowMs: NOW_G });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.skipped, undefined);
+  assert.equal(counts.markets, 1);
+  assert.equal(counts.global, 1, "严重过期时 skip 不得连带饿死 global");
+  const blob = JSON.parse(kv.store.get(KV_KEYS.current));
+  assert.equal(blob.global.totalMarketCapUsd, 999);
+});
+
+// ---------- 15. F6-43 状态机未启用不迁移 + health 快照以实际 provider 为准 ----------
+await test("15a F6-43: applyOutcome paprikaEnabled=false → CG 连败 3 次只到 CG_DEGRADED、cgConsecutiveFailures 照常累积", async () => {
+  let s = emptySourceState(0);
+  for (let i = 0; i < 3; i++) s = applyOutcome(s, { provider: "coingecko", ok: false }, i * 600000, { paprikaEnabled: false });
+  assert.equal(s.cgConsecutiveFailures, 3);
+  assert.equal(s.state, "CG_DEGRADED");
+  assert.equal(s.activeProvider, "coingecko");
+});
+
+await test("15b F6-43: 存量 sourceState=PAPRIKA_ACTIVE 但 PAPRIKA_ENABLED=false → health.sourceState.activeProvider 以实际 provider(coingecko) 为准", async () => {
+  const kv = makeKv();
+  const polluted = { ...emptySourceState(NOW_G), state: "PAPRIKA_ACTIVE", activeProvider: "coinpaprika" };
+  kv.store.set(KV_KEYS.sourceState, JSON.stringify(polluted));
+  installCgFetch();
+  const r = await runFetch(baseEnv(kv), { coins: COINS, ids: IDS, nowMs: NOW_G });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.provider, "coingecko");
+  const health = JSON.parse(kv.store.get(KV_KEYS.health));
+  assert.equal(health.sourceState.activeProvider, "coingecko");
+});
+
+// ---------- 16. F6-10 Paprika 启用门禁 ----------
+await test("16 F6-10 门禁: paprikaId 全 null + PAPRIKA_ENABLED=true + BOARD_SOURCE=coinpaprika → 强制走 coingecko、health 落 paprikaMappedCount=0", async () => {
+  const kv = makeKv();
+  const nullCoins = IDS.map((id) => ({ id, paprikaId: null }));
+  const counts = installCgFetch();
+  const r = await runFetch(baseEnv(kv, { PAPRIKA_ENABLED: "true", BOARD_SOURCE: "coinpaprika" }), { coins: nullCoins, ids: IDS, nowMs: NOW_G });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.provider, "coingecko");
+  assert.equal(counts.markets, 1);
+  assert.equal(counts.paprika, 0, "门禁拦截后不得打 Paprika");
+  const health = JSON.parse(kv.store.get(KV_KEYS.health));
+  assert.equal(health.paprikaMappedCount, 0);
+});
+
+// ---------- 17. F6-52 global 全 null 不保鲜 ----------
+await test("17 F6-52: global 返回 200 但 data 为空（关键字段全 null）→ 视为失败、沿用 prev global 及原 asOf、不盖新戳", async () => {
+  const kv = makeKv();
+  const prev = makePrevBlob({ nowMs: NOW_G, marketsAgeMs: 40 * 60 * 1000, globalAgeMs: 40 * 60 * 1000 });
+  kv.store.set(KV_KEYS.current, JSON.stringify(prev));
+  installCgFetch({ globalImpl: () => jsonRes({ data: {} }) });
+  const r = await runFetch(baseEnv(kv), { coins: COINS, ids: IDS, nowMs: NOW_G });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const blob = JSON.parse(kv.store.get(KV_KEYS.current));
+  assert.deepEqual(blob.global, prev.global, "全 null global 不得覆写好值/保鲜 asOf");
+});
+
+// ---------- 18. F6-48 并发在途合并 ----------
+await test("18 F6-48: 并发两个 runFetch → 复用同一在途 run（同 runId、上游只打一轮）", async () => {
+  const kv = makeKv();
+  const counts = { total: 0, markets: 0, global: 0, paprika: 0 };
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    counts.total += 1;
+    await new Promise((res) => setTimeout(res, 50));
+    if (u.includes("/coins/markets")) { counts.markets += 1; return jsonRes(marketsPayload(IDS)); }
+    if (u.includes("/global")) { counts.global += 1; return jsonRes(GLOBAL_PAYLOAD); }
+    throw new Error("unexpected " + u);
+  };
+  const env = baseEnv(kv);
+  const [r1, r2] = await Promise.all([
+    runFetch(env, { coins: COINS, ids: IDS, nowMs: NOW_G }),
+    runFetch(env, { coins: COINS, ids: IDS, nowMs: NOW_G }),
+  ]);
+  assert.equal(r1.ok, true);
+  assert.equal(r2.runId, r1.runId, "并发调用共享同一 run");
+  assert.equal(counts.markets, 1);
+  assert.equal(counts.global, 1);
+});
+
+// ---------- 19. F6-49 /run 最小间隔 + F6-84 开关 fail-closed ----------
+await test("19a F6-49: /run 连点 → 第二次 60s 内被拒（429）、不触发抓取、health 留 lastManualRunAt", async () => {
+  const kv = makeKv();
+  const counts = installCgFetch();
+  const env = baseEnv(kv, { MANUAL_RUN_TOKEN: "secret-token-test" });
+  const res1 = await fetcher.fetch(runRequest("secret-token-test"), env);
+  assert.equal(res1.status, 200);
+  assert.equal(counts.markets, 1);
+  const health = JSON.parse(kv.store.get(KV_KEYS.health));
+  assert.ok(health.lastManualRunAt, "触发时刻记 health");
+  const res2 = await fetcher.fetch(runRequest("secret-token-test"), env);
+  assert.equal(res2.status, 429);
+  const body2 = await res2.json();
+  assert.equal(body2.error, "rate_limited");
+  assert.ok(body2.retryAfterSec >= 1 && body2.retryAfterSec <= 60);
+  assert.equal(counts.markets, 1, "间隔内拒绝不得再触发抓取");
+  const health2 = JSON.parse(kv.store.get(KV_KEYS.health));
+  assert.ok(health2.lastManualRunRejectedAt, "拒绝留痕入 health");
+});
+
+await test("19b F6-84: BOARD_FETCH_DISABLED 未知值 \"ture\" → fail-closed 跳过；显式 \"0\" → 照常抓取", async () => {
+  const kv = makeKv();
+  const counts = installCgFetch();
+  const ctx = { waitUntil: () => {} };
+  const ret = await fetcher.scheduled({}, baseEnv(kv, { BOARD_FETCH_DISABLED: "ture" }), ctx);
+  assert.equal(ret, undefined);
+  assert.equal(counts.total, 0, "未知值必须按禁用处理（旧口径仅 \"1\" 生效、误写照常烧额度）");
+  const kv2 = makeKv();
+  const counts2 = installCgFetch();
+  const r2 = await fetcher.scheduled({}, baseEnv(kv2, { BOARD_FETCH_DISABLED: "0" }), ctx);
+  assert.equal(r2.ok, true, JSON.stringify(r2));
+  assert.ok(counts2.markets >= 1);
+});
+
+// ---------- 20. F6-18 整行多字段 null ----------
+await test("20 F6-18: 源数据整行多字段为 null（rank/price/volume24h 均缺）→ 不抛错、null 如实透传进 blob 行", async () => {
+  const kv = makeKv();
+  installCgFetch({
+    marketsImpl: () => {
+      const rows = marketsPayload(IDS);
+      const sol = rows.find((m) => m.id === "solana");
+      delete sol.current_price;
+      delete sol.market_cap_rank;
+      delete sol.total_volume;
+      sol.current_price = null;
+      sol.market_cap_rank = null;
+      return jsonRes(rows);
+    },
+  });
+  const r = await runFetch(baseEnv(kv), { coins: COINS, ids: IDS, nowMs: NOW_G });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const blob = JSON.parse(kv.store.get(KV_KEYS.current));
+  const sol = blob.rows.find((row) => row.id === "solana");
+  assert.equal(sol.price, null);
+  assert.equal(sol.rank, null);
+  assert.equal(sol.volume24h, null);
+  assert.equal(blob.coverage.returned, 4, "null 字段不拒绝整行（与 F6-02 字段门禁口径衔接）");
+});
+
+// ---------- 21. F6-85 BOARD_SOURCE 未知值告警 ----------
+await test("21 F6-85: resolveProvider 传 BOARD_SOURCE 拼写错误值 → warnings 非空（不再静默走 auto）", async () => {
+  const s = emptySourceState(Date.now());
+  const r = resolveProvider({ PAPRIKA_ENABLED: "true", BOARD_SOURCE: "papirka" }, s, Date.now());
+  assert.equal(r.warnings.length, 1);
+  assert.ok(r.warnings[0].includes("BOARD_SOURCE"));
+});
+
+// ---------- 22. F6-44 分段投影 ----------
+await test("22 F6-44: estimateQuotaMode 按当前 mode 日速率分段投影 + 月内只升不降（无临界抖动）", async () => {
+  const mid = Date.UTC(2026, 10, 15, 12, 0, 0); // 距月末约 15.5 天
+  const storedSaving = estimateQuotaMode({ quota: { month: "2026-11", creditsUsedEst: 6000, attemptsTotal: 9000, quotaMode: "saving" } }, mid);
+  assert.equal(storedSaving.projected, 6000 + Math.round(120 * 15.5), "saving 按 120/天投影而非 normal 192/天");
+  assert.equal(storedSaving.quotaMode, "saving", "投影回落 normal 区间也不降级（月内只升不降）");
+  assert.equal(storedSaving.attemptsTotal, 9000, "attemptsTotal 透传");
+  const storedNormal = estimateQuotaMode({ quota: { month: "2026-11", creditsUsedEst: 6000, attemptsTotal: 0, quotaMode: "normal" } }, mid);
+  assert.equal(storedNormal.projected, 6000 + Math.round(192 * 15.5));
+  assert.equal(storedNormal.quotaMode, "saving", "normal 速率投影 8976 > 8500 → 升 saving");
 });
 
 globalThis.fetch = originalFetch;
