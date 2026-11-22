@@ -17,8 +17,13 @@ SUITES=(
   "node:tests/frontend-dom.test.mjs"
   "node:tests/contract-real-data.test.mjs"
   "node:tests/snapshot-verify.mjs"
+  "node:tests/health.test.mjs"
+  "node:tests/kv-write-guard.test.mjs"
+  "node:tests/coins-list-contract.test.mjs"
+  "node:tests/compare-shadow.test.mjs"
   "python3:tests/test_render_snapshot.py"
   "python3:tests/weekly_check_test.py"
+  "python3:tests/quota_check_test.py"
 )
 
 FAILED=()

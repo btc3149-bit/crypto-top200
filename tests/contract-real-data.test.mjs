@@ -224,7 +224,8 @@ async function runMain() {
     };
     const res = await mod.onRequestGet({
       request: new Request("https://example.com/api/board", { method: "GET" }),
-      env: {},
+      // F6-03 后 mode 缺失/未知一律 fail-closed 回 snapshot；本用例测 legacy 链路，须显式声明 legacy + 测试 key
+      env: { BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "contract-test-key" },
       waitUntil: () => {},
     });
     assert.equal(res.status, 200);

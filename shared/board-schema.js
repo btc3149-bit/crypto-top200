@@ -216,6 +216,12 @@ export function buildBlob({ source, fetchRunId, fetchedAtMs, rows, coverage, glo
 
 // F6-02：price 非 null 比例下限——低于此值视为上游大面积坏数据，整 blob 拒绝。
 export const PRICE_NON_NULL_MIN_RATIO = 0.98;
+// 第六期集成对齐（F6-02×F6-18）：比例门禁另设绝对宽容——null 价 ≤4 个时不整 run 拒绝。
+// 生产 200 行口径下两者等价（2% = 4 个）；小样本/个别币无价（常态）不被比例误杀，
+// 上游大面积 null（数十个）仍必触发。定版：count > 4 且 ratio < 0.98 才判 price_null_ratio；
+// 例外：非 null 比例 <50%（多数行无价）属灾难形态，任何规模都拒绝（全 null rows 恒命中）。
+export const PRICE_NULL_ABS_ALLOWANCE = 4;
+export const PRICE_NULL_CATASTROPHE_RATIO = 0.5;
 
 // blob 结构校验。返回 {ok, errors[], warnings[], stats}。
 // stats.invalidFields 为字段级坏值计数（F6-02 留痕口径）；stats.nullPriceCount 为 price=null 行数。
@@ -262,8 +268,9 @@ export function validateBlob(blob) {
     if (shapeBad) errors.push("row_shape");
     if (fieldBad) errors.push("row_field_invalid");
     stats.uniqueIdCount = ids.size;
-    // F6-02：price 非 null 比例 <98% → 整 blob 判 error（全 null rows 不再假绿）。
-    if (blob.rows.length > 0 && (blob.rows.length - stats.nullPriceCount) / blob.rows.length < PRICE_NON_NULL_MIN_RATIO) {
+    // F6-02：price 非 null 比例 <98%（且 null 数 >4，或非 null 比例 <50%）→ 整 blob 判 error（全 null rows 不再假绿）。
+    const nonNullRatio = blob.rows.length > 0 ? (blob.rows.length - stats.nullPriceCount) / blob.rows.length : 1;
+    if (blob.rows.length > 0 && nonNullRatio < PRICE_NON_NULL_MIN_RATIO && (stats.nullPriceCount > PRICE_NULL_ABS_ALLOWANCE || nonNullRatio < PRICE_NULL_CATASTROPHE_RATIO)) {
       errors.push("price_null_ratio");
     }
     // F6-04 交叉校验：coverage.returned 必须等于 rows 去重 id 数；

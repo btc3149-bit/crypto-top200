@@ -58,17 +58,27 @@ def _group_int(s):
 
 
 def fmt_price(p):
+    # 与前端 num() 对齐：数字字符串可归一，非数/非有限 → 「—」
+    if isinstance(p, str):
+        try:
+            p = float(p)
+        except ValueError:
+            return "—"
     if p is None or p != p or p in (float("inf"), float("-inf")):
         return "—"
+    if p < 0:
+        return "—"  # F6-63：负价为异常数据，不再伪装成真实零价（与前端 fmtPrice 同口径）
     if p >= 1000:
+        # F6-63：千分位 + 恒两位小数（minimumFractionDigits:2），不再去尾零
         s = js_to_fixed(p, 2)
         ip, _, fp = s.partition(".")
-        fp = fp.rstrip("0")
-        return _group_int(ip) + ("." + fp if fp else "")
+        return _group_int(ip) + "." + fp
     if p >= 1:
         return js_to_fixed(p, 2)
     if p >= 0.01:
         return js_to_fixed(p, 4)
+    if p == 0:
+        return "0"
     # W3-13：下标零计数法（与前端 fmtPrice 同口径）：
     # 0.0₅4960 表示 0.000004960（下标 = 小数点后首个有效数字之前的 0 的总数）
     exp = math.floor(math.log10(p))
@@ -103,14 +113,18 @@ def fmt_mcap(v):
     # W3-13：单位只留万亿/亿（不再出现四位数「万」读数）
     if v >= 1e12:
         return "$" + _sig3(v / 1e12) + "万亿"
-    return "$" + _sig3(v / 1e8) + "亿"
+    yi = _sig3(v / 1e8)
+    # F6-63：亿位进位达 10000 时提升为万亿重算，不再显「$10000亿」（与前端 fmtMcap 同口径）
+    if float(yi) >= 10000:
+        return "$" + _sig3(v / 1e12) + "万亿"
+    return "$" + yi + "亿"
 
 
-_ESC = {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}
+_ESC = {"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;", "`": "&#96;"}
 
 
 def esc(s):
-    return re.sub(r'[&<>"]', lambda m: _ESC[m.group(0)], "" if s is None else str(s))
+    return re.sub(r'[&<>"\'`]', lambda m: _ESC[m.group(0)], "" if s is None else str(s))
 
 
 def ath_cell_html(c):
@@ -171,6 +185,7 @@ def row_html(c, live_rank):
         f"<tr data-snapshot=\"1\" id='row-{cid}'>"
         f"<td class='c-rank'>{live_rank if live_rank is not None else '—'}</td>"
         f"<td class='c-coin'><button class='exp' type='button' data-exp='{cid}' aria-expanded='false' "
+        f"aria-controls='d-{cid}' "
         f"aria-label='展开 {esc(c.get('name'))} 详情'>▸</button>"
         f"<button class='star' type='button' data-star='{cid}' aria-pressed='false' "
         f"aria-label='收藏 {esc(c.get('name'))}'>☆</button>"

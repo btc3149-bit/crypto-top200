@@ -4,6 +4,8 @@
 //   R1 freshness.consecutiveFailures ≥ 3
 //   R2 staleAgeSec > 1800
 //   R3 fetch.upstreamStatus.markets 非 200 且 consecutiveFailures ≥ 1（组合项）
+//      —— F6-41 后 board 不再对外透传 upstreamStatus，R3 恒不可判读（输出中显式标注），
+//         上游健康权威覆盖移交 /api/health 与 HC4 影子链探针；字段若再现仍按原规则判读。
 // 对 v1 契约（无 contractVersion/freshness/fetch）：缺失字段按「不可判读」处理并注明，
 // 仅以可得的 staleAgeSec 等 v1 字段做降级判读，输出中明确标注 v1-compat。
 const base = (process.argv[2] || "https://top200.oppcal.com").replace(/\/$/, "");
@@ -65,7 +67,9 @@ const out = {
       ? `v2 契约字段缺失（不可判读）：${missingFields.join(", ")}——判 FAIL。`
       : !isV2
         ? "v1 契约下 consecutiveFailures/upstreamStatus 缺失按不可判读处理；当前结论仅基于 staleAgeSec。"
-        : undefined,
+        : marketsStatus == null
+          ? "R3 不可判读：F6-41 后 fetch.upstreamStatus 不再对外透传，上游健康以 /api/health 与 HC4 为准；本结论基于 R1/R2。"
+          : undefined,
 };
 console.log(JSON.stringify(out, null, 2));
 if (verdict === "FAIL") process.exitCode = 1;
