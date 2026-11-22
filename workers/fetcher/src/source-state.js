@@ -23,11 +23,21 @@ export function paprikaEnabled(env) {
   return String(env && env.PAPRIKA_ENABLED) === "true";
 }
 
+// F6-10 启用门禁：COINS 中 paprikaId 非 null 数低于此门槛时，即使 PAPRIKA_ENABLED=true
+// 或 state=PAPRIKA_ACTIVE 也不得切 Paprika（映射未落库前备源必恒定覆盖率失败）。
+// 门禁判定在 index.js 主流程（resolveProvider 不持有币表），常量集中于此。
+export const PAPRIKA_MIN_MAPPED = 197;
+
 // 决定本 run 的 provider。返回 {provider, probeCg, warnings[]}
 // probeCg=true 表示 Paprika 态下本 run 顺带探一次 CG markets（不写 blob，只记账）。
 export function resolveProvider(env, state, nowMs) {
   const warnings = [];
   const forced = String((env && env.BOARD_SOURCE) || "auto");
+  // F6-85：BOARD_SOURCE 未知值（拼写错误等）不得静默穿落 auto——push warning，
+  // 由主流程走既有 source_config_warning 结构化日志通道留痕。
+  if (forced !== "auto" && forced !== "coingecko" && forced !== "coinpaprika") {
+    warnings.push(`BOARD_SOURCE=${forced} is not a known value (auto|coingecko|coinpaprika); falling back to auto`);
+  }
   if (!paprikaEnabled(env)) {
     if (forced === "coinpaprika") {
       warnings.push("BOARD_SOURCE=coinpaprika ignored: PAPRIKA_ENABLED=false (W2-03 §3 人工覆盖约束)");
@@ -51,9 +61,13 @@ export function resolveProvider(env, state, nowMs) {
 
 // run 结果落账：返回新 state（调用方负责写 KV，仅迁移/计数变化时写）。
 // outcome: {provider, ok, isProbe?, coverageRatio?, retryAfterSec?, quotaExhausted?, quotaMode?}
-export function applyOutcome(state, outcome, nowMs) {
+// options.paprikaEnabled（F6-43）：Paprika 未启用（含 F6-10 映射门禁未过）时传 false——
+// 只累积 CG 失败计数、绝不迁移 state 到 PAPRIKA_ACTIVE，避免 health 快照与实际抓取源不符、
+// 也避免日后真启用时继承被污染的状态与静默期。缺省 true 保持既有调用方行为。
+export function applyOutcome(state, outcome, nowMs, options = {}) {
   const s = { ...(state || emptySourceState(nowMs)) };
   const P = SOURCE_SWITCH;
+  const paprikaOn = !options || options.paprikaEnabled !== false;
   if (outcome.isProbe) {
     // CG 探针结果（Paprika 态）：只累积，不直接迁移（迁移在下方统一判定）
     if (outcome.ok && outcome.coverageRatio != null && outcome.coverageRatio >= P.probeCoverageMin) {
@@ -75,16 +89,16 @@ export function applyOutcome(state, outcome, nowMs) {
       }
     } else {
       s.cgConsecutiveFailures = (s.cgConsecutiveFailures || 0) + 1;
-      if (s.justReturned) {
-        // 回切首 run 即失败 → 立即切回 Paprika，静默期减半
-        enterPaprika(s, nowMs, P.cooldownAfterFailedReturnMin);
-      } else if (
+      const shouldSwitch =
+        s.justReturned ||
         s.cgConsecutiveFailures >= P.failThreshold ||
         (outcome.retryAfterSec != null && outcome.retryAfterSec > P.retryAfterImmediateSwitchSec) ||
-        outcome.quotaMode === "critical"
-      ) {
-        enterPaprika(s, nowMs, P.cooldownMin);
+        outcome.quotaMode === "critical";
+      if (shouldSwitch && paprikaOn) {
+        // 回切首 run 即失败 → 静默期减半；其余按定版静默期
+        enterPaprika(s, nowMs, s.justReturned ? P.cooldownAfterFailedReturnMin : P.cooldownMin);
       } else {
+        // F6-43：未启用 Paprika 时即使达到切换条件也只停留在 CG_DEGRADED，不迁移 state
         s.state = "CG_DEGRADED";
         s.activeProvider = "coingecko";
       }
