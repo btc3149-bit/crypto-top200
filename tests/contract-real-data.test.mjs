@@ -1,4 +1,17 @@
 // tests/contract-real-data.test.mjs — W4-05 真实产物契约测试（P0 / F4-05，W3-22 硬前置）
+//
+// 【两个「契约」概念的区分（F6-79，第六期补注）】本仓有两份同名异物的契约，勿混：
+//   (1) 静态产物契约——本文件守护的对象：public/data/coins.json 的产物形态
+//       （meta.fields == FIELDS23、rows 紧凑编码、dataHash 口径 A）。FIELDS23 的
+//       定义源在 scripts/build.py，产物侧由 meta.fields 承载；本文件以本地硬编码
+//       副本与产物逐字对账（漂移先在此红）。它不 import shared/board-schema.js。
+//   (2) KV blob 契约——不在本文件范围：fetcher 写入 BOARD_KV 的 blob 结构
+//       （SCHEMA_VERSION、validateBlob、coverage/rows 字段级形态），定义与守护在
+//       shared/board-schema.js 及其套件 tests/board-fetcher.test.mjs、
+//       tests/board-v2.test.mjs（kv 模式应答侧）。
+//   改 board-schema 字段时本套件不会红属预期（守的是 (1) 不是 (2)）；FIELDS23
+//   单一来源化（消除 build.py / 本文件 / board-v2 三处硬编码副本）为独立条目，
+//   不在本文件本期范围内。
 // 以真实 public/data/coins.json 为 fixture，喂两条从未被既有套件测过的契约路径：
 //   (a) functions/api/board.js 的 getIds()——getIds 未导出，沿用 tests/board.test.mjs 的
 //       模块加载手法（动态 import + query 破缓存 + 覆写 globalThis.fetch），经

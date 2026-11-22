@@ -5,22 +5,23 @@
 // docs/paprika-mapping-proposal.json 的核定提案（本期形态）。
 // 启用门槛：命中 ≥197/200 且缺失均有归因；195–196 黄区须站长知情；<195 禁止启用。
 // 启用前须连续 3 天各跑 1 次、三日均达标；结果存 docs/paprika-coverage-<日期>.md。
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
+import { decodeCoins } from "./decode-coins.mjs"; // F6-71：JS 侧解码单一来源（带行长断言）
 
-// W3-22 双形态解码：对象形态直通；rows 形态按 meta.fields 解码（与前端同口径）。
-function decodeCoins(doc) {
-  if (doc && Array.isArray(doc.coins)) return doc.coins;
-  if (doc && Array.isArray(doc.rows)) {
-    const fields = doc.meta && Array.isArray(doc.meta.fields) ? doc.meta.fields : null;
-    if (!fields) return [];
-    return doc.rows.map((r) => {
-      const o = {};
-      for (let i = 0; i < fields.length; i++) o[fields[i]] = r[i];
-      return o;
-    });
+// F6-77：天数不再写死「第 1 天」——优先 --day N 参数；未给时按 docs/ 下已有
+// paprika-coverage-<日期>.md 报告文件数 +1 推导（连测第几天 = 已有报告数 +1）。
+function resolveDay() {
+  const i = process.argv.indexOf("--day");
+  const n = i >= 0 ? Number(process.argv[i + 1]) : NaN;
+  if (Number.isInteger(n) && n >= 1) return n;
+  try {
+    const files = readdirSync(new URL("../docs/", import.meta.url)).filter((f) => /^paprika-coverage-\d{4}-\d{2}-\d{2}\.md$/.test(f));
+    return files.length + 1;
+  } catch {
+    return 1;
   }
-  return [];
 }
+const day = resolveDay();
 
 const coinsData = JSON.parse(readFileSync(new URL("../data/coins.json", import.meta.url), "utf-8"));
 const coinsList = decodeCoins(coinsData);
@@ -61,9 +62,14 @@ diffs.sort((a, b) => a.diffPct - b.diffPct);
 const pct = (arr, p) => (arr.length ? arr[Math.min(arr.length - 1, Math.floor(p * arr.length))].diffPct : null);
 const today = new Date().toISOString().slice(0, 10);
 const gate = hits.length >= 197 ? "达启用门槛（≥197）" : hits.length >= 195 ? "黄区（195–196，须站长知情确认）" : "未达门槛（<195，禁止启用）";
+// F6-77：机器可读结论置于报告首行；hits<195（禁止启用）时退出码置 1，
+// 使门槛拦截不再只靠人读文案。黄区（195–196）记 RESULT: WARN、退出码仍 0（须站长知情确认，非硬失败）。
+const resultTag = hits.length >= 197 ? "PASS" : hits.length >= 195 ? "WARN" : "FAIL";
+if (hits.length < 195) process.exitCode = 1;
 
 const lines = [
-  `# CoinPaprika 覆盖率实测 ${today}（第 1 天）`,
+  `RESULT: ${resultTag} hits=${hits.length} required=195 enableGate=197 day=${day}`,
+  `# CoinPaprika 覆盖率实测 ${today}（第 ${day} 天）`,
   "",
   `- 映射来源：${mappingSource}`,
   `- 映射非空：${map.size}/${allIds.length}`,
@@ -77,7 +83,7 @@ const lines = [
   "",
   "## 说明",
   "",
-  "- 本期要求连测 3 天（方案 W2-03 §2），本文件为第 1 天；第 2/3 天由协调者在后续日期补跑并另存 `paprika-coverage-<日期>.md`。",
+  `- 本期要求连测 3 天（方案 W2-03 §2），本文件为第 ${day} 天；其余天数由协调者在后续日期补跑并另存 \`paprika-coverage-<日期>.md\`。`,
   "- 即使覆盖达标，启用仍须 U8（站长书面确认个人非商业运营）+ 映射落库（W2-11）；当前 PAPRIKA_ENABLED=false 不变。",
   `- 命中币 last_updated 示例：${hits.slice(0, 3).map((h) => `${h.cgId}=${h.lastUpdated}`).join("；")}`,
 ];

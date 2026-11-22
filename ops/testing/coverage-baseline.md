@@ -1,6 +1,11 @@
 # 测试覆盖率基线（W4-27 / F4-43 首份）
 
-- 日期：2026-11-13（基线分支 b552973 + 本包新增测试）
+> **2026-11-23 第六期施工中更新（F6-81）**：下方「读数说明」中关于套件红/绿
+> 状态的记载已按当日实跑更正（见该节末尾「2026-11-23 实跑更正」）；覆盖率
+> 数字表仍为 2026-11-13 基线采集值，本轮未重采 V8 覆盖。本文件为施工中
+> 快照，**最终计数以第六期集成后全量重跑为准**。
+
+- 日期：2026-11-13（基线分支 b552973 + 本包新增测试）；最近一次状态更正：2026-11-23（F6-81）
 - 工具：`scripts/coverage-report.mjs`（本包新增，常驻）
 - 方法：**NODE_V8_COVERAGE**（Node 内置 V8 精确覆盖，零依赖、0 元）。逐个子进程
   跑全部 Node 套件并收集 V8 覆盖条目，按源文件 pathname 归并、多套件取并集
@@ -44,6 +49,18 @@
   5/6 绿）；contract-real-data 默认模式为 0（rows 段 PENDING-W322 跳过）；
   其余 Node 套件均为 0。覆盖并集不因个别套件预期红而失真（红套件在失败
   断言前的执行路径同样计入）。
+- **2026-11-23 实跑更正（F6-81，取代上一条的现状描述）**：在第六期评审基线
+  （master 6cb7122）上重跑全部 9 个既有套件，结果 **93 项全绿、0 失败、0 跳过**：
+  Node 7 套件 71 项（board 9、board-v2 13、board-fetcher 8、fetcher-branches 24、
+  frontend-dom 6、contract-real-data 6、snapshot-verify 5）退出码均为 0；
+  Python 2 套件 22 项（test_render_snapshot 8、weekly_check_test 14）退出码均为 0。
+  具体更正两处过期记载：①frontend-dom 退出码现为 **0**（6/6 PASS，F4-07 详情
+  市值已随生产 index.html 改读 lv.mcapUsd 而转绿，不再是「预期红」）；
+  ②contract-real-data rows 段已于 W3-22 合入后常驻运行，默认模式 **6 PASS /
+  0 SKIP**，不再有「PENDING-W322 跳过」。第六期本批另新增两套件
+  （tests/compare-shadow.test.mjs 6 项、tests/quota_check_test.py 5 项，后者
+  2 项待批 0 的 F6-07 新口径合并后转绿），未计入上述 93 项基线数，集成后
+  全量计数以重跑结果为准。
 
 ## 复跑
 

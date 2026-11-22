@@ -91,3 +91,50 @@
 | 2026-11-13 | 135 / A+ | 11/12 | `135196637` | API 实测（W4-20 建基线） | 基线定版；逐项明细未取得，确认路径见 §3.3 |
 | 2026-11-13 | 135 / A+ | 11/12 | `135200672` | API 实测（W4-20 收编处置前） | ACAO 收编上线前复测，与基线一致 |
 | 2026-11-13 | 135 / A+ | 11/12 | `135218297` | API 实测（W4-20 收编部署 `8dff02de` 后） | ACAO 由 `*` 收编为仓库显式声明后分数不变——实验证明 ACAO 不是那 1 项扣分来源，§3.2 的 CSP 归因进一步坐实；未通过项名称仍待人工在 analyze 页确认（本轮再试 scan 明细端点两条路径仍 404） |
+
+---
+
+## 5. 治理登记（第六期，2026-11-23 补登）
+
+### 5.1 已知权限面：Pages 侧 BOARD_KV 绑定为平台读写权限（F6-92）
+
+- 事实：Cloudflare KV 绑定不区分读写。根 `wrangler.toml` 的 `BOARD_KV` 绑定
+  （注释自述「只读」）在平台层实为**读写权限**：Pages 任一 Function 均可对同一
+  命名空间执行 `put`/`delete`（含 `v1:board:current`、`v1:meta:health` 等键）。
+  「只读」目前仅靠代码自律——`functions/` 现有 board.js / health.js 均只 `get`。
+- 定性：已知权限面登记，**非现行漏洞**；风险在未来新增 Function 或既有代码
+  引入缺陷时，写权限无平台层兜底，爆炸半径含生产 blob 与健康键。
+- 硬性检查项（并入代码评审清单，见 §5.2）：`functions/` 下不得出现
+  `BOARD_KV.put` / `BOARD_KV.delete`，由契约测试
+  `tests/kv-write-guard.test.mjs`（grep 型守护，第六期他人在建）持续把关；
+  评审时人工复核与该测试缺一不可。
+
+### 5.2 代码评审硬性检查项清单（节选，F6-92 新增首项）
+
+- [ ] **（F6-92）`functions/` 不得出现 `BOARD_KV.put` / `BOARD_KV.delete`**；
+      新增 Function 时逐一复核其 KV 用法，写方只能是 workers/fetcher。
+- [ ] 新增/变更 Pages Function 不得引入超出其职责的 KV、环境变量与外部抓取面
+      （与 §5.1 权限面登记一并复核）。
+
+### 5.3 Sec-Fetch-Site 影子模式复核点（F6-94，W2-19 条目）
+
+- 现状：`functions/api/board.js` 的 `ENFORCE_SFS = false`，跨站检查
+  （sfsShadowCheck）只记日志不拦截（W2-19 定版影子期）。当前实际防线为 board
+  响应不带 `Access-Control-Allow-Origin` 头，跨源脚本读不到响应体，且数据
+  本身为公开行情，实际风险低。
+- **复核点（防影子期无限期延续）**：下次季度自查（见
+  `ops/quarterly/2027-Q1-checklist.md` 一轮）时**必须二选一并在此留痕**：
+  ①将 `ENFORCE_SFS` 置 `true` 转正式拦截（代码已备，须先看影子期日志确认
+  无合法跨站流量误伤）；或 ②在本节正式销项接受现状，并写明接受理由与
+  再评估触发条件（如未来给 board 加 `Access-Control-Allow-Origin: *` 时
+  本销项自动失效、必须先转正式）。二者皆未做之前，本条目保持「未决」，
+  不得在汇报中表述为已处置。
+
+### 5.4 SRI 条目现状确认（F6-89）
+
+- 2026-11-23 第六期复核确认现状登记无误：HTML/源码中无 `integrity` 属性
+  （全仓 grep 的命中仅 package-lock.json 的 npm 哈希字段与评审文档本身，
+  与 SRI 无关），Web Analytics beacon 等外链脚本无 SRI 属性；与 §1 基线
+  一致——Observatory 135 / A+ 的唯一未过项即 SRI（−5）。
+- 处置路径不变：**维持 W5 增补包既有处置路径**（实施 SRI 或正式接受并在
+  本文件销项），第六期不重复施工、不重复定级。
