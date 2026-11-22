@@ -4,6 +4,18 @@
 // ③ 失败路径桩测：board 500 / coins 取数失败 → tbody 不被触碰、横幅切「暂不可用」定版文案；
 // ④ 成功路径：W3-05 口径——首次实时到达保住全部 200 行（快照标记清零、按实时序排列），
 //    刷新 3 次行数恒 200 且 id 无重复。（W2-17 的「默认前 50 条」口径自 W3-05 起废止。）
+//
+// 桩覆盖的 DOM API 清单（F6-82）：getElementById（注册表自动建桩）、
+// document.querySelector（仅 thead）、querySelector/querySelectorAll（恒
+// null/[]，本桩不建模节点树，patchInPlace 在此恒走整表退阶路径）、classList
+// add/remove/toggle/contains、setAttribute/getAttribute/removeAttribute、
+// dataset、style、textContent、innerHTML（纯字符串）、className、value、
+// disabled、布局量 scrollWidth/clientWidth/scrollLeft 等（恒 0）、
+// document.title、document.activeElement（恒 null，桩不建模焦点）、
+// addEventListener/removeEventListener（空转）、closest（恒 null）、focus/
+// scrollIntoView（空转）。元素桩经 Proxy 守卫：读取未实现且未赋值的属性即
+// 抛「桩未实现: <name>」，使页面新增 DOM 依赖以显式假红暴露而非静默假绿。
+//
 // 运行：node tests/snapshot-verify.mjs（退出码 0 全过）
 
 import assert from "node:assert/strict";
@@ -65,9 +77,20 @@ await test("① 静态：标记区 200 行 + 生成注释 + 三态默认横幅",
 });
 
 // ---------- DOM 桩 ----------
+// F6-82：元素桩 Proxy 守卫——未实现且未赋值的属性读取即抛显式错误，区分假红来源。
+function guardStub(el, label) {
+  return new Proxy(el, {
+    get(t, p) {
+      if (typeof p === "symbol") return t[p];
+      if (p in t) return t[p];
+      if (p === "then" || p === "toJSON") return undefined;
+      throw new Error("桩未实现: " + label + "." + String(p));
+    },
+  });
+}
 function makeElement(id, registry) {
   const classes = new Set();
-  const el = {
+  const el = guardStub({
     id,
     textContent: "",
     innerHTML: "",
@@ -76,6 +99,12 @@ function makeElement(id, registry) {
     disabled: false,
     dataset: {},
     style: {},
+    scrollWidth: 0,
+    scrollHeight: 0,
+    clientWidth: 0,
+    clientHeight: 0,
+    scrollLeft: 0,
+    scrollTop: 0,
     classList: {
       add: (...cs) => cs.forEach((c) => classes.add(c)),
       remove: (...cs) => cs.forEach((c) => classes.delete(c)),
@@ -89,9 +118,10 @@ function makeElement(id, registry) {
     removeEventListener() {},
     closest() { return null; },
     querySelector() { return null; },
+    querySelectorAll() { return []; },
     focus() {},
     scrollIntoView() {},
-  };
+  }, "el#" + id);
   registry.set(id, el);
   return el;
 }
@@ -104,13 +134,14 @@ function buildContext(fetchImpl) {
   get("tbodyA").innerHTML = tbodyInit;
   const banner = get("statusBanner");
   banner.dataset.snapshotAt = generatedAt;
-  const documentStub = {
+  const documentStub = guardStub({
     title: "t",
+    activeElement: null, // F6-82/F6-58：桩不建模焦点，恒 null
     getElementById: get,
     querySelector: () => makeElement("thead", new Map()),
     querySelectorAll: () => [],
     addEventListener() {},
-  };
+  }, "document");
   const sandbox = {
     document: documentStub,
     localStorage: { getItem: () => null, setItem() {}, removeItem() {} },
@@ -196,12 +227,15 @@ const jsonRes = (body, ok = true, status = 200) => ({ ok, status, json: async ()
 
 // ---------- 场景 C：成功原地修补口径 + 刷新 3 次幂等 ----------
 {
+  // F6-19：mock 对齐生产契约 v2 五字段 {price, mcapUsd, rank, change24h, volume24h}
   const liveCoins = {};
   for (const c of decodeCoinsDoc(coinsDoc)) {
     liveCoins[c.coingeckoId] = {
       price: c.snapshotPrice * 1.01,
       mcapUsd: c.snapshotMcapUsd,
+      rank: c.rankNow,
       change24h: 1.23,
+      volume24h: c.snapshotMcapUsd != null ? Math.round(c.snapshotMcapUsd * 0.05) : null,
     };
   }
   const boardPayload = {

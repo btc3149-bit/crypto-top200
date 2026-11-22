@@ -13,16 +13,32 @@
 // 原地修补；断言行数恒 200、节点身份保持、innerHTML 未被整表赋值、快照标记
 // 清零、行序与 cmpCoins 一致、目标行价格/涨幅单元格被更新。
 // ② 详情展开结构：toggleExpand 插入/移除 detail-row 节点、expandedIds 同步。
-// ③ detailHTML 24h 字段渲染（契约字段 change24h，應绿）。
-// ④ detailHTML 实时市值契约断言：按契约（board 输出字段
-// mcapUsd，见 functions/api/board.js 与 shared/board-schema.js）写断言；
-// 基线前端 detailHTML 误读 lv.marketCapUsd，live 下市值恒显「—（无实时
-// 数据）」，故本条在基线为红，待并行修复包（W4-08）合入后转绿。不得为
-// 变绿而改按 bug 字段名断言。本条红会使本文件基线退出码为 1，属预期。
+// ③ detailHTML 24h 字段渲染（契约字段 change24h）+ 24h 成交量段（volume24h，F6-19）。
+// ④ detailHTML 实时市值契约断言：按契约（board 输出字段 mcapUsd，见
+// functions/api/board.js 与 shared/board-schema.js）渲染（F4-07 已由 W4-08
+// 修复，本条应绿；F6-81 起删除旧「预期红」标注，红即真回归）。
 // ⑤ 自选：toggleStar → watchSet 与 localStorage 持久化；watchToggle 切
 // watchOnly → currentFiltered/render 只剩自选、清空自选出空态、恢复全量。
+// ⑥ F6-56/F6-60 显示全部/收起按钮；⑦ F6-12 置信度筛选；⑧ F6-63/F6-14 fmt
+// 边界与数值归一；⑨ F6-13/F6-18 实时字段 0/null 口径；⑩ F6-59 解码健全性
+// 校验；⑪ F6-68 搜索口径；⑫ F6-57 修补刷新已展开详情；⑬ F6-62 delayed
+// 横幅；⑭ F6-65 自选原始集落盘；⑮ F6-54 coins 失败态点星不覆写自选。
 //
-// 运行：node tests/frontend-dom.test.mjs（基线预期：⑤条中仅 ④ 红，退出码 1）
+// 桩覆盖的 DOM API 清单（F6-82）：getElementById（注册表自动建桩）、
+// document.querySelector（仅 thead）、querySelectorAll（tbody 仅
+// "tr[data-snapshot]"，其余返回 []）、classList add/remove/toggle/contains、
+// setAttribute/getAttribute/removeAttribute、dataset、style、textContent、
+// className、value、disabled、title（赋值后可读）、布局量 scrollWidth/
+// scrollHeight/clientWidth/clientHeight/scrollLeft/scrollTop（恒 0）、
+// document.title、document.activeElement（恒 null，桩不建模焦点）、
+// addEventListener/removeEventListener（空转）、closest（恒 null）、focus/
+// scrollIntoView（空转）；tbody 节点模型另含 appendChild、insertAdjacentHTML、
+// remove、nextElementSibling、children、innerHTML 节点序列化存取器。
+// 通用元素桩经 Proxy 守卫：读取未实现且未赋值的属性即抛「桩未实现: <name>」，
+// 使页面演进后新增的 DOM 依赖以显式假红暴露，而非静默 undefined 假绿/假红。
+// tr 桩为定制节点模型（非 Proxy），其 API 以 makeTr 定义为准。
+//
+// 运行：node tests/frontend-dom.test.mjs（全绿，退出码 0）
 
 import assert from "node:assert/strict";
 import { readFileSync} from "node:fs";
@@ -45,9 +61,10 @@ function decodeCoinsDoc(doc) {
 const coinsList = decodeCoinsDoc(coinsDoc);
 const coinById = new Map(coinsList.map((c) => [c.coingeckoId, c]));
 
-// ---------- live 载荷（board 契约形态：coins[id] = {price, mcapUsd, rank, change24h}） ----------
+// ---------- live 载荷（board 契约 v2 五字段：{price, mcapUsd, rank, change24h, volume24h}，F6-19 对齐生产契约） ----------
 const BTC_NEW_PRICE = coinById.get("bitcoin").snapshotPrice * 2.5;
 const ETH_CONTRACT_MCAP = 123456789000;
+const ETH_VOL = 987654321;
 const liveCoins = {};
 for (const c of coinsList) {
 liveCoins[c.coingeckoId] = {
@@ -55,10 +72,11 @@ price: c.snapshotPrice * 1.01,
 mcapUsd: c.snapshotMcapUsd,
 rank: c.rankNow,
 change24h: 1.23,
+volume24h: c.snapshotMcapUsd != null ? Math.round(c.snapshotMcapUsd * 0.05) : null,
 };
 }
 liveCoins["bitcoin"] = {...liveCoins["bitcoin"], price: BTC_NEW_PRICE, change24h: 7.77};
-liveCoins["ethereum"] = {...liveCoins["ethereum"], mcapUsd: ETH_CONTRACT_MCAP, change24h: 5.678};
+liveCoins["ethereum"] = {...liveCoins["ethereum"], mcapUsd: ETH_CONTRACT_MCAP, change24h: 5.678, volume24h: ETH_VOL};
 const boardPayload = {
 mode: "live",
 stale: false,
@@ -69,8 +87,20 @@ global: { totalMcapUsd: 4.28e12, btcDominance: 57.1, totalMcapChange24h: 2.34},
 coverage: { expected: 200, returned: 200, missingIds: []},
 };
 let boardLive = false; // false: /api/board 回 500（快照阶段）；true: 回 live 载荷
+let boardPayloadOverride = null; // 非空时 /api/board 回此载荷（如 delayed 场景，F6-62）
 
 // ---------- 桩 DOM ----------
+// F6-82：通用元素桩 Proxy 守卫——未实现且未赋值的属性读取即抛显式错误，区分假红来源。
+function guardStub(el, label) {
+return new Proxy(el, {
+get(t, p) {
+if (typeof p === "symbol") return t[p];
+if (p in t) return t[p];
+if (p === "then" || p === "toJSON") return undefined;
+throw new Error("桩未实现: " + label + "." + String(p));
+},
+});
+}
 function makeClassList(initial = "") {
 const s = new Set(String(initial).split(/\s+/).filter(Boolean));
 return {
@@ -83,9 +113,10 @@ _set: s,
 }
 function makeGenericEl(id, registry) {
 const attrs = new Map();
-const el = {
+const el = guardStub({
 id, textContent: "", innerHTML: "", className: "", value: "", disabled: false,
 dataset: {}, style: {}, parentNode: null, children: [],
+scrollWidth: 0, scrollHeight: 0, clientWidth: 0, clientHeight: 0, scrollLeft: 0, scrollTop: 0,
 classList: makeClassList(),
 setAttribute(k, v) { attrs.set(k, String(v));},
 getAttribute(k) { return attrs.has(k)? attrs.get(k): null;},
@@ -95,7 +126,7 @@ closest() { return null;},
 querySelector() { return null;},
 querySelectorAll() { return [];},
 focus() {}, scrollIntoView() {},
-};
+}, "el#" + id);
 if (registry) registry.set(id, el);
 return el;
 }
@@ -199,7 +230,8 @@ return tb;
 }
 
 // ---------- 上下文构建 ----------
-function buildContext() {
+// opts.seedWatch：预置 localStorage 自选（F6-54/F6-65 场景）；opts.coinsFail：coins.json 取数失败。
+function buildContext(opts = {}) {
   const registry = new Map();
   const get = (id) => registry.get(id) || makeGenericEl(id, registry);
   const tbody = makeTbody("tbodyA", registry);
@@ -210,19 +242,24 @@ function buildContext() {
   banner.dataset.snapshotAt = generatedAt;
   const theadEl = makeGenericEl("thead", null);
   const lsStore = new Map();
-  const documentStub = {
+  if (opts.seedWatch) lsStore.set("top200.watchlist.v1", opts.seedWatch);
+  const documentStub = guardStub({
     title: "t",
+    activeElement: null, // F6-82/F6-58：桩不建模焦点，恒 null（patchInPlace 的焦点跳过分支在桩下不触发）
     getElementById: get,
     querySelector: () => theadEl,
     querySelectorAll: () => [],
     addEventListener() {},
-  };
+  }, "document");
   const fetchImpl = async (url) => {
     const u = String(url);
-    if (u.includes("coins.json")) return { ok: true, status: 200, json: async () => coinsDoc };
+    if (u.includes("coins.json")) {
+      if (opts.coinsFail) throw new Error("network down");
+      return { ok: true, status: 200, json: async () => coinsDoc };
+    }
     if (u.includes("/api/board")) {
       return boardLive
-        ? { ok: true, status: 200, json: async () => boardPayload }
+        ? { ok: true, status: 200, json: async () => boardPayloadOverride || boardPayload }
         : { ok: false, status: 500, json: async () => ({}) };
     }
     throw new Error("unexpected fetch: " + url);
@@ -290,6 +327,7 @@ await test("① patchInPlace 真实路径：live 到达原地修补（200 行/�
   await settle();
 
   assert.equal(inPage("livePatched"), true, "render 应走 patch 分支并置 livePatched");
+  assert.equal(inPage("livePatchCount"), 1, "原地修补应恰发生一次（F6-56 起 livePatched 保留至用户点「收起」，见 ⑥）");
   assert.equal(tbody._setCount, setsBefore, "patch 路径不得整表赋值 innerHTML（整表赋值即退阶路径）");
   const rows = tbody.mainRows();
   assert.equal(rows.length, 200, "修补后行数应仍为 200");
@@ -335,22 +373,24 @@ await test("② 详情展开结构：toggleExpand 插入/移除 detail-row 且 e
   delete ctx.__btn;
 });
 
-await test("③ detailHTML 24h 字段：按契约 change24h 渲染实时涨幅", () => {
+await test("③ detailHTML 24h 字段：按契约 change24h 渲染实时涨幅 + 成交量段按 volume24h 渲染（F6-19）", () => {
   const out = inPage("detailHTML(COINS.find((c) => c.coingeckoId === 'ethereum'))");
   const seg = /<dt>24h（实时）<\/dt><dd>([\s\S]*?)<\/dd>/.exec(out);
   assert.ok(seg, "详情应含 24h（实时）段");
   assert.ok(seg[1].includes(inPage("fmtPct(5.678)")), `24h 段应含 +5.7%，实际：${seg[1]}`);
+  const vseg = /<dt>24h 成交量（实时）<\/dt><dd>([\s\S]*?)<\/dd>/.exec(out);
+  assert.ok(vseg, "详情应含 24h 成交量（实时）段");
+  assert.equal(vseg[1], inPage(`fmtMcap(${ETH_VOL})`), `成交量段应为契约字段 volume24h=${ETH_VOL} 的格式化值，实际「${vseg[1]}」`);
 });
 
-await test("④ detailHTML 实时市值契约【预期红 · F4-07】：应按 board 契约字段 mcapUsd 渲染", () => {
+await test("④ detailHTML 实时市值契约：应按 board 契约字段 mcapUsd 渲染", () => {
   const out = inPage("detailHTML(COINS.find((c) => c.coingeckoId === 'ethereum'))");
   const seg = /<dt>实时市值<\/dt><dd>([\s\S]*?)<\/dd>/.exec(out);
   assert.ok(seg, "详情应含 实时市值 段");
   const expect = inPage(`fmtMcap(${ETH_CONTRACT_MCAP})`);
   assert.equal(
     seg[1], expect,
-    `实时市值应为契约字段 mcapUsd=${ETH_CONTRACT_MCAP} 的格式化值 ${expect}，实际「${seg[1]}」` +
-    "——基线 detailHTML 误读 lv.marketCapUsd（F4-07），待 W4-08 修复包合入后本条转绿"
+    `实时市值应为契约字段 mcapUsd=${ETH_CONTRACT_MCAP} 的格式化值 ${expect}，实际「${seg[1]}」`
   );
 });
 
@@ -382,10 +422,177 @@ await test("⑤ 自选切换：toggleStar → watchSet/持久化；watchOnly 过
   assert.equal(tbody.mainRows().length, 200, "恢复后应回到 200 行");
 });
 
+await test("⑥ F6-56/F6-60：「收起为前 50 条」在实时修补后可达、收起后可再展开", async () => {
+  // 前置：⑤ 后为全量 200 行、livePatched 仍为修补态 true
+  assert.equal(inPage("livePatched"), true);
+  assert.equal(tbody.mainRows().length, 200);
+  inPage("renderShowAllBar(200, 200)");
+  const btn = registry.get("showAllBtn");
+  assert.equal(btn.dataset.act, "less", "修补态全量显示时应提供「收起」入口");
+  assert.equal(btn.textContent, "收起为前 50 条");
+  assert.ok(!btn.classList.contains("hidden"), "收起按钮应可见");
+  btn.onclick({ currentTarget: btn }); // act=less → 清 livePatched 并 render
+  await settle(2, 10);
+  assert.equal(inPage("livePatched"), false, "收起后 livePatched 应清除");
+  assert.equal(tbody.mainRows().length, 50, "收起后应为前 50 条");
+  assert.equal(btn.dataset.act, "more", "收起后按钮应转为「显示全部」");
+  btn.onclick({ currentTarget: btn });
+  await settle(2, 10);
+  assert.equal(tbody.mainRows().length, 200, "再展开应回到 200 条");
+});
+
+await test("⑦ F6-12 置信度筛选：以浏览器语义（select.value 取 option 的 value）驱动过滤、非空且口径正确", () => {
+  const selHtml = /<select id="confSel">([\s\S]*?)<\/select>/.exec(html)[1];
+  const opts = [...selHtml.matchAll(/<option([^>]*)>([^<]*)<\/option>/g)].map((m) => {
+    const v = /value="([^"]*)"/.exec(m[1]);
+    return { value: v ? v[1] : m[2], text: m[2] }; // 无 value 属性时浏览器以文本内容为值（F6-12 的 bug 形态）
+  });
+  const hi = opts.find((o) => o.text.startsWith("高"));
+  assert.equal(hi.value, "高", "「高」选项 value 应为纯置信度值而非含计数的文本");
+  const sel = registry.get("confSel");
+  sel.value = hi.value;
+  const filtered = Array.from(inPage("currentFiltered()"));
+  const expect = coinsList.filter((c) => c.confidence === "高").length;
+  assert.ok(filtered.length > 0, "选「高」不得出空表");
+  assert.equal(filtered.length, expect, `应恰筛出 ${expect} 条高置信度`);
+  assert.ok(filtered.every((c) => c.confidence === "高"));
+  sel.value = "";
+});
+
+await test("⑧ F6-63/F6-14 fmt 边界与数值归一：千分位小数位/负价/涨跌舍入/市值进位/数字字符串不抛错", () => {
+  assert.equal(inPage("fmtPrice(2127.5)"), "2,127.50", "≥1000 应补足两位小数");
+  assert.equal(inPage("fmtPrice(-5)"), "—", "负价应显「—」而非 0");
+  assert.equal(inPage("fmtPrice('12.34')"), "12.34", "数字字符串应归一后格式化（F6-14）");
+  assert.equal(inPage("fmtPrice('abc')"), "—", "非数应显「—」");
+  assert.equal(inPage("fmtPct(-0.04)"), "0.0%", "舍入后为 0 的涨跌幅不带负号");
+  assert.equal(inPage("chgCls(-0.04)"), "", "舍入后为 0 的涨跌幅不着色");
+  assert.equal(inPage("fmtPct('2.34')"), "+2.3%");
+  assert.equal(inPage("fmtMcap(9.9995e11)"), "$1万亿", "亿位进位达 10000 应提升万亿重算");
+  assert.equal(inPage("fmtMcap('500000000')"), "$5亿");
+  // 数字字符串实时价喂整表渲染：不得抛 TypeError 中断（F6-14 回归）
+  const keep = liveCoins["solana"];
+  liveCoins["solana"] = { ...keep, price: "12.34" };
+  inPage("rebuildDerived(); render();");
+  assert.equal(tbody.mainRows().length, 200, "畸形字段下整表仍应渲染 200 行");
+  const sol = tbody.mainRows().find((tr) => tr.id === "row-solana");
+  assert.ok(sol.children[4].innerHTML.includes("12.34"), "字符串价应归一显示");
+  liveCoins["solana"] = keep;
+  inPage("rebuildDerived(); render();");
+});
+
+await test("⑨ F6-13/F6-18 实时字段 0 与 null：mcapUsd=0 主表/详情同显「—」、price=0 不回退快照、volume24h=null 显占位", () => {
+  const keep = liveCoins["solana"];
+  liveCoins["solana"] = { ...keep, mcapUsd: 0, price: 0, volume24h: null, rank: null };
+  inPage("rebuildDerived()");
+  assert.equal(inPage("effMcap(COINS.find((c) => c.coingeckoId === 'solana'))"), null, "mcapUsd=0 应按缺失处理");
+  assert.equal(inPage("effPrice(COINS.find((c) => c.coingeckoId === 'solana'))"), null, "price=0 应按缺失处理、不得回退快照价算倍数");
+  const cells = JSON.parse(JSON.stringify(inPage("rowCells(COINS.find((c) => c.coingeckoId === 'solana'))")));
+  assert.equal(cells[6][1], "—", "主表市值应显「—」而非快照市值");
+  assert.equal(cells[4][1], "—", "主表价格应显「—」");
+  const out = inPage("detailHTML(COINS.find((c) => c.coingeckoId === 'solana'))");
+  const mcapSeg = /<dt>实时市值<\/dt><dd>([\s\S]*?)<\/dd>/.exec(out);
+  assert.equal(mcapSeg[1], "—", "详情实时市值应与主表一致显「—」");
+  const volSeg = /<dt>24h 成交量（实时）<\/dt><dd>([\s\S]*?)<\/dd>/.exec(out);
+  assert.equal(volSeg[1], "—（无实时数据）", "volume24h=null 应显占位且不抛错（F6-18）");
+  liveCoins["solana"] = keep;
+  inPage("rebuildDerived()");
+});
+
+await test("⑩ F6-59 decodeCoinsData 健全性校验：fields 改名/行形变即 throw 走快照兜底", () => {
+  ctx.__goodDoc = coinsDoc;
+  assert.equal(inPage("decodeCoinsData(__goodDoc).length"), 200, "正常文档应解码 200 条");
+  ctx.__bad1 = { meta: { fields: coinsDoc.meta.fields.map((f) => (f === "coingeckoId" ? "cgId" : f)) }, rows: coinsDoc.rows };
+  assert.equal(inPage("try { decodeCoinsData(__bad1); 'no-throw' } catch (e) { 'threw' }"), "threw", "coingeckoId 改名应被校验拦下");
+  ctx.__bad2 = { meta: { fields: coinsDoc.meta.fields }, rows: coinsDoc.rows.map((r) => ({ 0: r[0] })) };
+  assert.equal(inPage("try { decodeCoinsData(__bad2); 'no-throw' } catch (e) { 'threw' }"), "threw", "行元素为对象应被校验拦下");
+  delete ctx.__goodDoc; delete ctx.__bad1; delete ctx.__bad2;
+});
+
+await test("⑪ F6-68 搜索口径：coingeckoId 可搜、跨界子串不再误命中", () => {
+  const btcBlob = inPage("COINS.find((c) => c.coingeckoId === 'bitcoin')._d.searchBlob");
+  assert.ok(!btcBlob.includes("nbt"), "\"nbt\" 不应跨界命中 bitcoin+btc 拼接");
+  const q = registry.get("q");
+  q.value = "avalanche-2";
+  assert.deepEqual(Array.from(inPage("currentFiltered().map((c) => c.coingeckoId)")), ["avalanche-2"], "粘贴 coingeckoId 应恰命中对应币");
+  q.value = "nbt";
+  assert.ok(!Array.from(inPage("currentFiltered().map((c) => c.coingeckoId)")).includes("bitcoin"), "\"nbt\" 过滤结果不应含 bitcoin");
+  q.value = "";
+});
+
+await test("⑫ F6-57 patchInPlace 刷新已展开详情：实时到达后详情以最新 detailHTML 重建", async () => {
+  boardLive = false; // 本场景独立上下文：先快照态展开、再喂 live 触发修补
+  const c2 = buildContext();
+  const inPage2 = (expr) => vm.runInContext(expr, c2.ctx);
+  await settle();
+  const btcTr = c2.tbody.mainRows().find((tr) => tr.id === "row-bitcoin");
+  const btn = { dataset: { exp: "bitcoin" }, textContent: "▸", setAttribute() {}, removeAttribute() {}, closest: () => btcTr };
+  c2.ctx.__btn = btn;
+  inPage2("toggleExpand('bitcoin', __btn)");
+  const det0 = c2.tbody._nodes[c2.tbody._nodes.indexOf(btcTr) + 1];
+  assert.ok(det0 && det0.id === "d-bitcoin", "快照态展开应插入详情行");
+  assert.ok(det0.children[0].innerHTML.includes("无实时数据"), "修补前详情应为「无实时数据」旧值");
+  boardLive = true;
+  await inPage2("loadBoard()");
+  await settle();
+  assert.equal(inPage2("livePatchCount"), 1, "应走原地修补路径");
+  const btcTr2 = c2.tbody.mainRows().find((tr) => tr.id === "row-bitcoin");
+  const det = c2.tbody._nodes[c2.tbody._nodes.indexOf(btcTr2) + 1];
+  assert.ok(det && det.id === "d-bitcoin", "详情行应随主行保留");
+  const expectMcap = inPage2(`fmtMcap(${coinById.get("bitcoin").snapshotMcapUsd})`);
+  assert.ok(det.children[0].innerHTML.includes(expectMcap), "详情应以最新实时市值重建");
+  assert.ok(!det.children[0].innerHTML.includes("无实时数据"), "详情不应再残留旧的「无实时数据」");
+  delete c2.ctx.__btn;
+});
+
+await test("⑬ F6-62 delayed 模式：横幅中性文案「行情延迟约 X 分钟」、不误称上游不可达", async () => {
+  boardPayloadOverride = {
+    mode: "delayed", stale: false, staleAgeSec: 1200,
+    updatedAt: new Date().toISOString(), snapshotDate: "2026-11-08",
+    coins: liveCoins,
+    global: { totalMcapUsd: 4.28e12, btcDominance: 57.1, totalMcapChange24h: 2.34 },
+    coverage: { expected: 200, returned: 200, missingIds: [] },
+  };
+  boardLive = true;
+  const c3 = buildContext();
+  const inPage3 = (expr) => vm.runInContext(expr, c3.ctx);
+  await settle();
+  assert.equal(inPage3("boardMode()"), "delayed", "boardMode 应显式识别 delayed");
+  const banner = c3.registry.get("statusBanner").textContent;
+  assert.ok(banner.includes("行情延迟约 20 分钟"), "横幅应为延迟中性文案，实际：" + banner);
+  assert.ok(!banner.includes("上游暂不可达"), "delayed 不得误称上游不可达");
+  assert.ok(c3.registry.get("liveBadge").textContent.includes("行情延迟"), "徽标应为行情延迟");
+  boardPayloadOverride = null;
+});
+
+await test("⑭ F6-65 自选落盘保留原始 id 集：不在榜单的自选不被保存冲掉且有显性标注", async () => {
+  const c4 = buildContext({ seedWatch: JSON.stringify(["solana", "ghost-coin-xyz"]) });
+  const inPage4 = (expr) => vm.runInContext(expr, c4.ctx);
+  await settle();
+  assert.equal(inPage4("watchSet.has('solana')"), true);
+  assert.equal(inPage4("watchSet.has('ghost-coin-xyz')"), false, "显示集应过滤不在榜单的 id");
+  assert.equal(inPage4("watchRawSet.has('ghost-coin-xyz')"), true, "原始集应保留不在榜单的 id");
+  assert.equal(inPage4("watchOffBoard"), 1);
+  assert.ok(inPage4("metaText(200, 200, 200)").includes("1 个自选已不在榜单"), "计数文案应标注不在榜单的自选数");
+  inPage4("toggleStar('ethereum')");
+  await settle(3, 60); // saveWatch 防抖 100ms
+  const saved = JSON.parse(c4.lsStore.get("top200.watchlist.v1") || "[]");
+  assert.ok(saved.includes("ghost-coin-xyz") && saved.includes("solana") && saved.includes("ethereum"),
+    "落盘应为原始集（含不在榜单 id），实际：" + JSON.stringify(saved));
+});
+
+await test("⑮ F6-54 coins 加载失败态下点星不覆写已存自选", async () => {
+  const c5 = buildContext({ seedWatch: JSON.stringify(["solana"]), coinsFail: true });
+  const inPage5 = (expr) => vm.runInContext(expr, c5.ctx);
+  await settle();
+  assert.equal(inPage5("COINS.length"), 0, "coins 失败态 COINS 应为空");
+  assert.equal(inPage5("watchSet.has('solana')"), true, "失败态下自选应已由 init 最前按原始数组载入");
+  inPage5("toggleStar('bitcoin')");
+  await settle(3, 60); // saveWatch 防抖 100ms
+  const saved = JSON.parse(c5.lsStore.get("top200.watchlist.v1") || "[]");
+  assert.deepEqual([...saved].sort(), ["bitcoin", "solana"], "旧自选不得被失败态点星冲掉");
+});
+
 const failed = results.filter(([, s]) => s !== "PASS");
 console.log(`\nfrontend-dom: ${results.length - failed.length}/${results.length} PASS`);
 for (const [name, s] of failed) console.log(`红：${name}（见上方断言信息）`);
-if (failed.some(([n]) => n.includes("F4-07"))) {
-  console.log("注：④ 为预期红（F4-07 基线 bug），其余条目应全绿；W4-08 修复合入后本文件应全绿、退出码 0。");
-}
 process.exit(failed.length ? 1 : 0);
