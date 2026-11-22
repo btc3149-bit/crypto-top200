@@ -14,6 +14,9 @@
   is cross-checked against the derivation).
 Outputs data/coins.json and public/data/coins.json (identical).
 """
+import sys as _sys
+print("[已退役] 本脚本为归档旧管线，禁止执行：误跑可能覆盖现行数据。如需参考逻辑请只读代码。", file=_sys.stderr)
+_sys.exit(2)
 import json, re, subprocess, sys, time, unicodedata
 
 ROOT = "/home/hatch/workspace/cloudflare-top200-site"

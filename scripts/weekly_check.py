@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """weekly_check.py — 名单周检（W2-12 §1.3，C1–C7）。只读、只产报告。
 
+退出码语义（F6-73，第六期按协调人代站长确认口径实施）：
+  0 = 本轮有效且无告警、无 incomplete；
+  1 = 本轮有效，但 alerts>0 或 incomplete 非空（报告内容不变，靠退出码给流程信号）；
+  2 = 本轮作废（F6-09：关键拉取失败/为空，不覆写 watch、不推进 lastRunWeek）。
+
 红线：永不写 coins.json、永不触发部署。只写 ops/weekly/ 下的周报与 state.json。
 用法：python3 scripts/weekly_check.py [--state <path>] [--out <path>] [--date YYYY-MM-DD]
 CoinGecko key 只从环境变量 COINGECKO_API_KEY 读（可为空=匿名），禁止写进仓库。
@@ -96,6 +101,12 @@ def watchout_eligible(coin):
     r = coin.get("rankNow")
     return isinstance(r, int) and r <= 250
 
+IDS_MIN_ROWS = 180  # F6-72：ids 行情完整性下限，低于此判 incomplete（疑似拉取异常）
+
+def ids_rows_complete(n, minimum=IDS_MIN_ROWS):
+    """ids 行情返回行数完整性判定（纯函数）：< minimum 判 incomplete，本节不产出下架候选。"""
+    return n >= minimum
+
 def find_missing_rows(coins, by_ids, ids_fetch_ok, live_ids=None):
     """markets 按 id 拉取成功却缺行的币 = 疑似下架/迁移候选（W4-09 修复点 1）。
 
@@ -185,20 +196,30 @@ def main():
 
     # ---- CoinGecko: top250 基准集 + 全量 200 id 行情 + /coins/list ----
     top250, by_ids, live_ids = [], {}, set()
+    top250_fetch_failed = False
     try:
         CALLS["cg_markets_top250"] += 1
         top250 = fetch_json("https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=1&sparkline=false", cg_headers())
         if not isinstance(top250, list): raise RuntimeError("top250 非 list")
     except Exception as e:
+        top250_fetch_failed = True
         incomplete.append(f"C1 基准集拉取失败: {e}")
+    # F6-09：关键拉取失败或 top250 为空 → 本轮作废（不覆写 watch、不推进 lastRunWeek）
+    run_void = top250_fetch_failed or not top250
     ids_fetch_ok = False
+    ids_low_rows = False
     try:
         CALLS["cg_markets_ids"] += 1
         ids = ",".join(c["coingeckoId"] for c in coins)
         data = fetch_json(f"https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&per_page=250&sparkline=false&ids={ids}", cg_headers())
         if not isinstance(data, list): raise RuntimeError("ids markets 非 list")
         by_ids = {m["id"]: m for m in data}
-        ids_fetch_ok = True
+        # F6-72：返回行数低于完整性下限 → 判 incomplete（大面积缺行、疑似拉取异常），不产出下架候选
+        if ids_rows_complete(len(data)):
+            ids_fetch_ok = True
+        else:
+            ids_low_rows = True
+            incomplete.append(f"C4/C5 行情残缺: ids 返回 {len(data)} 行 < {IDS_MIN_ROWS}（大面积缺行，疑似拉取异常），本节不产出下架候选")
     except Exception as e:
         incomplete.append(f"C4/C5 行情拉取失败: {e}")
     try:
@@ -246,7 +267,11 @@ def main():
                 w, lw = advance_watch(prev_in.get(m["symbol"].upper()), week_label, prev_run_week)
                 new_in[m["symbol"].upper()] = {"weeks": w, "id": m["id"], "rank": m.get("market_cap_rank"), "lastWeek": lw}
                 if w >= 2: cand_in.append((m["symbol"].upper(), m.get("market_cap_rank"), w))
-    state["watchOut"], state["watchIn"] = new_out, new_in
+    if run_void:
+        # F6-09 本轮作废：保留旧 watch 不变（不以空/残缺结果覆写连续周计数）
+        new_out, new_in = prev_out, prev_in
+    else:
+        state["watchOut"], state["watchIn"] = new_out, new_in
     state["watchBasis"] = WATCH_BASIS
 
     # C3 id 存活（最高优先级告警；list 缺项时不误报，见 incomplete）
@@ -308,13 +333,17 @@ def main():
             report_url_line = f"WARN（HTTP {report_status if report_status is not None else '无响应/请求失败'}，非 200）"
 
     state["updatedAt"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
-    state["lastRunWeek"] = week_label
+    if run_void:
+        state["lastAttemptWeek"] = week_label  # F6-09：作废轮只记尝试周，不推进 lastRunWeek
+    else:
+        state["lastRunWeek"] = week_label
     state_path.parent.mkdir(parents=True, exist_ok=True)
     json.dump(state, open(state_path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
 
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     lines = [
         f"# 名单周检 {week_label}（运行：{now} · 执行：weekly_check.py v{VERSION} · 数据：CoinGecko {'Demo key' if os.environ.get('COINGECKO_API_KEY') else '匿名'}）",
+        *([ "", "## ⚠ 本轮作废", "关键拉取失败或 top250 为空：本轮结论无效，watch 连续周计数与 lastRunWeek 均未推进（仅记 lastAttemptWeek）。" ] if run_void else []),
         "",
         "## 结论",
         f"告警 {len(alerts)} 条 / 疑似下架 {len(missing_rows)} 个 / 候选移入 {len(cand_in)} 个 / 候选移出 {len(cand_out)} 个 / 人工队列 {len(queue)} 条 / override 到期 {len(due)} 条" + (f"；外链 WARN {report_url_warn} 条（REPORT_URL 非 200，见运行元信息）" if report_url_warn else "") + (f"；incomplete 缺项 {len(incomplete)}：{'；'.join(incomplete)}" if incomplete else ""),
@@ -324,6 +353,7 @@ def main():
         "",
         "## A2. 疑似下架候选（markets 缺行，与移出候选区分）",
         "说明：以下币在按 id 拉取的 markets 行情中无对应行（下架/迁移恰表现为缺行）。与 B 节「移出候选」（排名跌出前 250 满 2 个自然周）是不同信号，处置前须人工打开币页确认；行情拉取失败时本节不判定（见 incomplete）。",
+        *([f"注记：本轮 ids 行情大面积缺行（返回行数 < {IDS_MIN_ROWS}，疑似拉取异常），本节不产出下架候选；与「个别缺行」（真实疑似下架信号）严格区分。"] if ids_low_rows else []),
         *([f"- {r['symbol']}（id={r['id']}）：markets 缺行" + (f"；/coins/list 内{'仍有' if r['inCoinList'] else '亦无'}此 id" if r["inCoinList"] is not None else "") + "，疑似下架/迁移，待人工确认" for r in missing_rows] or ["- 无"]),
         "",
         "## B. 进出候选",
@@ -348,14 +378,19 @@ def main():
         ath_reminder_line(coins, run_date, (ROOT / "ops" / "ath-review" / f"{run_date.year}-Q{(run_date.month - 1) // 3 + 1}.md").exists()),
         f"REPORT_URL 外链健康：{report_url_line}（控制点 scripts/pipeline_config.py，非 200 记 WARN 并计入结论提示）",
         f"incomplete 缺项：{incomplete if incomplete else '无'}",
-        f"state.json 变更摘要：watchOut {len(new_out)} 个、watchIn {len(new_in)} 个、driftMarked 累计 {len(state['driftMarked'])} 个、lastRunWeek={week_label}",
+        f"state.json 变更摘要：watchOut {len(new_out)} 个、watchIn {len(new_in)} 个、driftMarked 累计 {len(state['driftMarked'])} 个、" + (f"本轮作废：lastRunWeek 未推进（保持 {prev_run_week}）、lastAttemptWeek={week_label}" if run_void else f"lastRunWeek={week_label}"),
         *([f"注记：本次运行执行 W4-09 清零重建——旧 state 的 watch 计数按跑次累加且含结构性假候选，与新口径不可比，已清零并按 ISO 自然周 + 基线适用性重新起算（watchBasis={WATCH_BASIS}）。"] if migrated else []),
         "注记：周号按 ISO 8601；watch 连续周数按自然周累加（同周重复运行不重复计数，间隔超一周重新起算）。",
     ]
     out_path.parent.mkdir(parents=True, exist_ok=True)
     out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
-    print(f"weekly_check {week_label}: alerts={len(alerts)} missing={len(missing_rows)} cand_in={len(cand_in)} cand_out={len(cand_out)} queue={len(queue)} due={len(due)} incomplete={len(incomplete)} report_url_warn={report_url_warn}")
+    print(f"weekly_check {week_label}: alerts={len(alerts)} missing={len(missing_rows)} cand_in={len(cand_in)} cand_out={len(cand_out)} queue={len(queue)} due={len(due)} incomplete={len(incomplete)} report_url_warn={report_url_warn} void={run_void}")
     print(f"report -> {out_path}")
+    # F6-73 退出码语义（见脚本头）：作废=2；alerts>0 或 incomplete 非空=1；其余=0。
+    if run_void:
+        return 2
+    if alerts or incomplete:
+        return 1
     return 0
 
 if __name__ == "__main__":

@@ -449,23 +449,66 @@ def build_meta(coins, report_paths):
     return meta, warnings
 
 def emit(doc):
+    """只编码+校验，不落盘（F6-69/F6-70）：返回 (sha256, text)。
+
+    F6-70：编码前断言每币字段集恰等于 FIELDS23，多/少都 GateFail 并列出 symbol
+    （旧实现以 c.get(f) 静默丢弃多余字段且不重算 dataHash，产物自洽性被破坏）。
+    """
     BUILD_DIR.mkdir(exist_ok=True)
     # W3-22：落盘统一编码为 rows 紧凑形态（meta.fields 字段序 + 位置数组行）。
     # 入参 doc 内部恒为规范对象形态（{"meta","coins"}）；--emit 重读已落盘的
     # rows 文档时先经 check_meta.decode_coins 解码（口径 A：dataHash 不变）。
     coins = check_meta.decode_coins(doc)
+    want = set(FIELDS23)
+    bad = []
+    for c in coins:
+        keys = set(c.keys())
+        if keys != want:
+            bad.append(f"{c.get('symbol', '?')}(多:{sorted(keys - want)} 少:{sorted(want - keys)})")
+    if bad:
+        fail("G10", "emit", f"字段集 != FIELDS23：{bad}")
     meta = dict(doc.get("meta") or {})
     meta["fields"] = FIELDS23
     out = {"meta": meta, "rows": [[c.get(f) for f in FIELDS23] for c in coins]}
     text = json.dumps(out, ensure_ascii=False, separators=(",", ":"))
-    for p in (ROOT / "data/coins.json", ROOT / "public/data/coins.json"):
-        p.write_text(text, encoding="utf-8")
-    (ROOT / "public/data/DO_NOT_EDIT.md").write_text(
-        "构建产物，勿手改。源在 `data/coins.json`，由 `scripts/build.py` 生成（`python3 scripts/build.py --emit` 只校验+拷贝）。\n", encoding="utf-8")
+    return hashlib.sha256(text.encode("utf-8")).hexdigest(), text
+
+
+def emit_and_render(doc):
+    """F6-69：全部产物（coins.json 两份 + DO_NOT_EDIT + index.html 快照）先渲染到
+    临时位置，全部成功后才一并落盘；任一步失败抛 GateFail/SnapshotError，
+    现行产物逐字节不变。F6-70：临时 coins 先过 check_meta、落盘后再对落盘
+    文件复跑 check_meta，通过才返回哈希。"""
+    import os, shutil, tempfile
+    h, text = emit(doc)
+    BUILD_DIR.mkdir(exist_ok=True)
+    tmp = Path(tempfile.mkdtemp(prefix="emit-", dir=str(BUILD_DIR)))
+    try:
+        tmp_coins = tmp / "coins.json"
+        tmp_coins.write_text(text, encoding="utf-8")
+        if check_meta.check_meta(str(tmp_coins)) != 0:
+            fail("G10", "emit", "临时产物 check_meta 未通过，不落盘")
+        tmp_html = tmp / "index.html"
+        shutil.copyfile(ROOT / "public/index.html", tmp_html)
+        render_snapshot.run(tmp_coins, tmp_html)  # 失败抛 SnapshotError，現行产物不动
+        tmp_note = tmp / "DO_NOT_EDIT.md"
+        tmp_note.write_text(
+            "构建产物，勿手改。源在 `data/coins.json`，由 `scripts/build.py` 生成（`python3 scripts/build.py --emit` 只校验+拷贝）。\n", encoding="utf-8")
+        # 全部成功 → 一并落盘（同盘 os.replace 原子替换）
+        os.replace(tmp_coins, ROOT / "data/coins.json")
+        (ROOT / "public/data/coins.json").write_text(text, encoding="utf-8")
+        os.replace(tmp_note, ROOT / "public/data/DO_NOT_EDIT.md")
+        os.replace(tmp_html, ROOT / "public/index.html")
+    finally:
+        import shutil as _sh
+        _sh.rmtree(tmp, ignore_errors=True)
     h1 = hashlib.sha256((ROOT / "data/coins.json").read_bytes()).hexdigest()
     h2 = hashlib.sha256((ROOT / "public/data/coins.json").read_bytes()).hexdigest()
     if h1 != h2:
         fail("G10", "emit", "双目标哈希不一致")
+    # F6-70：落盘后对落盘文件再跑一次 check_meta，通过才算成功
+    if check_meta.check_meta(str(ROOT / "data/coins.json")) != 0:
+        fail("G10", "emit", "落盘后 check_meta 未通过")
     return h1
 
 def diff_vs_prior(prior, new):
@@ -503,11 +546,13 @@ def main():
         except GateFail as e:
             print(f"FAIL [emit] 字段级 validate 未通过，不拷贝：{e}", file=sys.stderr)
             return 1
-        h = emit(doc)
         try:
-            render_snapshot.run(ROOT / "data/coins.json", ROOT / "public/index.html")
+            h = emit_and_render(doc)
+        except GateFail as e:
+            print(f"FAIL [emit] {e}", file=sys.stderr)
+            return 1
         except render_snapshot.SnapshotError as e:
-            print(f"FAIL [render-snapshot] {e}", file=sys.stderr)
+            print(f"FAIL [render-snapshot] {e}（现行产物未改动）", file=sys.stderr)
             return 1
         print(f"emit ok sha256={h} (+render-snapshot 静态注入)")
         return 0
@@ -664,12 +709,11 @@ def main():
         if meta["counts"]["totalCoins"] != len(merged):
             fail("G9", "emit", "counts 自检不符")
         gates.append("G9 meta 自洽通过")
-        file_hash = emit(doc)
-        gates.append("G10 双目标哈希一致通过")
         try:
-            render_snapshot.run(ROOT / "data/coins.json", ROOT / "public/index.html")
+            file_hash = emit_and_render(doc)
         except render_snapshot.SnapshotError as e:
             fail("G10", "render-snapshot", str(e))
+        gates.append("G10 双目标哈希一致通过")
         gates.append("render-snapshot 静态注入 200 行通过（W2-17）")
     except GateFail as e:
         print(str(e), file=sys.stderr)

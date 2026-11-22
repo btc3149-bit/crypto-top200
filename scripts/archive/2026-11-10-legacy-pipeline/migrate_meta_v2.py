@@ -4,6 +4,9 @@
 硬约束：迁移前后 coins 数组 dataHash 必须相等，否则弃产物退出 1。
 迁移完成后本脚本随旧脚本归档（W2-11 §5），勿再运行。
 """
+import sys as _sys
+print("[已退役] 本脚本为归档旧管线，禁止执行：误跑可能覆盖现行数据。如需参考逻辑请只读代码。", file=_sys.stderr)
+_sys.exit(2)
 import hashlib, json, sys
 from collections import Counter
 from datetime import datetime, timezone
