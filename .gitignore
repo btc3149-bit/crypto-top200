@@ -11,3 +11,4 @@ node_modules/
 dist-upload/
 build/
 ops/*.jsonl
+__pycache__/
