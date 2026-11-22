@@ -8,7 +8,9 @@
 # - mode=stale 且 staleAgeSec ≤3600 → WARN（降级警告，不算 FAIL；无 mode 字段时以 stale=true + 年龄 ≤3600 等价判定）
 # - mode=snapshot → FAIL（接口未生效、只有快照）
 # - 其余（年龄超限 / body 不可解析等）→ FAIL
-# 总判定：任一 FAIL → fail；无 FAIL 但有 WARN → warn；全过 → pass。退出码：fail 时 1，其余 0。
+# 总判定：任一 FAIL → fail；无 FAIL 但有 WARN → warn；全过 → pass。
+# 退出码三档（F6-23 定版）：pass=0、fail=1、warn=4。编排（HC1）须按退出码分流：
+# warn（退出 4）与 fail 一样 ping /fail（附降级注记），不得把 warn 报成 success。
 #
 # 告警邮箱预留：读环境变量 PROBE_ALERT_EMAIL。未设置时结果行标注 "alert": "skipped-no-email"；
 # 设置了也暂不真发邮件，只标注 "alert": "would-email"。
@@ -123,5 +125,6 @@ python3 -c "import json,sys,datetime; line={'ts': datetime.datetime.now(datetime
 
 case "$VERDICT" in
 fail) exit 1;;
+warn) exit 4;;
 *) exit 0;;
 esac

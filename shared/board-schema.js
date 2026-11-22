@@ -25,7 +25,9 @@ export const FRESHNESS_THRESHOLDS = {
   clockSkewToleranceSec: 60, // staleAgeSec < -60s 记 CLOCK_SKEW 并钳制为 0
 };
 // quotaMode → 下一次预期抓取间隔（秒），供 freshness.nextExpectedFetchAt
-export const FETCH_INTERVAL_SEC = { normal: 600, saving: 900, critical: 1800 };
+// F6-44 schema 侧对齐：saving 名义 15min 跳过线落在 */10 网格上实际为 20 分钟一抓
+//（fetcher shouldSkipMarkets：age<15min 跳过 → 下一网格点 20min），故 saving=1200 与实际节奏一致。
+export const FETCH_INTERVAL_SEC = { normal: 600, saving: 1200, critical: 1800 };
 
 // W2-03 §3 熔断切换参数（集中常量，演练加速后须恢复定版值单独提交）
 export const SOURCE_SWITCH = {
@@ -58,25 +60,48 @@ export function computeCoverage(expectedIds, returnedIdSet) {
   return { expected, returned, missingIds, ratio: expected ? returned / expected : 0 };
 }
 
+// F6-02 字段级门禁：行情数值字段的合理性上限（超出即视为上游形变/坏数据）。
+// 取值远高于任何真实币种量级（单币价 <1e6、市值 <1e14、24h 量 <1e13），只拦
+// 1e30/Infinity 一类明显坏值，不误伤真实数据。
+export const FIELD_LIMITS = { priceMax: 1e12, mcapUsdMax: 1e18, volume24hMax: 1e18 };
+// 数值字段清洗：只接受 typeof number 且有限、非负、不超过上限的数；
+// 其余（字符串、NaN、Infinity、负数、超限）一律置 null。返回 {value, invalid}，
+// invalid=true 表示「原值非 null 但被判坏」——调用方计数留痕，不得静默吞。
+export function sanitizeMarketNumber(v, max) {
+  if (v == null) return { value: null, invalid: false };
+  if (typeof v === "number" && Number.isFinite(v) && v >= 0 && v <= max) return { value: v, invalid: false };
+  return { value: null, invalid: true };
+}
+
 // 自现行 board.js fetchUpstreamInternal 抽取的字段映射，保持行结构同构：
 // 现行 coins 字典值 {price, mcapUsd, rank, change24h, volume24h} → blob rows 数组元素
 // {id, price, mcapUsd, rank, change24h, volume24h, _src}（_src 仅供 fetcher 内部断言，组装对外时剥除）。
 // volume24h 为 W3-25 契约增量（上游同一响应 total_volume，纯新增、向后兼容）。
 export function normalizeCgMarkets(markets, expectedIds) {
   const byId = new Map();
+  // F6-02：price/mcapUsd/volume24h 字段级清洗计数（非数/负数/超限 → null 并计数）。
+  const invalidFields = { price: 0, mcapUsd: 0, volume24h: 0, total: 0 };
+  const clean = (v, max, field) => {
+    const r = sanitizeMarketNumber(v, max);
+    if (r.invalid) {
+      invalidFields[field] += 1;
+      invalidFields.total += 1;
+    }
+    return r.value;
+  };
   if (Array.isArray(markets)) {
     for (const m of markets) {
       if (!m || !m.id) continue;
       byId.set(m.id, {
         id: m.id,
-        price: m.current_price ?? null,
-        mcapUsd: m.market_cap ?? null,
+        price: clean(m.current_price ?? null, FIELD_LIMITS.priceMax, "price"),
+        mcapUsd: clean(m.market_cap ?? null, FIELD_LIMITS.mcapUsdMax, "mcapUsd"),
         rank: m.market_cap_rank ?? null,
         change24h:
           m.price_change_percentage_24h_in_currency != null
             ? m.price_change_percentage_24h_in_currency
             : m.price_change_percentage_24h ?? null,
-        volume24h: m.total_volume ?? null,
+        volume24h: clean(m.total_volume ?? null, FIELD_LIMITS.volume24hMax, "volume24h"),
         _src: "coingecko",
       });
     }
@@ -84,7 +109,7 @@ export function normalizeCgMarkets(markets, expectedIds) {
   const coverage = computeCoverage(expectedIds, new Set(byId.keys()));
   // rows 只含期望列表内的币（与现行 coverage 口径一致：列表外 id 不计入）
   const rows = expectedIds.filter((id) => byId.has(id)).map((id) => byId.get(id));
-  return { rows, coverage };
+  return { rows, coverage, invalidFields };
 }
 
 // CoinGecko /global 归一化（兼容现行 v1 字段名 totalMcapUsd/btcDominance 与
@@ -189,12 +214,20 @@ export function buildBlob({ source, fetchRunId, fetchedAtMs, rows, coverage, glo
   };
 }
 
-// blob 结构校验。返回 {ok, errors[], warnings[]}。
+// F6-02：price 非 null 比例下限——低于此值视为上游大面积坏数据，整 blob 拒绝。
+export const PRICE_NON_NULL_MIN_RATIO = 0.98;
+
+// blob 结构校验。返回 {ok, errors[], warnings[], stats}。
+// stats.invalidFields 为字段级坏值计数（F6-02 留痕口径）；stats.nullPriceCount 为 price=null 行数。
 // W2-02 兼容判定：缺 global.asOf 的旧 blob 给 warning 而非 error（灰度期容忍，G4 后移除）。
+// F6-52 标记形态（定版，fetcher 侧据此消费）：global 关键字段全 null 时
+// errors 含字符串 "global_all_null"（validateBlob ok=false）；fetcher 在写 blob 前
+// 应据此沿用 prev global（含原 asOf），不得盖新鲜戳覆写。
 export function validateBlob(blob) {
   const errors = [];
   const warnings = [];
-  if (!blob || typeof blob !== "object") return { ok: false, errors: ["blob_not_object"], warnings };
+  const stats = { invalidFields: { price: 0, mcapUsd: 0, volume24h: 0, total: 0 }, nullPriceCount: 0, rowCount: 0, uniqueIdCount: 0 };
+  if (!blob || typeof blob !== "object") return { ok: false, errors: ["blob_not_object"], warnings, stats };
   if (blob.schemaVersion !== SCHEMA_VERSION) errors.push("schema_version");
   if (blob.source !== "coingecko" && blob.source !== "coinpaprika") errors.push("source");
   if (toMs(blob.fetchedAt) == null) errors.push("fetched_at");
@@ -205,18 +238,62 @@ export function validateBlob(blob) {
     errors.push("coverage_below_gate");
   }
   if (Array.isArray(blob.rows)) {
+    stats.rowCount = blob.rows.length;
+    const ids = new Set();
+    let shapeBad = false;
+    let fieldBad = false;
     for (const r of blob.rows) {
       if (!r || typeof r.id !== "string" || !("price" in r)) {
-        errors.push("row_shape");
-        break;
+        shapeBad = true;
+        continue;
       }
+      ids.add(r.id);
+      // F6-02 字段级门禁：非 null 的 price/mcapUsd/volume24h 必须是有限非负且不超限的数。
+      for (const [field, max] of [["price", FIELD_LIMITS.priceMax], ["mcapUsd", FIELD_LIMITS.mcapUsdMax], ["volume24h", FIELD_LIMITS.volume24hMax]]) {
+        const chk = sanitizeMarketNumber(r[field] ?? null, max);
+        if (chk.invalid) {
+          stats.invalidFields[field] += 1;
+          stats.invalidFields.total += 1;
+          fieldBad = true;
+        }
+      }
+      if (r.price == null) stats.nullPriceCount += 1;
+    }
+    if (shapeBad) errors.push("row_shape");
+    if (fieldBad) errors.push("row_field_invalid");
+    stats.uniqueIdCount = ids.size;
+    // F6-02：price 非 null 比例 <98% → 整 blob 判 error（全 null rows 不再假绿）。
+    if (blob.rows.length > 0 && (blob.rows.length - stats.nullPriceCount) / blob.rows.length < PRICE_NON_NULL_MIN_RATIO) {
+      errors.push("price_null_ratio");
+    }
+    // F6-04 交叉校验：coverage.returned 必须等于 rows 去重 id 数；
+    // missingIds 必须与 rows 互补（不得含在场 id、并集须等于 expected 计数口径）。
+    if (blob.coverage && typeof blob.coverage.returned === "number" && blob.coverage.returned !== ids.size) {
+      errors.push("coverage_returned_mismatch");
+    }
+    if (blob.coverage && Array.isArray(blob.coverage.missingIds)) {
+      const missing = new Set(blob.coverage.missingIds);
+      const overlap = [...missing].some((id) => ids.has(id));
+      const unionMismatch =
+        typeof blob.coverage.expected === "number" && missing.size + ids.size !== blob.coverage.expected;
+      if (overlap || unionMismatch) errors.push("coverage_missing_mismatch");
     }
   }
   if (blob.global != null) {
     if (typeof blob.global !== "object") errors.push("global_shape");
-    else if (!blob.global.asOf) warnings.push("global_missing_asof_legacy_compat");
+    else {
+      if (!blob.global.asOf) warnings.push("global_missing_asof_legacy_compat");
+      // F6-52：global 关键字段全 null → 可识别标记（见函数头定版说明）。
+      const g = blob.global;
+      const keyVals = [
+        g.totalMarketCapUsd ?? g.totalMcapUsd ?? null,
+        g.btcDominancePct ?? g.btcDominance ?? null,
+        g.totalMcapChange24h ?? null,
+      ];
+      if (keyVals.every((v) => v == null)) errors.push("global_all_null");
+    }
   }
-  return { ok: errors.length === 0, errors, warnings };
+  return { ok: errors.length === 0, errors, warnings, stats };
 }
 
 // W2-02 §2 状态机：纯时间驱动。返回 {staleAgeSec, level, mode, stale, clockSkew}

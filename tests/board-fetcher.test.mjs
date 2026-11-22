@@ -206,6 +206,83 @@ await test("W2-03 状态机: CG 连败 3 次切 Paprika；静默期探针成功�
   void env;
 });
 
+function makeValidBlob() {
+  const { rows, coverage } = normalizeCgMarkets(marketsPayload(), IDS);
+  return buildBlob({
+    source: "coingecko",
+    fetchRunId: "neg",
+    fetchedAtMs: Date.now(),
+    rows,
+    coverage,
+    global: { totalMarketCapUsd: 1, btcDominancePct: 2, totalMcapChange24h: 0, asOf: new Date().toISOString(), _src: "coingecko" },
+    fetchMeta: null,
+  });
+}
+
+await test("F6-02 负向①: normalizeCgMarkets 字符串 price → 置 null 并计数", async () => {
+  const payload = marketsPayload();
+  payload[0].current_price = "12.34";
+  const { rows, invalidFields } = normalizeCgMarkets(payload, IDS);
+  assert.equal(rows[0].price, null);
+  assert.equal(invalidFields.price, 1);
+  assert.ok(invalidFields.total >= 1);
+});
+
+await test("F6-02 负向②: validateBlob 字符串 price → row_field_invalid、ok=false", async () => {
+  const blob = makeValidBlob();
+  blob.rows[0].price = "12.34";
+  const v = validateBlob(blob);
+  assert.equal(v.ok, false);
+  assert.ok(v.errors.includes("row_field_invalid"), JSON.stringify(v.errors));
+  assert.equal(v.stats.invalidFields.price, 1);
+});
+
+await test("F6-02 负向③: validateBlob 负 mcapUsd → row_field_invalid", async () => {
+  const blob = makeValidBlob();
+  blob.rows[1].mcapUsd = -5;
+  const v = validateBlob(blob);
+  assert.equal(v.ok, false);
+  assert.ok(v.errors.includes("row_field_invalid"));
+  assert.equal(v.stats.invalidFields.mcapUsd, 1);
+});
+
+await test("F6-02 负向④: validateBlob price=1e30（超限）与 Infinity → row_field_invalid", async () => {
+  const blobA = makeValidBlob();
+  blobA.rows[0].price = 1e30;
+  assert.ok(validateBlob(blobA).errors.includes("row_field_invalid"));
+  const blobB = makeValidBlob();
+  blobB.rows[0].price = Infinity;
+  assert.ok(validateBlob(blobB).errors.includes("row_field_invalid"));
+  const blobC = makeValidBlob();
+  blobC.rows[0].volume24h = "9000";
+  assert.ok(validateBlob(blobC).errors.includes("row_field_invalid"));
+});
+
+await test("F6-02 负向⑤: validateBlob 全 null price rows → price_null_ratio、ok=false（不再假绿）", async () => {
+  const blob = makeValidBlob();
+  for (const r of blob.rows) r.price = null;
+  const v = validateBlob(blob);
+  assert.equal(v.ok, false);
+  assert.ok(v.errors.includes("price_null_ratio"), JSON.stringify(v.errors));
+  assert.equal(v.stats.nullPriceCount, 4);
+});
+
+await test("F6-04 负向⑥: validateBlob coverage.returned 与 rows 不一致 → coverage_returned_mismatch", async () => {
+  const blob = makeValidBlob();
+  blob.rows = blob.rows.slice(0, 3); // coverage 仍自报 returned=4
+  const v = validateBlob(blob);
+  assert.equal(v.ok, false);
+  assert.ok(v.errors.includes("coverage_returned_mismatch"), JSON.stringify(v.errors));
+});
+
+await test("F6-52 负向⑦: validateBlob global 关键字段全 null → errors 含 global_all_null", async () => {
+  const blob = makeValidBlob();
+  blob.global = { totalMarketCapUsd: null, btcDominancePct: null, totalMcapChange24h: null, asOf: new Date().toISOString() };
+  const v = validateBlob(blob);
+  assert.equal(v.ok, false);
+  assert.ok(v.errors.includes("global_all_null"), JSON.stringify(v.errors));
+});
+
 globalThis.fetch = originalFetch;
 const failed = results.filter(([, s]) => s !== "PASS");
 console.log(`\n=== ${results.length - failed.length}/${results.length} passed ===`);

@@ -72,7 +72,8 @@ function installFetch(behaviour) {
 function ctx(mod, { method = "GET" } = {}) {
   return {
     request: new Request("https://example.com/api/board", { method }),
-    env: {},
+    // F6-03 后口径：legacy 须显式配置且须有 key（缺失/未知 mode 一律 fail-closed）。
+    env: { BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "test-key-not-real" },
     waitUntil: () => {},
   };
 }
@@ -175,6 +176,7 @@ await test("④ markets 429 带 Retry-After（熔断、无缓存 503 + error 收
   });
   const res1 = await callGet(mod);
   assert.equal(res1.status, 503);
+  assert.equal(res1.headers.get("cache-control"), "no-store", "F6-32: 503 应答 no-store（去掉 stale-if-error）");
   const text1 = await res1.text();
   assert.ok(!text1.includes("UPSTREAM_SECRET_TEXT"), "response must not leak upstream text");
   assert.ok(!text1.includes("429"), "response must not leak upstream status detail");
@@ -275,9 +277,9 @@ await test("⑦ POST 请求得 405", async () => {
   assert.equal(typeof mod.onRequestGet, "function");
 });
 
-await test("⑧ W5-02: BOARD_READ_MODE 误写（kvv）→ 结构化 error 日志留痕 + 回落 legacy 正常应答", async () => {
+await test("⑧ F6-03: BOARD_READ_MODE 误写（kvv）→ fail-closed：snapshot 契约 v2 + error 日志，绝不走 legacy", async () => {
   const mod = await freshBoard();
-  installFetch({});
+  const counts = installFetch({});
   const errs = [];
   const origErr = console.error;
   console.error = (...args) => errs.push(args.join(" "));
@@ -285,7 +287,7 @@ await test("⑧ W5-02: BOARD_READ_MODE 误写（kvv）→ 结构化 error 日志
   try {
     res = await mod.onRequestGet({
       request: new Request("https://example.com/api/board", { method: "GET" }),
-      env: { BOARD_READ_MODE: "kvv" },
+      env: { BOARD_READ_MODE: "kvv", COINGECKO_API_KEY: "test-key-not-real" },
       waitUntil: () => {},
     });
   } finally {
@@ -293,13 +295,47 @@ await test("⑧ W5-02: BOARD_READ_MODE 误写（kvv）→ 结构化 error 日志
   }
   assert.equal(res.status, 200);
   const body = await res.json();
-  assert.equal(body.mode, "live", "未知 mode 回落 legacy 应答（可用性优先）");
+  assert.equal(body.contractVersion, 2, "fail-closed 应答须为契约 v2");
+  assert.equal(body.mode, "snapshot");
+  assert.deepEqual(body.coins, {});
+  assert.equal(counts.markets, 0, "未知 mode 不得触发 legacy 上游抓取");
+  assert.equal(res.headers.get("cache-control"), "no-store", "F6-32: snapshot 应答 no-store");
   const logged = errs.map((s) => { try { return JSON.parse(s); } catch (_) { return null; } }).filter(Boolean);
   const hit = logged.find((o) => o.event === "board_mode_unknown");
   assert.ok(hit, "必须有 board_mode_unknown 结构化日志（不得静默走错路）");
   assert.equal(hit.level, "error");
   assert.equal(hit.mode, "kvv");
-  assert.equal(hit.fallback, "legacy");
+  assert.equal(hit.fallback, "snapshot_v2");
+});
+
+await test("⑧b F6-03: BOARD_READ_MODE 缺失 → 同样 fail-closed（snapshot v2），不走 legacy", async () => {
+  const mod = await freshBoard();
+  const counts = installFetch({});
+  const res = await mod.onRequestGet({
+    request: new Request("https://example.com/api/board", { method: "GET" }),
+    env: { COINGECKO_API_KEY: "test-key-not-real" },
+    waitUntil: () => {},
+  });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.contractVersion, 2);
+  assert.equal(body.mode, "snapshot");
+  assert.equal(counts.markets, 0);
+});
+
+await test("⑧c F6-03: 显式 legacy 但 COINGECKO_API_KEY 缺失 → 配置错误路径（snapshot），禁止匿名抓取", async () => {
+  const mod = await freshBoard();
+  const counts = installFetch({});
+  const res = await mod.onRequestGet({
+    request: new Request("https://example.com/api/board", { method: "GET" }),
+    env: { BOARD_READ_MODE: "legacy" },
+    waitUntil: () => {},
+  });
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.mode, "snapshot", "无 key 时走回退快照、不得端出 live");
+  assert.equal(counts.markets, 0, "无 key 不得匿名打上游 markets");
+  assert.equal(counts.global, 0, "无 key 不得匿名打上游 global");
 });
 
 await test("⑨ W3-22: coins.json 为 rows 紧凑形态 → getIds 按 meta.fields 解码、legacy 正常 live", async () => {
@@ -321,6 +357,55 @@ await test("⑨ W3-22: coins.json 为 rows 紧凑形态 → getIds 按 meta.fiel
   assert.equal(body.coverage.returned, IDS.length);
   assert.deepEqual(Object.keys(body.coins).sort(), [...IDS].sort());
   assert.equal(body.coins.bitcoin.volume24h, 7000, "W3-25: legacy 路径 total_volume → volume24h");
+});
+
+await test("⑩ F6-34: coins.json 有行缺 id / 重复 id → ids_parse_failed 走回退（snapshot），不静默缩分母", async () => {
+  // 情形 A：rows 形态中一行 coingeckoId 为 null
+  const modA = await freshBoard();
+  const FIELDS = ["coingeckoId", "name"];
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes("/data/coins.json")) return jsonRes({ meta: { fields: FIELDS }, rows: [["bitcoin", "Bitcoin"], [null, "Ghost"], ["solana", "Solana"], ["filecoin", "Filecoin"]] });
+    if (u.includes("/coins/markets")) return jsonRes(marketsPayload());
+    if (u.includes("/global")) return jsonRes(globalPayload());
+    throw new Error("unexpected fetch: " + u);
+  };
+  const resA = await modA.onRequestGet({
+    request: new Request("https://example.com/api/board", { method: "GET" }),
+    env: { BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "test-key-not-real" },
+    waitUntil: () => {},
+  });
+  const bodyA = await resA.json();
+  assert.equal(bodyA.mode, "snapshot", "缺 id 行应判 ids_parse_failed 并走回退，而非以缩水名单抓取");
+
+  // 情形 B：对象形态含重复 id
+  const modB = await freshBoard();
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes("/data/coins.json")) return jsonRes({ coins: [...IDS, "bitcoin"].map((id) => ({ coingeckoId: id })) });
+    if (u.includes("/coins/markets")) return jsonRes(marketsPayload());
+    if (u.includes("/global")) return jsonRes(globalPayload());
+    throw new Error("unexpected fetch: " + u);
+  };
+  const resB = await modB.onRequestGet({
+    request: new Request("https://example.com/api/board", { method: "GET" }),
+    env: { BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "test-key-not-real" },
+    waitUntil: () => {},
+  });
+  const bodyB = await resB.json();
+  assert.equal(bodyB.mode, "snapshot", "重复 id 应判 ids_parse_failed 并走回退");
+});
+
+await test("⑪ F6-31: HEAD /api/board → 与 GET 同状态、body 置空（不再 405）", async () => {
+  const mod = await freshBoard();
+  installFetch({});
+  assert.equal(typeof mod.onRequestHead, "function", "onRequestHead 必须导出");
+  const res = await mod.onRequestHead(ctx(mod, { method: "HEAD" }));
+  assert.equal(res.status, 200);
+  assert.equal(await res.text(), "", "HEAD body 必须为空");
+  assert.match(res.headers.get("content-type") || "", /application\/json/);
+  const resViaOnRequest = await mod.onRequest(ctx(mod, { method: "HEAD" }));
+  assert.equal(resViaOnRequest.status, 200);
 });
 
 restore();

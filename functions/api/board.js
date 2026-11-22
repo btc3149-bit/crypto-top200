@@ -5,7 +5,7 @@
 // Secret 注入点：COINGECKO_API_KEY（CoinGecko Demo key）
 //   - 通过 Cloudflare Pages Secret 环境变量 env.COINGECKO_API_KEY 注入，
 //     以 x-cg-demo-api-key 头发送给 CoinGecko。
-//   - 当前可为空：为空时走匿名公共接口。
+//   - F6-03 起不可为空：为空判配置错误、走回退路径，禁止匿名公共接口抓取。
 //   - key 值绝不出现在日志或响应中（日志只记错误类型 / 上游状态 / 耗时）。
 //
 // 币种 id 列表不写死在本文件：从同站静态文件 /data/coins.json 读取
@@ -19,8 +19,8 @@
 //     逻辑；若运行时优先调用 onRequestGet，GET 直接走 onRequestGet。
 //     两种优先级语义下 GET 都不会误入 405 兜底。
 
-// W2-02（契约 v2）：BOARD_READ_MODE 三态（env，缺省 legacy）
-//   legacy = 本文件原抓取逻辑（行为等价，生产安全底线，G3 前默认）
+// W2-02（契约 v2）：BOARD_READ_MODE 三态（env；F6-03 起缺失/未知值 fail-closed，见 dispatchGet）
+//   legacy = 本文件原抓取逻辑（行为等价，须显式配置才启用）
 //   kv     = 只读 KV blob 组装契约 v2（见 handleKv），不触发任何上游抓取
 //   dual   = 对外仍返回 legacy 结果，KV 组装仅记差异日志（G2 双读观察）
 // W2-18 §18.3：SECURITY_HEADERS 与 200/405/错误分支同出口（见 jsonResponse/methodNotAllowedResponse）。
@@ -33,12 +33,8 @@ import {
   FETCH_INTERVAL_SEC,
   KV_KEYS,
 } from "../../shared/board-schema.js";
-
-const SECURITY_HEADERS = {
-  "X-Content-Type-Options": "nosniff",
-  "Referrer-Policy": "no-referrer",
-  "Content-Security-Policy": "default-src 'none'",
-};
+// F6-33：安全头单一定义，与 health.js 共用 shared/http.js。
+import { SECURITY_HEADERS } from "../../shared/http.js";
 const ENFORCE_SFS = false; // W2-19 影子期：只计数不拦截；正式期置 true 后仅拦显式 cross-site
 const BLOB_CACHE_KEY_URL = "https://board-cache.internal/kv-blob/v1-board-current";
 let MEM_BLOB = null; // kv 路径内存回退：最近一次成功读到的 blob
@@ -111,12 +107,21 @@ function logUpstreamError(err, durationMs) {
   }
 }
 
+// F6-32：Cache-Control 按应答类型分级——live（及 stale 回退，内容仍是真实行情）
+// 用长头；snapshot / 503 / 405 一律 no-store，不得被 stale-if-error 反复端出。
+const NO_STORE = "no-store";
+function cacheControlFor(body, status) {
+  if (status !== 200) return NO_STORE;
+  if (body && body.mode === "snapshot") return NO_STORE;
+  return CACHE_CONTROL_VALUE;
+}
+
 function jsonResponse(body, { status = 200, extraHeaders = {} } = {}) {
   return new Response(JSON.stringify(body), {
     status,
     headers: {
       "content-type": "application/json",
-      "cache-control": CACHE_CONTROL_VALUE,
+      "cache-control": cacheControlFor(body, status),
       ...SECURITY_HEADERS,
       ...extraHeaders,
     },
@@ -128,9 +133,9 @@ function methodNotAllowedResponse() {
     status: 405,
     headers: {
       "content-type": "application/json",
-      "cache-control": CACHE_CONTROL_VALUE,
+      "cache-control": NO_STORE,
       ...SECURITY_HEADERS,
-      allow: "GET",
+      allow: "GET, HEAD",
     },
   });
 }
@@ -204,7 +209,27 @@ async function getIds(request) {
     if (!list) {
       throw new UpstreamError("coins.json parse failed", { errorType: "ids_parse_failed" });
     }
-    const ids = list.map((c) => c && c.coingeckoId).filter(Boolean);
+    // F6-34：解码后与源行数对账 + 去重。缺 id 的行不得静默吞——计数并报错；
+    // 解码所得（去重后）与源行数不符一律判 ids_parse_failed 走既有回退路径，
+    // 防止 coverage 分母被静默缩小造成假满覆盖。
+    const rawIds = list.map((c) => c && c.coingeckoId);
+    const missingIdCount = rawIds.filter((v) => typeof v !== "string" || v === "").length;
+    const ids = [...new Set(rawIds.filter((v) => typeof v === "string" && v !== ""))];
+    if (missingIdCount > 0 || ids.length !== list.length) {
+      try {
+        console.error(
+          JSON.stringify({
+            level: "error",
+            event: "ids_parse_failed",
+            sourceRows: list.length,
+            decodedIds: ids.length,
+            missingIdCount,
+            duplicateCount: rawIds.length - missingIdCount - ids.length,
+          })
+        );
+      } catch (_) {}
+      throw new UpstreamError("coins.json id decode mismatch", { errorType: "ids_parse_failed" });
+    }
     if (!ids.length) {
       throw new UpstreamError("coins.json id list empty", { errorType: "ids_empty" });
     }
@@ -221,6 +246,13 @@ async function getIds(request) {
 
 async function fetchUpstreamInternal(env, ids) {
   const startedAt = Date.now();
+  // F6-03：legacy 分支 key 缺失 = 配置错误，禁止匿名抓取（与 fetcher 同口径）。
+  // 抛 config 错误 → handleGet 走既有回退路径（有缓存回 stale/snapshot、无缓存回 snapshot）。
+  if (!env || !env.COINGECKO_API_KEY) {
+    throw new UpstreamError("coingecko api key missing (config error, anonymous fetch forbidden)", {
+      errorType: "config_missing_key",
+    });
+  }
   // UA 必须显式设置：CoinGecko 对 Workers 默认 fetch UA 返回 403（2026-11-10 预览实测坐实）
   const headers = {
     accept: "application/json",
@@ -556,7 +588,12 @@ async function readBlobLayers(context) {
       const hit = await cache.match(cacheKey);
       if (hit) {
         const blob = await hit.json();
-        if (blob && validateBlob(blob).ok) return { blob, servedFrom: "cache" };
+        if (blob && validateBlob(blob).ok) {
+          // F6-40：Cache 命中同步回填 MEM_BLOB，使本 isolate 的 last-good 不为空——
+          // 之后 Cache 过期且 KV 同时故障时仍可走 memory 层而非直落 snapshot。
+          MEM_BLOB = blob;
+          return { blob, servedFrom: "cache" };
+        }
         logKvError("BLOB_INVALID", "cache");
       }
     } catch (_) {}
@@ -607,7 +644,9 @@ async function readHealthSummary(env) {
     MEM_HEALTH = { at: Date.now(), data: h || null };
     return MEM_HEALTH.data;
   } catch (_) {
-    return MEM_HEALTH.data;
+    // F6-40：出错回退内存值须有年龄上限——超过 10 分钟的旧 health 视为未知（null），
+    // 不得无限期冒充当前健康状态（正常路径 60s 内直接命中上方缓存分支，不受此限）。
+    return Date.now() - MEM_HEALTH.at <= 10 * 60 * 1000 ? MEM_HEALTH.data : null;
   }
 }
 
@@ -627,19 +666,69 @@ function assembleV2(blob, servedFrom, health, now) {
       : blob.healthSummary && typeof blob.healthSummary.consecutiveFailures === "number"
         ? blob.healthSummary.consecutiveFailures
         : 0;
-  const fetchInfo = {
-    fetchRunId: blob.fetchRunId || null,
-    durationMs: blob.fetchMeta ? blob.fetchMeta.durationMs : null,
-    upstreamStatus: blob.fetchMeta ? blob.fetchMeta.upstreamStatus : null,
-    attempts: blob.fetchMeta ? blob.fetchMeta.attempts : null,
-  };
+  // F6-41：对外 fetch 只保留 fetchRunId（定版公开口径）；upstreamStatus/attempts/
+  // durationMs 为上游运维细节，改记结构化日志，不再透传（已 grep 确认前端未消费）。
+  const fetchInfo = { fetchRunId: blob.fetchRunId || null };
+  try {
+    console.log(
+      JSON.stringify({
+        level: "info",
+        event: "board_fetch_meta",
+        fetchRunId: blob.fetchRunId || null,
+        durationMs: blob.fetchMeta ? blob.fetchMeta.durationMs : null,
+        upstreamStatus: blob.fetchMeta ? blob.fetchMeta.upstreamStatus : null,
+        attempts: blob.fetchMeta ? blob.fetchMeta.attempts : null,
+      })
+    );
+  } catch (_) {}
+  // F6-05：CLOCK_SKEW 时 freshness 暴露 clockSkew:true 且 level 不高于 L1
+  //（原 L0 降为 L1/delayed 口径输出，避免未来时间戳冒充 live）。
+  const effLevel = fresh.clockSkew && fresh.level === "L0" ? "L1" : fresh.level;
+  const effMode = fresh.clockSkew && fresh.level === "L0" ? "delayed" : fresh.mode;
+  const effStale = fresh.clockSkew && fresh.level === "L0" ? true : fresh.stale;
   const freshness = {
-    level: fresh.level,
+    level: effLevel,
+    clockSkew: fresh.clockSkew === true,
     fetchedAt: blob.fetchedAt || null,
     nextExpectedFetchAt: fetchedAtMs != null ? new Date(fetchedAtMs + intervalSec * 1000).toISOString() : null,
     servedFrom,
     consecutiveFailures,
   };
+  // F6-04：coverage 按 coins 实际键集重算，不透传 blob 自报计数。
+  const presentIds = new Set();
+  for (const r of blob.rows || []) {
+    if (r && typeof r.id === "string" && r.id) presentIds.add(r.id);
+  }
+  const expectedIds =
+    blob.coverage && Array.isArray(blob.coverage.missingIds)
+      ? [...new Set([...presentIds, ...blob.coverage.missingIds])]
+      : null;
+  const recomputedCoverage = expectedIds
+    ? {
+        expected: expectedIds.length,
+        returned: presentIds.size,
+        missingIds: expectedIds.filter((id) => !presentIds.has(id)),
+      }
+    : {
+        expected: blob.coverage && typeof blob.coverage.expected === "number" ? blob.coverage.expected : presentIds.size,
+        returned: presentIds.size,
+        missingIds: blob.coverage && Array.isArray(blob.coverage.missingIds) ? blob.coverage.missingIds : [],
+      };
+  if (
+    blob.coverage &&
+    (blob.coverage.returned !== recomputedCoverage.returned || blob.coverage.expected !== recomputedCoverage.expected)
+  ) {
+    try {
+      console.error(
+        JSON.stringify({
+          level: "error",
+          event: "coverage_recomputed",
+          blobReported: { expected: blob.coverage.expected, returned: blob.coverage.returned },
+          recomputed: { expected: recomputedCoverage.expected, returned: recomputedCoverage.returned },
+        })
+      );
+    } catch (_) {}
+  }
   if (fresh.level === "L3") {
     return {
       contractVersion: 2,
@@ -649,12 +738,13 @@ function assembleV2(blob, servedFrom, health, now) {
       servedAt: now,
       stale: true,
       staleAgeSec: fresh.staleAgeSec,
-      coverage: { expected: blob.coverage ? blob.coverage.expected : 0, returned: 0, missingIds: (blob.rows || []).map((r) => r.id) },
+      // F6-30：L3 missingIds = 真缺失（自报缺失 ∪ 期望全集−在场集），在场 id 绝不入列。
+      coverage: { expected: recomputedCoverage.expected, returned: 0, missingIds: recomputedCoverage.missingIds },
       global: null,
       coins: {},
       count: 0,
       snapshotDate: SNAPSHOT_DATE,
-      freshness: { ...freshness, servedFrom: "snapshot" },
+      freshness: { ...freshness, level: "L3", servedFrom: "snapshot" },
       fetch: fetchInfo,
     };
   }
@@ -667,12 +757,12 @@ function assembleV2(blob, servedFrom, health, now) {
   return {
     contractVersion: 2,
     source: blob.source,
-    mode: fresh.mode,
+    mode: effMode,
     updatedAt: toMs(blob.marketsUpdatedAt) != null ? toMs(blob.marketsUpdatedAt) : fetchedAtMs,
     servedAt: now,
-    stale: fresh.stale,
+    stale: effStale,
     staleAgeSec: fresh.staleAgeSec,
-    coverage: blob.coverage,
+    coverage: recomputedCoverage,
     global,
     coins,
     count: Object.keys(coins).length,
@@ -682,7 +772,10 @@ function assembleV2(blob, servedFrom, health, now) {
   };
 }
 
-function snapshotV2Body(now, health) {
+// F6-39：无 blob 时 staleAgeSec=null（未知，不得伪装「刚更新」）；
+// coverage.expected 填可得的真实期望（expectedIds 传入时用其长度，否则 null）。
+function snapshotV2Body(now, health, expectedIds = null) {
+  const expected = Array.isArray(expectedIds) ? expectedIds.length : null;
   return {
     contractVersion: 2,
     source: "snapshot",
@@ -690,28 +783,40 @@ function snapshotV2Body(now, health) {
     updatedAt: null,
     servedAt: now,
     stale: true,
-    staleAgeSec: 0,
-    coverage: { expected: 0, returned: 0, missingIds: [] },
+    staleAgeSec: null,
+    coverage: { expected, returned: 0, missingIds: Array.isArray(expectedIds) ? [...expectedIds] : [] },
     global: null,
     coins: {},
     count: 0,
     snapshotDate: SNAPSHOT_DATE,
     freshness: {
       level: "L3",
+      clockSkew: false,
       fetchedAt: null,
       nextExpectedFetchAt: null,
       servedFrom: "snapshot",
       consecutiveFailures: health && typeof health.consecutiveFailures === "number" ? health.consecutiveFailures : 0,
     },
-    fetch: { fetchRunId: null, durationMs: null, upstreamStatus: null, attempts: null },
+    fetch: { fetchRunId: null },
   };
+}
+
+// 无 blob / 模式 fail-closed 共用：尽力取 ids 作 coverage.expected，取不到则 null。
+async function snapshotV2Response(context, health) {
+  let ids = null;
+  try {
+    ids = await getIds(context.request);
+  } catch (_) {
+    ids = null;
+  }
+  return jsonResponse(snapshotV2Body(Date.now(), health, ids));
 }
 
 async function handleKv(context) {
   const now = Date.now();
   const health = await readHealthSummary(context.env);
   const { blob, servedFrom } = await readBlobLayers(context);
-  if (!blob) return jsonResponse(snapshotV2Body(now, health));
+  if (!blob) return snapshotV2Response(context, health);
   return jsonResponse(assembleV2(blob, servedFrom, health, now));
 }
 
@@ -752,22 +857,26 @@ async function dualCompare(context, legacyRes) {
   }
 }
 
-// W5-02（F5-02）：BOARD_READ_MODE 白名单。未配置（缺省）= legacy 为定版默认；
-// 但「已配置却不在白名单内」（拼写错误如 "kvv"）不得静默走 legacy——记结构化
-// error 日志留痕（event=board_mode_unknown），行为仍回落 legacy：读路径以可用性
-// 优先，切换事故靠日志暴露而非宕机。旧实现对任何非 kv/dual 值一律静默 legacy。
+// F6-03（取代 W5-02 回落口径）：BOARD_READ_MODE 改 fail-closed。
+// 合法值仅显式 "legacy" / "dual" / "kv"；缺失或未知值一律不再走 legacy——
+// 返回 snapshot 契约 v2 应答 + error 级结构化日志（event=board_mode_unknown），
+// 使一次 [vars] 丢失/拼写事故不可能静默退回 G3 前的直抓形态。
 const BOARD_READ_MODES = new Set(["legacy", "dual", "kv"]);
 async function dispatchGet(context) {
   const rawMode = context.env && context.env.BOARD_READ_MODE;
-  const mode = rawMode || "legacy";
-  if (!BOARD_READ_MODES.has(mode)) {
+  if (!BOARD_READ_MODES.has(rawMode)) {
     console.error(
-      JSON.stringify({ level: "error", event: "board_mode_unknown", mode: String(rawMode), fallback: "legacy" })
+      JSON.stringify({
+        level: "error",
+        event: "board_mode_unknown",
+        mode: rawMode == null ? null : String(rawMode),
+        fallback: "snapshot_v2",
+      })
     );
-    return handleGet(context);
+    return snapshotV2Response(context, await readHealthSummary(context.env));
   }
-  if (mode === "kv") return handleKv(context);
-  if (mode === "dual") {
+  if (rawMode === "kv") return handleKv(context);
+  if (rawMode === "dual") {
     const res = await handleGet(context);
     await dualCompare(context, res);
     return res;
@@ -784,8 +893,16 @@ export async function onRequestGet(context) {
   return dispatchGet(context);
 }
 
+// F6-31：HEAD 与 health.js 同模式——复用 GET 的状态与头、body 置空，
+// 避免以 HEAD 探活的监控误报 405。
+export async function onRequestHead(context) {
+  const res = await dispatchGet(context);
+  return new Response(null, { status: res.status, headers: res.headers });
+}
+
 export async function onRequest(context) {
   const method = context && context.request && context.request.method ? context.request.method : "GET";
+  if (method === "HEAD") return onRequestHead(context);
   if (method !== "GET") return methodNotAllowedResponse();
   const blocked = sfsShadowCheck(context.request);
   if (blocked) return blocked;
