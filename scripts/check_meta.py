@@ -29,7 +29,14 @@ def decode_coins(doc):
         fields = (doc.get("meta") or {}).get("fields")
         rows = doc.get("rows")
         if isinstance(fields, list) and isinstance(rows, list):
-            return [dict(zip(fields, r)) for r in rows]
+            # F6-71：行长断言——len(row) != len(fields) 直接报错，不再 zip 静默截断。
+            out = []
+            for i, r in enumerate(rows):
+                if len(r) != len(fields):
+                    raise ValueError(
+                        f"decode_coins: 第 {i} 行行长 {len(r)} != fields 数 {len(fields)}（行被截断/错位，拒绝静默解码）")
+                out.append(dict(zip(fields, r)))
+            return out
     return []
 
 def check_meta(path, reports_root=None):
