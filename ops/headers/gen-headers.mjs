@@ -42,6 +42,7 @@ const LINE_LIMIT = 1900;
 // ---------- 参数 ----------
 const args = process.argv.slice(2);
 let variant = "off";
+let variantExplicit = false;
 let check = false;
 let noCsp = false;
 let reportOnly = false;
@@ -50,7 +51,7 @@ for (const a of args) {
   if (a === "--check") check = true;
   else if (a === "--no-csp") noCsp = true;
   else if (a === "--report-only") reportOnly = true;
-  else if (a.startsWith("--variant=")) variant = a.slice("--variant=".length);
+  else if (a.startsWith("--variant=")) { variant = a.slice("--variant=".length); variantExplicit = true; }
   else if (a.startsWith("--out=")) outPath = resolve(ROOT, a.slice("--out=".length));
   else {
     console.error(`未知参数：${a}`);
@@ -62,6 +63,11 @@ if (variant !== "off" && variant !== "on") {
   process.exit(2);
 }
 if (!outPath) outPath = reportOnly ? DEFAULT_REPORT_ONLY_OUT : DEFAULT_OUT;
+// F6-37：生成目标为 public/_headers 时必须显式传 --variant（默认 off 会把线上 WA-ON 刷成 WA-OFF）。
+if (!check && !reportOnly && outPath === DEFAULT_OUT && !variantExplicit) {
+  console.error("[gen-headers] 失败：生成目标为 public/_headers 时必须显式传 --variant=off|on（线上为 WA-ON：node ops/headers/gen-headers.mjs --variant=on）。");
+  process.exit(2);
+}
 const VARIANT_LABEL = variant === "on" ? "WA-ON" : "WA-OFF";
 
 function fail(msg) {
@@ -245,7 +251,7 @@ if (check) {
       console.error(`  第 ${i + 1} 行 应为：${b[i] ?? "<无此行>"}`);
     }
   }
-  console.error("[gen-headers] 处置：运行 node ops/headers/gen-headers.mjs 重新生成（禁手改 _headers）。");
+  console.error("[gen-headers] 处置：运行 node ops/headers/gen-headers.mjs --variant=on 重新生成（禁手改 _headers；--variant=on 为线上 WA-ON 变体，漏写会刷成 WA-OFF）。");
   process.exit(1);
 }
 

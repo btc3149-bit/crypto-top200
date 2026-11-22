@@ -61,6 +61,7 @@ deployment（部署回滚，立即生效、无需重新部署）：
 
 mode（模式回滚：改 BOARD_READ_MODE 环境变量）：
   取值 legacy|dual|kv；--env 默认 production。
+  F6-74：默认拒绝执行（此操作不改变线上行为）；须显式 ROLLBACK_MODE_API_ONLY=1 才执行。
   经 API PATCH 项目 deployment_configs（preview/production 分开设置）。
   注意（实测）：本项目 Wrangler 直推管线下 API 改 env 不会被新部署携带，
   不能单独完成模式切换，须配合部署时注入变量，见脚本头注释与演练记录。
@@ -68,6 +69,7 @@ mode（模式回滚：改 BOARD_READ_MODE 环境变量）：
 
 环境变量：
   ROLLBACK_CONFIRM=1          deployment 子命令的执行确认（必填才执行）
+  ROLLBACK_MODE_API_ONLY=1    mode 子命令的执行确认（F6-74，必填才执行；仅改 API 配置层、不改变线上行为）
   ALLOW_PROD_MODE_ROLLBACK=1  mode 子命令改 production 的额外放行（必填才执行）
   CLOUDFLARE_ACCOUNT_ID       覆盖账号 ID（默认取连接文档登记值，非机密）
   CF_API_PY                   覆盖 cf_api.py 路径
@@ -122,6 +124,8 @@ cmd_deployment() {
 
   # 在该环境内（列表按创建时间倒序）选 current=第一条、previous=第二条；
   # --to 时按 id 在列表内定位。输出 CURRENT_*/TARGET_* 或 ERROR 行供 bash 读取。
+  # F6-75：自动选择时过滤 latest_stage.status=success（不回滚到失败部署），
+  # 并输出 TARGET_STAGE 供确认输出打印。
   local sel
   sel="$(python3 - "$list_json" "$env_name" "$to_id" <<'PYEOF'
 import json, sys
@@ -132,18 +136,22 @@ if not items:
 cur = items[0]
 print(f"CURRENT_ID {cur.get('id')}")
 print(f"CURRENT_CREATED {cur.get('created_on')}")
+def stage(x):
+    return (x.get("latest_stage") or {}).get("status")
 if to_id:
     hit = next((x for x in items if x.get("id") == to_id), None)
     if hit is None:
         print("ERROR_LIST_NOT_FOUND"); sys.exit(0)
     tgt = hit
 else:
-    if len(items) < 2:
-        print("ERROR 该环境只有一个部署，没有上一个可回滚"); sys.exit(0)
-    tgt = items[1]
+    ok_items = [x for x in items[1:] if stage(x) == "success"]
+    if not ok_items:
+        print("ERROR 该环境没有 latest_stage=success 的上一个部署可回滚"); sys.exit(0)
+    tgt = ok_items[0]
 print(f"TARGET_ID {tgt.get('id')}")
 print(f"TARGET_CREATED {tgt.get('created_on')}")
 print(f"TARGET_URL {tgt.get('url')}")
+print(f"TARGET_STAGE {stage(tgt)}")
 PYEOF
 )" || die "解析部署列表失败"
 
@@ -155,22 +163,27 @@ PYEOF
     one_env="$(python3 -c 'import json,sys; print((json.load(open(sys.argv[1])).get("result") or {}).get("environment",""))' "$one_json")"
     one_created="$(python3 -c 'import json,sys; print((json.load(open(sys.argv[1])).get("result") or {}).get("created_on",""))' "$one_json")"
     [ "$one_env" = "$env_name" ] || die "--to 部署 $to_id 属于 $one_env 环境，与 --env $env_name 不符，拒绝执行"
+    one_stage="$(python3 -c 'import json,sys; print(((json.load(open(sys.argv[1])).get("result") or {}).get("latest_stage") or {}).get("status",""))' "$one_json")"
     current_part="$(echo "$sel" | grep '^CURRENT_' || true)"
-    sel="$(printf '%s\nTARGET_ID %s\nTARGET_CREATED %s\nTARGET_URL \n' "$current_part" "$to_id" "$one_created")"
+    sel="$(printf '%s\nTARGET_ID %s\nTARGET_CREATED %s\nTARGET_URL \nTARGET_STAGE %s\n' "$current_part" "$to_id" "$one_created" "$one_stage")"
   elif echo "$sel" | grep -q '^ERROR'; then
     die "$(echo "$sel" | grep '^ERROR' | head -1 | cut -d' ' -f2-)"
   fi
 
-  local current_id target_id target_created target_url
+  local current_id target_id target_created target_url target_stage
   current_id="$(echo "$sel" | awk '$1=="CURRENT_ID"{print $2}')"
   target_id="$(echo "$sel" | awk '$1=="TARGET_ID"{print $2}')"
   target_created="$(echo "$sel" | awk '$1=="TARGET_CREATED"{print $2}')"
   target_url="$(echo "$sel" | awk '$1=="TARGET_URL"{print $2}')"
+  target_stage="$(echo "$sel" | awk '$1=="TARGET_STAGE"{print $2}')"
   [ -n "$target_id" ] || die "未能确定回滚目标"
   [ "$target_id" != "$current_id" ] || die "目标与当前部署相同（$target_id），无回滚可言"
+  if [ -z "$to_id" ]; then :; elif [ "$target_stage" != "success" ]; then
+    echo "[rollback] 警告：--to 指定部署的 latest_stage=$target_stage（非 success），请确认这确实是你要回滚到的部署。" >&2
+  fi
 
   echo "[rollback] 环境=$env_name 当前部署=$current_id"
-  echo "[rollback] 回滚目标部署 id=$target_id 创建时间=$target_created url=$target_url"
+  echo "[rollback] 回滚目标部署 id=$target_id 创建时间=$target_created url=$target_url stage=${target_stage:-<未知>}"
   echo "[rollback] 将执行：POST /accounts/$ACCOUNT_ID/pages/projects/$PROJECT/deployments/$target_id/rollback"
 
   if [ "${ROLLBACK_CONFIRM:-}" != "1" ]; then
@@ -211,6 +224,13 @@ PYEOF
 }
 
 cmd_mode() {
+  # F6-74：mode 子命令默认拒绝执行——API 改 env 对 Wrangler 直推管线不生效，
+  # 须显式 ROLLBACK_MODE_API_ONLY=1 才执行，且输出第一行先打印不生效声明。
+  echo "此操作不改变线上行为：API 改 BOARD_READ_MODE 不会被 Wrangler 直推的新部署携带、当前在线部署也不会热切换；真正的模式切换须改 wrangler.toml [vars] 后跑 deploy.sh。"
+  if [ "${ROLLBACK_MODE_API_ONLY:-}" != "1" ]; then
+    echo "[rollback] 拒绝：mode 子命令默认不执行；确认只需改 API 配置层时，带 ROLLBACK_MODE_API_ONLY=1 重跑（production 另须 ALLOW_PROD_MODE_ROLLBACK=1）。" >&2
+    exit 3
+  fi
   local mode_val="${1:-}"
   case "$mode_val" in legacy|dual|kv) ;; *) die "mode 取值只能是 legacy|dual|kv，收到：${mode_val:-<空>}（见 --help）" ;; esac
   shift
@@ -293,7 +313,7 @@ PYEOF
     echo "[rollback] 严重警告：PATCH 后以下原有 key 消失：$missing —— 请立即人工处理！" >&2
     exit 1
   fi
-  echo "[rollback] mode 已设置：$env_name BOARD_READ_MODE=$mode_val（原有 key 全部保留）"
+  echo "[rollback] mode API 配置层已设置（不改变线上行为）：$env_name BOARD_READ_MODE=$mode_val（原有 key 全部保留）"
   echo "[rollback] 生效口径警告（2026-11-13 实测）：本项目为 Wrangler 直推管线，API 改 env 不会被新部署携带，Function 运行时读不到——不得单独作为模式切换的完成依据；真正的切换须在部署时注入变量（wrangler.toml [vars] + deploy.sh），详见脚本头注释与演练记录。"
 }
 

@@ -1,6 +1,12 @@
 node_modules/
 .wrangler/
 .dev.vars*
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
 *.zip
 dist-upload/
 build/
