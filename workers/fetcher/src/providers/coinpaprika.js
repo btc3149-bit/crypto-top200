@@ -11,24 +11,36 @@ const UA =
 
 async function fetchJson(url, stage) {
   const controller = new AbortController();
+  // F6-50：res.json() 与请求同受本超时保护——计时器在 body 读完后才清除，
+  // 并让 json() 与 timeoutPromise 竞速（旧实现在 fetch 返回后即 clearTimeout，body 挂死无上限）。
+  let rejectTimeout = null;
+  const timeoutPromise = new Promise((_, reject) => {
+    rejectTimeout = reject;
+  });
   const timer = setTimeout(() => {
     try {
       controller.abort();
     } catch (_) {}
+    const err = new Error("upstream timeout");
+    err.name = "AbortError";
+    rejectTimeout(err);
   }, UPSTREAM_TIMEOUT_MS);
   let res;
   try {
-    res = await fetch(url, { headers: { accept: "application/json", "user-agent": UA }, signal: controller.signal });
+    res = await Promise.race([
+      fetch(url, { headers: { accept: "application/json", "user-agent": UA }, signal: controller.signal }),
+      timeoutPromise,
+    ]);
   } catch (e) {
+    clearTimeout(timer);
     const isAbort = e && (e.name === "AbortError" || e.name === "TimeoutError");
     throw new UpstreamError(`coinpaprika ${stage} fetch failed`, {
       errorType: isAbort ? "timeout" : "network_error",
       stage,
     });
-  } finally {
-    clearTimeout(timer);
   }
   if (!res.ok) {
+    clearTimeout(timer);
     const status = typeof res.status === "number" ? res.status : null;
     const quota = status === 402 || status === 429;
     throw new UpstreamError(`coinpaprika ${stage} http error`, {
@@ -41,16 +53,23 @@ async function fetchJson(url, stage) {
     });
   }
   try {
-    return await res.json();
+    return await Promise.race([res.json(), timeoutPromise]);
   } catch (_) {
     throw new UpstreamError(`coinpaprika ${stage} parse failed`, { errorType: "parse_error", stage });
+  } finally {
+    clearTimeout(timer);
   }
 }
 
 // coins: [{id, paprikaId}]（与 fetcher COINS 同形，W5-01 统一；paprikaId 来自 coins.json，W2-11 落库后生效；
 // 本期映射未落库时 paprikaId 全 null → 覆盖率必然不足 → 不写 blob，符合默认关闭语义）
+// F6-53：tickers 端点默认返回上限经 2026-11-23 单次实测为恰好 2000 条（rank 1..2000），
+// 无参数请求会静默截断尾部——显式带 limit=5000 覆盖映射数上限（若端点忽略该参数，
+// 2000 条上限仍远超本项目 top200 映射的 rank 范围，不影响覆盖）。
+// rank 口径注意：normalizePaprikaTickers 透传的 rank 是 Paprika 自家排名，与 CG 的
+// market_cap_rank 语义不同——切源瞬间同一币的 rank 会跳变，属口径差异、非数据错误。
 export async function fetchMarkets(coins) {
-  const tickers = await fetchJson("https://api.coinpaprika.com/v1/tickers?quotes=USD", "markets");
+  const tickers = await fetchJson("https://api.coinpaprika.com/v1/tickers?quotes=USD&limit=5000", "markets");
   if (!Array.isArray(tickers)) {
     throw new UpstreamError("coinpaprika tickers payload invalid", { errorType: "parse_error", stage: "markets" });
   }

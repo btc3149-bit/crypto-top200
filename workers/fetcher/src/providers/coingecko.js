@@ -40,24 +40,42 @@ export function parseRetryAfter(res) {
   return 60;
 }
 
+// F6-50：响应体解析（res.json()）必须与请求同受一个 AbortController/超时保护——
+// 旧实现在 fetch 返回后即 clearTimeout，body drip（慢速滴漏）可让单 run 无上限悬挂。
+// 返回 {res, json, cancel}：json() 与同一 timeoutPromise 竞速、读完自动清计时器；
+// 不读 body 的路径（!res.ok）须调 cancel() 释放计时器。
 async function fetchWithTimeout(url, headers, timeoutMs = UPSTREAM_TIMEOUT_MS) {
   const controller = new AbortController();
-  let timer = null;
+  let rejectTimeout = null;
   const timeoutPromise = new Promise((_, reject) => {
-    timer = setTimeout(() => {
-      try {
-        controller.abort();
-      } catch (_) {}
-      const err = new Error("upstream timeout");
-      err.name = "AbortError";
-      reject(err);
-    }, timeoutMs);
+    rejectTimeout = reject;
   });
+  const timer = setTimeout(() => {
+    try {
+      controller.abort();
+    } catch (_) {}
+    const err = new Error("upstream timeout");
+    err.name = "AbortError";
+    rejectTimeout(err);
+  }, timeoutMs);
+  let res;
   try {
-    return await Promise.race([fetch(url, { headers, signal: controller.signal }), timeoutPromise]);
-  } finally {
-    if (timer) clearTimeout(timer);
+    res = await Promise.race([fetch(url, { headers, signal: controller.signal }), timeoutPromise]);
+  } catch (e) {
+    clearTimeout(timer);
+    throw e;
   }
+  return {
+    res,
+    json: async () => {
+      try {
+        return await Promise.race([res.json(), timeoutPromise]);
+      } finally {
+        clearTimeout(timer);
+      }
+    },
+    cancel: () => clearTimeout(timer),
+  };
 }
 
 function cgHeaders(env) {
@@ -69,13 +87,15 @@ function cgHeaders(env) {
 }
 
 // 单次调用形态（per_page=250 + ids），与现行 board.js 一致——定版节奏 10min/30min 的前提。
-export async function fetchMarkets(ids, env, fetchImpl = fetch) {
+// F6-50：旧签名第三参 fetchImpl 是死参数（函数体从未使用、测试靠 stub 全局 fetch），已删除；
+// 测试替身一律 stub 全局 fetch，不要再加回注入参数。
+export async function fetchMarkets(ids, env) {
   const url =
     "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&per_page=250&price_change_percentage=24h&ids=" +
     encodeURIComponent(ids.join(","));
-  let res;
+  let call;
   try {
-    res = await fetchWithTimeout(url, cgHeaders(env));
+    call = await fetchWithTimeout(url, cgHeaders(env));
   } catch (e) {
     const isAbort = e && (e.name === "AbortError" || e.name === "TimeoutError");
     throw new UpstreamError("coingecko markets fetch failed", {
@@ -83,7 +103,9 @@ export async function fetchMarkets(ids, env, fetchImpl = fetch) {
       stage: "markets",
     });
   }
+  const res = call.res;
   if (!res.ok) {
+    call.cancel();
     const status = typeof res.status === "number" ? res.status : null;
     if (status === 429) {
       throw new UpstreamError("coingecko markets rate limited", {
@@ -97,7 +119,7 @@ export async function fetchMarkets(ids, env, fetchImpl = fetch) {
   }
   let markets;
   try {
-    markets = await res.json();
+    markets = await call.json();
   } catch (_) {
     throw new UpstreamError("coingecko markets parse failed", { errorType: "parse_error", stage: "markets" });
   }
@@ -110,9 +132,9 @@ export async function fetchMarkets(ids, env, fetchImpl = fetch) {
 
 export async function fetchGlobal(env) {
   const url = "https://api.coingecko.com/api/v3/global";
-  let res;
+  let call;
   try {
-    res = await fetchWithTimeout(url, cgHeaders(env));
+    call = await fetchWithTimeout(url, cgHeaders(env));
   } catch (e) {
     const isAbort = e && (e.name === "AbortError" || e.name === "TimeoutError");
     throw new UpstreamError("coingecko global fetch failed", {
@@ -120,7 +142,9 @@ export async function fetchGlobal(env) {
       stage: "global",
     });
   }
+  const res = call.res;
   if (!res.ok) {
+    call.cancel();
     const status = typeof res.status === "number" ? res.status : null;
     throw new UpstreamError("coingecko global http error", {
       status,
@@ -131,7 +155,7 @@ export async function fetchGlobal(env) {
   }
   let payload;
   try {
-    payload = await res.json();
+    payload = await call.json();
   } catch (_) {
     throw new UpstreamError("coingecko global parse failed", { errorType: "parse_error", stage: "global" });
   }
