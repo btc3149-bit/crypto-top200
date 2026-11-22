@@ -19,6 +19,14 @@ try {
 }
 
 const isV2 = body.contractVersion === 2;
+// F6-22：v2 应答缺 freshness/staleAgeSec/fetch 任一字段 = 契约坏死，判 FAIL（非零退出）。
+// 「不可判读」按字段缺失触发，而非按版本号推定。
+const missingFields = [];
+if (isV2) {
+  if (!body.freshness || typeof body.freshness !== "object") missingFields.push("freshness");
+  if (typeof body.staleAgeSec !== "number") missingFields.push("staleAgeSec");
+  if (!body.fetch || typeof body.fetch !== "object") missingFields.push("fetch");
+}
 const consecutiveFailures =
   body.freshness && typeof body.freshness.consecutiveFailures === "number" ? body.freshness.consecutiveFailures : null;
 const staleAgeSec = typeof body.staleAgeSec === "number" ? body.staleAgeSec : null;
@@ -34,7 +42,8 @@ const r3 = marketsStatus != null && marketsStatus !== 200 && consecutiveFailures
 if (r3) hits.push("R3:upstreamStatus.markets!=200 && consecutiveFailures>=1 (组合项)");
 
 // 定版口径落地：三条中任两条满足即异常；R3 单独不算（R1+R2、R1+R3、R2+R3 均为两条）。
-const verdict = hits.length >= 2 ? "FAIL" : "PASS";
+// F6-22：v2 字段缺失直接 FAIL，优先于规则命中口径。
+const verdict = missingFields.length > 0 || hits.length >= 2 ? "FAIL" : "PASS";
 
 const out = {
   base,
@@ -49,8 +58,14 @@ const out = {
   fetchRunId: body.fetch ? body.fetch.fetchRunId : null,
   coverage: body.coverage ? `${body.coverage.returned}/${body.coverage.expected}` : null,
   rulesHit: hits,
+  missingFields: missingFields.length ? missingFields : undefined,
   verdict,
-  note: !isV2 ? "v1 契约下 consecutiveFailures/upstreamStatus 缺失按不可判读处理；当前结论仅基于 staleAgeSec。" : undefined,
+  note:
+    missingFields.length > 0
+      ? `v2 契约字段缺失（不可判读）：${missingFields.join(", ")}——判 FAIL。`
+      : !isV2
+        ? "v1 契约下 consecutiveFailures/upstreamStatus 缺失按不可判读处理；当前结论仅基于 staleAgeSec。"
+        : undefined,
 };
 console.log(JSON.stringify(out, null, 2));
 if (verdict === "FAIL") process.exitCode = 1;

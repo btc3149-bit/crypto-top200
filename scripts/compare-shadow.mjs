@@ -25,6 +25,10 @@
 //   top20 集合一致、compared ≥ 下限、字段门禁（见 ⑤）。
 // 退出码：0 = pass（数值+字段全过且已按 fetchRunId 对齐）；2 = conditional（全过但未对齐）；
 //   1 = fail 或输入/读取错误。runGate 单独给出 met/shortfall，g1Ready = pass 且 runGate.met。
+// 第六期补强：F6-08 同源检测（servedFrom∈{kv,memory} 且同 run，或 --shadow-key current）
+//   → mode="same-source"、verdict 上限 conditional（永不许 pass），另输出 current vs prev
+//   的 blobDiff 信息段（不进 verdict）；F6-20 runGate.met!==true 同样压上限 conditional；
+//   F6-21 live 侧 null 计入门禁（>2 fail、1–2 压上限）且计入 compared 分母。
 import { readFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
@@ -47,8 +51,12 @@ const windowStart = argVal("--window-start", null);
 const intervalSec = argNum("--interval-sec", 600);
 const TIME_TOLERANCE_SEC = 240; // 90s KV 传播窗 + 120s live 缓存 TTL + 余量
 
+// F6-90（compare 部分）：错误输出脱敏——32 位 hex 串（账号/命名空间 ID 形态）一律打码。
+function redact(s) {
+  return String(s).replace(/\b[0-9a-fA-F]{32}\b/g, "[redacted-hex32]");
+}
 function fatal(error) {
-  console.log(JSON.stringify({ tool: "compare-shadow", verdict: "error", error }, null, 2));
+  console.log(JSON.stringify({ tool: "compare-shadow", verdict: "error", error: redact(error) }, null, 2));
   process.exit(1);
 }
 function readJsonFile(path, label) {
@@ -86,14 +94,19 @@ if (liveFile) {
 }
 
 // ---------- 数值比对 ----------
+// F6-21：compared 为分母口径 = 两侧同 id 的配对总数（含任一侧 price 为 null 的配对）；
+// priceCompared = 实际算出价差的配对数。live 侧 null 不再被静默 skip 出分母。
 const shadowById = new Map((shadow.rows || []).map((r) => [r.id, r]));
 const diffs = [];
 let compared = 0;
+let priceCompared = 0;
 for (const [id, c] of Object.entries(live.coins || {})) {
   const s = shadowById.get(id);
-  if (!s || !c.price || !s.price) continue;
-  diffs.push(Math.abs(s.price - c.price) / c.price);
+  if (!s) continue;
   compared += 1;
+  if (!c.price || !s.price) continue;
+  diffs.push(Math.abs(s.price - c.price) / c.price);
+  priceCompared += 1;
 }
 diffs.sort((a, b) => a - b);
 const pct = (arr, p) => (arr.length ? arr[Math.min(arr.length - 1, Math.floor(p * arr.length))] : null);
@@ -190,6 +203,46 @@ const alignment = {
         "数值比对结论降级为 conditional，不得表述为同 run 比对通过；run-id 对齐须待 live 改读同一 blob（G2 金丝雀 kv 形态/G3）后才可能成立。",
 };
 
+// ---------- F6-08 同源检测 ----------
+// live 由 KV current blob 组装（freshness.servedFrom ∈ {kv, memory}）且比对输入与 live
+// 为同一 run（fetchRunId 相同）时，比对退化为「同一 blob 与自己比」：verdict 永远
+// 不得 pass，上限 conditional。也可用 --shadow-key current 显式声明输入导自 current 键。
+const shadowKeyArg = argVal("--shadow-key", null);
+const liveServedFrom = live.freshness ? live.freshness.servedFrom || null : null;
+const sameSource =
+  shadowKeyArg === "current" ||
+  (["kv", "memory"].includes(liveServedFrom) && liveRunId != null && shadowRunId != null && liveRunId === shadowRunId);
+const compareMode = sameSource ? "same-source" : "independent";
+
+// ---------- F6-08 附带信息：current（--shadow 输入）vs prev（--shadow-prev 输入）字段级 diff ----------
+// 仅作信息输出，不进 verdict：价格变动 >5% 的币数、由非 null 变为 null 的字段数。
+let blobDiff = null;
+if (shadowPrev) {
+  const prevById = new Map((shadowPrev.rows || []).map((r) => [r.id, r]));
+  let moveCount = 0;
+  let newNullCount = 0;
+  const newNullIds = [];
+  for (const r of shadow.rows || []) {
+    const p = prevById.get(r.id);
+    if (!p) continue;
+    if (p.price && r.price && Math.abs(r.price - p.price) / p.price > 0.05) moveCount += 1;
+    for (const f of ["price", "mcapUsd", "volume24h"]) {
+      if (!isNull(p[f]) && isNull(r[f])) {
+        newNullCount += 1;
+        if (newNullIds.length < 20) newNullIds.push(`${r.id}.${f}`);
+      }
+    }
+  }
+  blobDiff = {
+    basis: "shadow-input(current) vs shadow-prev-input(prev)，仅信息、非独立验证、不进 verdict",
+    comparedRows: (shadow.rows || []).filter((r) => prevById.has(r.id)).length,
+    priceMoveThresholdPct: 5,
+    priceMoveOverThresholdCount: moveCount,
+    newNullFieldCount: newNullCount,
+    newNullFieldsSample: newNullIds,
+  };
+}
+
 // ---------- ④ 运行次数自动计数（估算，口径见 caveats） ----------
 // 证据来源（只读导出）：health.quota.creditsUsedEst（自然月累计）、
 // shadow.fetchMeta.quota.creditsUsedEst（写 blob 时同一计数器快照）。
@@ -246,14 +299,17 @@ const runGate = {
 };
 
 // ---------- 判据汇总 ----------
+// F6-21：live 侧 null 门禁——liveNullPrice/liveNullMcap 任一 >2 判 fail；1–2 只压 verdict 上限。
+const liveNullTotal = Math.max(fieldGate.liveNullPriceCount, fieldGate.liveNullMcapCount);
 const checks = {
   priceDiffMedianOk: median != null && median * 100 <= 0.3,
   priceDiffP95Ok: p95 != null && p95 * 100 <= 1.5,
   shadowCoverageOk: shadowCoverageRatio != null && shadowCoverageRatio >= 0.94,
   missingConsistent,
   top20SameSet, // ① 纳入判据
-  comparedFloorOk: compared >= minCompared, // ② 下限判据
+  comparedFloorOk: compared >= minCompared, // ② 下限判据（F6-21：compared 为含 null 配对的分母口径）
   shadowFieldOk: fieldGate.shadowFieldOk, // ⑤ 字段门禁
+  liveFieldOk: liveNullTotal <= 2, // F6-21 live 侧 null 门禁
 };
 const failReasons = [];
 if (!checks.priceDiffMedianOk) failReasons.push(`价差中位数 ${median != null ? (median * 100).toFixed(4) + "%" : "无数据"} > 0.3% 或无可比数据`);
@@ -263,9 +319,17 @@ if (!checks.missingConsistent) failReasons.push("missingIds 两侧不一致");
 if (!checks.top20SameSet) failReasons.push("top20SameSet=false：市值前 20 集合不一致");
 if (!checks.comparedFloorOk) failReasons.push(`compared=${compared} 低于下限 ${minCompared}，样本量不足以支撑结论`);
 if (!checks.shadowFieldOk) failReasons.push(`shadow 字段门禁未过：price=null [${nullPriceIds.join(",")}] mcapUsd=null [${nullMcapIds.join(",")}]`);
+if (!checks.liveFieldOk)
+  failReasons.push(`live 字段门禁未过：liveNullPrice=${fieldGate.liveNullPriceCount}、liveNullMcap=${fieldGate.liveNullMcapCount}（任一 >2 判 fail）`);
 
 const numericPass = failReasons.length === 0;
-const verdict = !numericPass ? "fail" : alignment.aligned ? "pass" : "conditional";
+// verdict 上限（取更严者）：F6-08 同源 → 上限 conditional（永远不许 pass）；
+// F6-20 runGate.met!==true → 上限 conditional；F6-21 live null 1–2 → 上限 conditional。
+const verdictCaps = [];
+if (sameSource) verdictCaps.push("same-source（F6-08）：同源自比、非独立验证");
+if (runGate.met !== true) verdictCaps.push("runGate 未达标（F6-20）：运行次数无达标证据");
+if (liveNullTotal >= 1 && liveNullTotal <= 2) verdictCaps.push("live 侧 null 1–2 个（F6-21）");
+const verdict = !numericPass ? "fail" : alignment.aligned && verdictCaps.length === 0 ? "pass" : "conditional";
 
 const report = {
   tool: "compare-shadow",
@@ -274,7 +338,10 @@ const report = {
   shadowRunId,
   shadowFetchedAt: shadow.fetchedAt || null,
   liveUpdatedAt: live.updatedAt || null,
-  compared,
+  mode: compareMode, // F6-08："same-source" = 同源自比、非独立验证；"independent" = 独立比对
+  liveServedFrom,
+  compared, // F6-21：分母口径（两侧同 id 配对总数，含 null 配对）
+  priceCompared, // 实际算出价差的配对数
   priceDiffMedianPct: median != null ? +(median * 100).toFixed(4) : null,
   priceDiffP95Pct: p95 != null ? +(p95 * 100).toFixed(4) : null,
   shadowCoverage: shadow.coverage || null,
@@ -288,12 +355,17 @@ const report = {
   fieldGate,
   alignment,
   verdict,
+  verdictCaps, // 本次 verdict 上限来源（F6-08/F6-20/F6-21，取更严者）
   verdictNote:
     verdict === "pass"
-      ? "数值+字段判据全过且已按 fetchRunId 对齐。"
+      ? "数值+字段判据全过、已按 fetchRunId 对齐、非同源比对且 runGate 达标。"
       : verdict === "conditional"
-        ? "数值+字段判据全过，但未按 fetchRunId 对齐（见 alignment.note）：结论降级，不得作为干净通过证据。"
+        ? `数值+字段判据全过，但结论降级为 conditional，不得作为干净通过证据。降级原因：${[
+            ...verdictCaps,
+            ...(alignment.aligned ? [] : ["未按 fetchRunId 对齐（见 alignment.note）"]),
+          ].join("；")}${sameSource ? "。同源自比、非独立验证：live 与比对输入为同一 blob，数值一致是同义反复。" : ""}`
         : "判据未全过（见 failReasons）。",
+  blobDiff,
   runGate,
   g1Ready: verdict === "pass" && runGate.met === true,
 };
