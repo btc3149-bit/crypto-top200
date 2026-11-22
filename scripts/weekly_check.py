@@ -8,7 +8,7 @@
 
 红线：永不写 coins.json、永不触发部署。只写 ops/weekly/ 下的周报与 state.json。
 用法：python3 scripts/weekly_check.py [--state <path>] [--out <path>] [--date YYYY-MM-DD]
-CoinGecko key 只从环境变量 COINGECKO_API_KEY 读（可为空=匿名），禁止写进仓库。
+CoinGecko key 只从环境变量 COINGECKO_API_KEY 读（缺失即 fail-closed 报错、禁止匿名回退，F6-86；匿名调试须显式 ALLOW_ANONYMOUS_CG=1 留痕），禁止写进仓库。
 
 W4-09 修复（v1.1.0，口径不变：只交付脚本、人工手动运行，绝不自动跑）：
 - markets 按 id 拉取缺行不再静默跳过：缺行恰是下架/迁移的表现，单列「疑似下架候选」
@@ -46,7 +46,15 @@ def fetch_json(url, headers=None, timeout=90):
 
 def cg_headers():
     key = os.environ.get("COINGECKO_API_KEY", "")
-    return {"x-cg-demo-api-key": key} if key else {}
+    if key:
+        return {"x-cg-demo-api-key": key}
+    # F6-86：key 缺失 fail-closed（与线上口径统一，禁止静默匿名回退连累共享出口限流）；
+    # 确需匿名调试须显式设 ALLOW_ANONYMOUS_CG=1，stderr 留痕、报告标注「匿名」。
+    # 本函数在各拉取点的 try 内调用，抛错即走 incomplete/本轮作废路径（退出码 2）。
+    if os.environ.get("ALLOW_ANONYMOUS_CG") == "1":
+        print("WARNING: COINGECKO_API_KEY 缺失，按显式开关 ALLOW_ANONYMOUS_CG=1 匿名调用 CoinGecko（限流与他人共享，勿用于正式周检）", file=sys.stderr)
+        return {}
+    raise RuntimeError("COINGECKO_API_KEY 缺失：拒绝匿名调用 CoinGecko（fail-closed，F6-86）；注入 key 后重试，或确需匿名调试时显式设 ALLOW_ANONYMOUS_CG=1")
 
 def fetch_http_status(url, timeout=30):
     """只取 HTTP 状态码（跟随重定向，不下载 body），取不到返回 None。供 REPORT_URL 外链健康检查用（W4-26）。"""

@@ -41,7 +41,7 @@
 **现象与识别信号**
 
 - 覆盖或字段异常：`/api/board` 的 `coverage` 不满（returned < expected）或关键字段异常（如价格 / 市值 / rank 大面积为 null——注意现行覆盖率只数 id、不验字段，字段级退化可能在 coverage 200/200 时已发生，判读须抽查字段，见 F4-08）。
-- 影子比对失败：`scripts/compare-shadow.mjs` 比对不通过（覆盖率、价差中位数 / P95、missingIds 任一超阈值），或 fetcher health 的 `consecutiveFailures` 异常升高。
+- 影子比对异常：`scripts/compare-shadow.mjs` 判 fail（覆盖率、价差中位数 / P95、missingIds 任一超阈值），或 fetcher health 的 `consecutiveFailures` 异常升高。**第六期 F6-08 后口径（2026-11-23）**：G3 的 kv 形态下 compare 输入即 current 键本身，属同源自比——工具输出 `mode:"same-source"` 且 verdict 上限为 conditional（退出码 2），**conditional + same-source 是该形态的正确结果、不是故障**，不得再期待或引用 pass；同源模式下真正看的是输出的 `blobDiff` 信息段（current vs prev 的价格异动与新增 null 字段）与字段抽查。独立验证仍靠抽样直查 CoinGecko 与 /api/health、HC4。
 
 **处置步骤**
 

@@ -56,9 +56,16 @@ def fetch_json(url, headers=None, retries=2):
     raise EnvironmentError(f"fetch failed after retries: {last}")
 
 def cg_headers():
-    import os
+    import os, sys
     key = os.environ.get("COINGECKO_API_KEY", "")
-    return {"x-cg-demo-api-key": key} if key else {}
+    if key:
+        return {"x-cg-demo-api-key": key}
+    # F6-86：key 缺失 fail-closed（与线上口径统一，禁止静默匿名回退连累共享出口限流）；
+    # 确需匿名调试须显式设 ALLOW_ANONYMOUS_CG=1，stderr 留痕、周检报告标注「匿名」。
+    if os.environ.get("ALLOW_ANONYMOUS_CG") == "1":
+        print("WARNING: COINGECKO_API_KEY 缺失，按显式开关 ALLOW_ANONYMOUS_CG=1 匿名调用 CoinGecko（限流与他人共享，勿用于正式构建/周检）", file=sys.stderr)
+        return {}
+    raise RuntimeError("COINGECKO_API_KEY 缺失：拒绝匿名调用 CoinGecko（fail-closed，F6-86）；注入 key 后重试，或确需匿名调试时显式设 ALLOW_ANONYMOUS_CG=1")
 
 def data_hash(coins):
     return check_meta.data_hash(coins)
