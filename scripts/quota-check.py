@@ -35,12 +35,17 @@
 import calendar
 import json
 import os
+import re
 import subprocess
 import sys
+import urllib.request
 from datetime import datetime, timezone
 
-ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID", "e6eae7d19e653edfedb12f4bb5e0227d")
-NAMESPACE_ID = "ad1b72702c5c4f229999bea5b118d1bc"  # BOARD_KV
+SCRIPT_VERSION = "2.0-g3"
+METHODOLOGY = "g3-aware: planning=legacy0 when kv"
+# F6-87：账号 ID 改必填环境变量、缺失即 fail-closed（与 TOKEN 同口径，不再有字面量默认值）。
+ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
+NAMESPACE_ID = "ad1b72702c5c4f229999bea5b118d1bc"  # BOARD_KV（wrangler.toml 公开值）
 HEALTH_KEY = "v1:meta:health"
 MONTHLY_CAP = 10_000
 FETCHER_FORWARD_PER_DAY = 192  # 定版：markets 144/天 + global 48/天（W4-01 修复后）
@@ -59,9 +64,51 @@ def fail(msg):
     return None
 
 
+def classify_error(text):
+    """F6-90：wrangler stderr 只归类、不原文透传（原文可能含账号/命名空间 ID）。"""
+    t = (text or "").lower()
+    if any(k in t for k in ("401", "403", "auth", "unauthorized", "forbidden", "token")):
+        return "auth"
+    if any(k in t for k in ("timeout", "timed out", "enotfound", "econn", "network", "fetch failed", "dns")):
+        return "network"
+    if any(k in t for k in ("404", "not found", "notfound")):
+        return "notfound"
+    return "unknown"
+
+
+def sanitized_debug(text):
+    return re.sub(r"\b[0-9a-f]{32}\b", "<redacted-hex>", (text or ""))[:300]
+
+
+def read_board_mode(health=None):
+    """F6-07：判定现行读模式。先读 wrangler.toml [vars]；读不到时回退线上 /api/board 的 servedFrom。"""
+    try:
+        text = open(os.path.join(REPO_ROOT, "wrangler.toml"), encoding="utf-8").read()
+        m = re.search(r"(?m)^\[vars\][ \t]*\n(.*?)(?=^\[|\Z)", text, re.S)
+        if m:
+            mm = re.search(r'BOARD_READ_MODE\s*=\s*"([^"]*)"', m.group(1))
+            if mm:
+                return mm.group(1)
+    except Exception:
+        pass
+    try:
+        with urllib.request.urlopen("https://top200.oppcal.com/api/board", timeout=15) as r:
+            body = json.load(r)
+        sf = (body.get("freshness") or {}).get("servedFrom")
+        if sf in ("kv", "cache", "memory"):
+            return "kv"
+        if sf:
+            return sf
+    except Exception:
+        pass
+    return None
+
+
 def read_health():
     if not os.environ.get("CLOUDFLARE_API_TOKEN"):
         return fail("未设置 CLOUDFLARE_API_TOKEN（由调用方运行时注入）")
+    if not ACCOUNT_ID:
+        return fail("未设置 CLOUDFLARE_ACCOUNT_ID（F6-87：必填环境变量，缺失即 fail-closed）")
     try:
         pin = json.load(open(os.path.join(REPO_ROOT, "package.json")))["devDependencies"]["wrangler"]
     except Exception:
@@ -78,7 +125,11 @@ def read_health():
     raw = (out.stdout or "").strip()
     start = raw.find("{")
     if out.returncode != 0 or start < 0:
-        return fail(f"KV 读取失败 rc={out.returncode}: {(out.stderr or raw)[:300]}")
+        cat = classify_error(out.stderr or raw)
+        msg = f"KV 读取失败 rc={out.returncode} category={cat}"
+        if os.environ.get("DEBUG"):
+            msg += f" detail={sanitized_debug(out.stderr or raw)}"
+        return fail(msg)
     try:
         return json.loads(raw[start:])
     except Exception as e:
@@ -95,6 +146,32 @@ def main():
     month_str = quota.get("month")
     if not isinstance(fetcher_used, (int, float)) or not month_str:
         print("quota-check: ERROR health.quota 缺 creditsUsedEst/month，核账证据不足")
+        return 3
+    # F6-24 前置校验：health.month 须与当前 UTC 月一致、lastRunAt 距今 ≤3 小时，
+    # 否则核账失效——落一条带失效标记的记录并以退出码 3 收尾，不产出正常判级。
+    stale_reasons = []
+    if month_str != now.strftime("%Y-%m"):
+        stale_reasons.append(f"health.month={month_str} 与当前 UTC 月 {now.strftime('%Y-%m')} 不一致")
+    last_run_raw = health.get("lastRunAt")
+    try:
+        last_run = datetime.fromisoformat(str(last_run_raw).replace("Z", "+00:00"))
+        if last_run.tzinfo is None:
+            last_run = last_run.replace(tzinfo=timezone.utc)
+        if (now - last_run).total_seconds() > 3 * 3600:
+            stale_reasons.append(f"lastRunAt={last_run_raw} 距今超过 3 小时")
+    except Exception:
+        stale_reasons.append(f"lastRunAt 不可解析：{last_run_raw!r}")
+    if stale_reasons:
+        rec = {"at": now.isoformat().replace("+00:00", "Z"), "tool": "quota-check",
+               "scriptVersion": SCRIPT_VERSION, "methodology": METHODOLOGY,
+               "verdict": "INVALID", "staleHealth": True,
+               "note": "health 陈旧、核账失效：" + "；".join(stale_reasons)}
+        try:
+            with open(LOG_PATH, "a", encoding="utf-8") as f:
+                f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        except Exception:
+            pass
+        print(f"quota-check: ERROR health 陈旧、核账失效：{'；'.join(stale_reasons)}")
         return 3
     year, mon = int(month_str[:4]), int(month_str[5:7])
     days_in_month = calendar.monthrange(year, mon)[1]
@@ -122,7 +199,11 @@ def main():
             "totalUsedIfScenarioHeldAllMonth": round(total_if_held, 1),
         }
 
-    plan = scenarios[PLANNING_KEY]
+    # F6-07 G3 口径：kv 模式下 legacy 回源已退出服务路径，判级规划口径取 legacy=0
+    # 场景（floor_all_hit）；576/1152 两场景保留为历史参考列、不参与判级。
+    board_mode = read_board_mode(health)
+    planning_key = "floor_all_hit" if board_mode == "kv" else PLANNING_KEY
+    plan = scenarios[planning_key]
     dte = plan["daysToExhaust"]
     if dte is not None and dte <= 3:
         verdict, code = "CRITICAL", 2
@@ -134,9 +215,16 @@ def main():
         verdict, code = "OK", 0
 
     upstream_ok = health.get("lastUpstreamStatus") == 200 and int(health.get("consecutiveFailures", 0)) == 0
+    implied_max_legacy = round((MONTHLY_CAP - fetcher_used) / days_elapsed, 1)
+    # 护栏旁注：实测上界已低于 576 时，规划场景（576/天）对已过时段已被实测证伪。
+    planning_falsified = implied_max_legacy < 576
+    verdict_note = ("护栏旁注：impliedMaxAvgLegacyPerDay=%s < 576，576/1152 规划场景对已过时段已被实测证伪（仅作历史参考列）" % implied_max_legacy) if planning_falsified else None
     record = {
         "at": now.isoformat().replace("+00:00", "Z"),
         "tool": "quota-check",
+        "scriptVersion": SCRIPT_VERSION,
+        "methodology": METHODOLOGY,
+        "boardMode": board_mode,
         "workpackage": "W4-02",
         "month": month_str,
         "cap": MONTHLY_CAP,
@@ -151,8 +239,10 @@ def main():
         "daysElapsedInMonth": round(days_elapsed, 2),
         "daysRemainingInMonth": round(days_remaining, 2),
         "scenarios": scenarios,
-        "planningScenario": PLANNING_KEY,
+        "planningScenario": planning_key,
+        "planningScenarioFalsifiedByGuardrail": planning_falsified,
         "verdict": verdict,
+        "verdictNote": verdict_note,
         "empiricalGuard": {
             "lastUpstreamStatus": health.get("lastUpstreamStatus"),
             "consecutiveFailures": health.get("consecutiveFailures"),
