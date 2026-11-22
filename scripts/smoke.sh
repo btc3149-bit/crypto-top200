@@ -8,6 +8,8 @@
 #   4. coverage.returned 与币数一致性：returned ≥ 期望数的 94%（期望数 = 基址 /data/coins.json 的 coins 长度）
 #   5. GET / 返回 200 且含 "市值前 200 币种" 字样
 #   6. GET /data/coins.json 返回 200 且 JSON 可解析
+#   7.（F6-06）/api/board freshness.servedFrom ∈ {kv, cache, memory}
+#   8.（F6-27）v2 契约字段：contractVersion===2、freshness 与 fetch.fetchRunId 存在、coverage.returned 与 coins 键数一致
 set -uo pipefail
 
 BASE="${1:-https://top200.oppcal.com}"
@@ -96,6 +98,52 @@ case "$COVERAGE_RESULT" in
   OK:*)   pass "④ coverage 一致性（$COVERAGE_RESULT）" ;;
   SKIP:*) fail "④ coverage 一致性无法校验（$COVERAGE_RESULT）" ;;
   *)      fail "④ coverage 一致性（$COVERAGE_RESULT）" ;;
+esac
+
+# ---- 断言 7（F6-06）：/api/board freshness.servedFrom ∈ {kv, cache, memory} ----
+SERVED_RESULT="$(python3 - "$BOARD_BODY" <<'PY'
+import json, sys
+try:
+    body = json.load(open(sys.argv[1], encoding="utf-8"))
+    sf = (body.get("freshness") or {}).get("servedFrom")
+except Exception as e:
+    print(f"FAIL:board JSON 解析失败（{e}）"); sys.exit(0)
+if sf in ("kv", "cache", "memory"):
+    print(f"OK:servedFrom={sf}")
+else:
+    print(f"FAIL:servedFrom={sf!r} 不在 {{kv, cache, memory}}（模式可能已回落 legacy/snapshot）")
+PY
+)"
+case "$SERVED_RESULT" in
+  OK:*) pass "⑦ servedFrom 断言（$SERVED_RESULT）" ;;
+  *)    fail "⑦ servedFrom 断言（$SERVED_RESULT）" ;;
+esac
+
+# ---- 断言 8（F6-27）：v2 契约字段（contractVersion/freshness/fetchRunId/coverage 与 coins 键数一致） ----
+V2_RESULT="$(python3 - "$BOARD_BODY" <<'PY'
+import json, sys
+try:
+    body = json.load(open(sys.argv[1], encoding="utf-8"))
+except Exception as e:
+    print(f"FAIL:board JSON 解析失败（{e}）"); sys.exit(0)
+problems = []
+if body.get("contractVersion") != 2:
+    problems.append(f"contractVersion={body.get('contractVersion')!r}!=2")
+if "freshness" not in body:
+    problems.append("freshness 字段缺失")
+fetch = body.get("fetch") or {}
+if "fetchRunId" not in fetch:
+    problems.append("fetch.fetchRunId 字段缺失")
+coins = body.get("coins") or {}
+returned = (body.get("coverage") or {}).get("returned")
+if returned != len(coins):
+    problems.append(f"coverage.returned={returned} 与 coins 键数 {len(coins)} 不一致")
+print("OK:v2 契约字段齐全且 coverage.returned 与 coins 键数一致" if not problems else "FAIL:" + "；".join(problems))
+PY
+)"
+case "$V2_RESULT" in
+  OK:*) pass "⑧ v2 契约字段断言（$V2_RESULT）" ;;
+  *)    fail "⑧ v2 契约字段断言（$V2_RESULT）" ;;
 esac
 
 # ---- 断言 5：首页 200 且含标题关键字 ----

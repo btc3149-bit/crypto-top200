@@ -1,7 +1,8 @@
 // scripts/coverage-report.mjs — W4-27 覆盖率度量（P2 / F4-43）
 // 用 Node 内置 NODE_V8_COVERAGE（V8 精确覆盖，零依赖、0 元）逐个子进程跑全部
 // Node 测试套件（tests/*.test.mjs + tests/snapshot-verify.mjs；
-// tests/test_render_snapshot.py 为 Python 套件，不在 V8 口径内，单列注明），
+// Python 两套件 tests/test_render_snapshot.py 与 tests/weekly_check_test.py
+// 不在 V8 口径内，F6-80 起一并实跑并把其计数纳入下方汇总输出），
 // 汇总 functions/、workers/fetcher/src/、shared/ 三处源文件的行/函数覆盖率。
 // 若 NODE_V8_COVERAGE 路线无任何产出，自动退到 `node --test
 // --experimental-test-coverage` 并在输出中注明实际方法。
@@ -168,17 +169,32 @@ if (!rows.some((r) => r.loaded)) {
     "```\n" + (run.stdout || "") + (run.stderr || "") + "\n```\n";
 }
 
+// ---------- Python 套件（F6-80：纳入汇总，计数从套件自报输出解析） ----------
+const pySuites = ["tests/test_render_snapshot.py", "tests/weekly_check_test.py"];
+const pyResults = [];
+for (const rel of pySuites) {
+  const run = spawnSync("python3", [path.join(ROOT, rel)], {
+    cwd: ROOT, encoding: "utf-8", maxBuffer: 64 * 1024 * 1024, timeout: 300000,
+  });
+  const out = (run.stdout || "") + (run.stderr || "");
+  let count = null;
+  let m = out.match(/(\d+)\s+CHECKS PASSED/) || out.match(/:\s*(\d+)\/(\d+)\s+PASS/);
+  if (m) count = m[2] ? `${m[1]}/${m[2]}` : `${m[1]}`;
+  pyResults.push({ suite: rel, exit: run.status, count });
+}
+
 // ---------- 输出 ----------
 const L = [];
 L.push("# 覆盖率报告（W4-27 / F4-43）");
 L.push("");
-L.push(`方法：${method}；套件 ${suites.length} 个（Node）+ test_render_snapshot.py（Python，不在 V8 口径内）。`);
+L.push(`方法：${method}；套件 ${suites.length} 个（Node）+ ${pySuites.length} 个（Python，不在 V8 口径内、计数纳入汇总）。`);
 L.push("");
 L.push("## 套件退出码");
 L.push("");
-L.push("| 套件 | 退出码 |");
-L.push("|---|---|");
-for (const s of suiteResults) L.push(`| ${s.suite} | ${s.exit} |`);
+L.push("| 套件 | 退出码 | 计数 |");
+L.push("|---|---|---|");
+for (const s of suiteResults) L.push(`| ${s.suite} | ${s.exit} | —（Node，见各套件自报） |`);
+for (const s of pyResults) L.push(`| ${s.suite}（Python） | ${s.exit} | ${s.count ?? "未解析"} |`);
 L.push("");
 L.push("## 源文件覆盖率");
 L.push("");
@@ -203,5 +219,5 @@ if (fallbackNote) L.push(fallbackNote);
 const report = L.join("\n");
 console.log(report);
 if (OUT) { writeFileSync(OUT, report + "\n", "utf-8"); console.log(`\n已写入 ${OUT}`); }
-const suiteFailed = suiteResults.some((s) => s.exit !== 0);
+const suiteFailed = suiteResults.some((s) => s.exit !== 0) || pyResults.some((s) => s.exit !== 0);
 if (STRICT && suiteFailed) process.exitCode = 1;
