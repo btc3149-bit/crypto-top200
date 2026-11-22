@@ -6,21 +6,7 @@
 // 产出 docs/paprika-map-review.csv（人工核定用）+ /tmp/paprika-candidates.json（核定中间件）。
 // 注意：本脚本只产候选，禁止全自动采信；核定结论见 docs/paprika-mapping-proposal.json。
 import { readFileSync, writeFileSync } from "node:fs";
-
-// W3-22 双形态解码：对象形态直通；rows 形态按 meta.fields 解码（与前端同口径）。
-function decodeCoins(doc) {
-  if (doc && Array.isArray(doc.coins)) return doc.coins;
-  if (doc && Array.isArray(doc.rows)) {
-    const fields = doc.meta && Array.isArray(doc.meta.fields) ? doc.meta.fields : null;
-    if (!fields) return [];
-    return doc.rows.map((r) => {
-      const o = {};
-      for (let i = 0; i < fields.length; i++) o[fields[i]] = r[i];
-      return o;
-    });
-  }
-  return [];
-}
+import { decodeCoins } from "./decode-coins.mjs"; // F6-71：JS 侧解码单一来源（带行长断言）
 
 const coins = decodeCoins(JSON.parse(readFileSync(new URL("../data/coins.json", import.meta.url), "utf-8")));
 const paprika = await (await fetch("https://api.coinpaprika.com/v1/coins")).json();
@@ -51,9 +37,20 @@ for (const c of coins) {
     }
   }
   if (!best) {
+    // F6-78：子串包含匹配加两道门——①较短一侧长度 ≥5（短串包含极易误配）；
+    // ②name slug 前缀一致（slugPart 与 slugify(name) 一方为另一方前缀，或首 token 相同）。
+    // 全等匹配不受此限；未过门者降为「无候选」交人工另行查找，不再给中置信候选。
+    const nameSlug = slugify(c.name);
+    const firstToken = (s) => s.split("-")[0];
+    const namePrefixOk = (slugPart) =>
+      slugPart.startsWith(nameSlug) || nameSlug.startsWith(slugPart) || firstToken(slugPart) === firstToken(nameSlug);
+    const substringOk = (slugPart) =>
+      (slugPart.includes(c.coingeckoId) || c.coingeckoId.includes(slugPart)) &&
+      Math.min(slugPart.length, String(c.coingeckoId).length) >= 5 &&
+      namePrefixOk(slugPart);
     for (const p of cands) {
       const slugPart = p.id.slice(p.id.indexOf("-") + 1);
-      if (slugPart === c.coingeckoId || slugPart === slugify(c.name) || slugPart.includes(c.coingeckoId) || c.coingeckoId.includes(slugPart)) {
+      if (slugPart === c.coingeckoId || slugPart === nameSlug || substringOk(slugPart)) {
         best = p;
         confidence = "中";
         break;
