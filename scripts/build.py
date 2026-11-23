@@ -545,19 +545,28 @@ def _stage_and_land(pairs):
     落盘——任一步抛错时，用备份回滚已替换的目标后原样抛出，不留下
     源/产物不一致的中间态；④ 成功后清理暂存与备份。
     """
-    import os, shutil, tempfile
+    import os, shutil, stat, tempfile
     staged, backups = [], []
+    # F8-19：mkstemp 暂存文件恒为 0600，os.replace 落盘会把产物权限收紧，
+    # 与改前 write_text 行为不一致。落盘须保留目标原权限：目标存在则沿用
+    # 其 mode，不存在则用常规新建文件权限（0666 受 umask，与 write_text 同）。
+    _umask = os.umask(0)
+    os.umask(_umask)
+    default_mode = 0o666 & ~_umask
     try:
         for src, target in pairs:
             target.parent.mkdir(parents=True, exist_ok=True)
+            target_mode = stat.S_IMODE(target.stat().st_mode) if target.exists() else default_mode
             fd, stage_name = tempfile.mkstemp(prefix=".land-", dir=str(target.parent))
             staged.append((Path(stage_name), target))
             with os.fdopen(fd, "wb") as f:
                 f.write(Path(src).read_bytes())
+            os.chmod(stage_name, target_mode)
             if target.exists():
                 fd2, bak_name = tempfile.mkstemp(prefix=".bak-", dir=str(target.parent))
                 os.close(fd2)
                 shutil.copyfile(target, bak_name)
+                os.chmod(bak_name, target_mode)  # 回滚落盘同样保留原权限
                 backups.append((Path(bak_name), target))
         landed = []
         try:
