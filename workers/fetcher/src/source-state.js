@@ -26,7 +26,31 @@ export function paprikaEnabled(env) {
 // F6-10 启用门禁：COINS 中 paprikaId 非 null 数低于此门槛时，即使 PAPRIKA_ENABLED=true
 // 或 state=PAPRIKA_ACTIVE 也不得切 Paprika（映射未落库前备源必恒定覆盖率失败）。
 // 门禁判定在 index.js 主流程（resolveProvider 不持有币表），常量集中于此。
+// 【第七期 F7-02 起本常量仅作历史口径保留，不再是放行条件】放行条件改为
+// evaluatePaprikaGate：mapped / identityValid / activeUsable / tickerHit 四项计数
+// 均须 ≥ 与发布覆盖门禁一致的 94%（COVERAGE_RATIO，200 币即 188）。
 export const PAPRIKA_MIN_MAPPED = 197;
+
+// F7-02 启用门禁（纯函数，可单测）：stats 为 shared/paprika-identity.js
+// countPaprikaGateStats 的四项计数（或等价结构）。任一计数低于
+// ceil(COVERAGE_RATIO × total) 即不放行——非空数不得冒充身份有效/活跃/命中数。
+export function paprikaGateThreshold(total) {
+  return Math.ceil(0.94 * total);
+}
+export function evaluatePaprikaGate(stats, total) {
+  const n = typeof total === "number" ? total : stats && stats.total;
+  const threshold = paprikaGateThreshold(n || 0);
+  const counts = {
+    mapped: (stats && stats.mapped) || 0,
+    identityValid: (stats && stats.identityValid) || 0,
+    activeUsable: (stats && stats.activeUsable) || 0,
+    tickerHit: (stats && stats.tickerHit) || 0,
+  };
+  const failures = Object.entries(counts)
+    .filter(([, v]) => v < threshold)
+    .map(([k, v]) => `${k} ${v}/${n} < ${threshold} required (94% publish gate, F7-02)`);
+  return { ok: failures.length === 0, threshold, total: n, counts, failures };
+}
 
 // 决定本 run 的 provider。返回 {provider, probeCg, warnings[]}
 // probeCg=true 表示 Paprika 态下本 run 顺带探一次 CG markets（不写 blob，只记账）。

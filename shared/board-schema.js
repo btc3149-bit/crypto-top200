@@ -76,6 +76,20 @@ export function sanitizeMarketNumber(v, max) {
   return { value: null, invalid: true };
 }
 
+// F7-15 带符号数值清洗（change24h 等可正可负字段）：有限且 |v| ≤ maxAbs 才保留。
+export const CHANGE24H_MAX_ABS = 1e6;
+export function sanitizeSignedNumber(v, maxAbs) {
+  if (v == null) return { value: null, invalid: false };
+  if (typeof v === "number" && Number.isFinite(v) && Math.abs(v) <= maxAbs) return { value: v, invalid: false };
+  return { value: null, invalid: true };
+}
+// F7-15 rank 清洗：正整数（≤1e6）才保留，其余非 null 值置 null 并计数。
+export function sanitizeRank(v) {
+  if (v == null) return { value: null, invalid: false };
+  if (typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= 1e6) return { value: v, invalid: false };
+  return { value: null, invalid: true };
+}
+
 // 自现行 board.js fetchUpstreamInternal 抽取的字段映射，保持行结构同构：
 // 现行 coins 字典值 {price, mcapUsd, rank, change24h, volume24h} → blob rows 数组元素
 // {id, price, mcapUsd, rank, change24h, volume24h, _src}（_src 仅供 fetcher 内部断言，组装对外时剥除）。
@@ -83,28 +97,23 @@ export function sanitizeMarketNumber(v, max) {
 export function normalizeCgMarkets(markets, expectedIds) {
   const byId = new Map();
   // F6-02：price/mcapUsd/volume24h 字段级清洗计数（非数/负数/超限 → null 并计数）。
-  const invalidFields = { price: 0, mcapUsd: 0, volume24h: 0, total: 0 };
-  const clean = (v, max, field) => {
-    const r = sanitizeMarketNumber(v, max);
-    if (r.invalid) {
-      invalidFields[field] += 1;
-      invalidFields.total += 1;
-    }
-    return r.value;
-  };
+  // F7-15：change24h/rank 同步清洗，两源口径对齐（见 makeFieldCleaner）。
+  const invalidFields = { price: 0, mcapUsd: 0, volume24h: 0, change24h: 0, rank: 0, total: 0 };
+  const clean = makeFieldCleaner(invalidFields);
   if (Array.isArray(markets)) {
     for (const m of markets) {
       if (!m || !m.id) continue;
       byId.set(m.id, {
         id: m.id,
-        price: clean(m.current_price ?? null, FIELD_LIMITS.priceMax, "price"),
-        mcapUsd: clean(m.market_cap ?? null, FIELD_LIMITS.mcapUsdMax, "mcapUsd"),
-        rank: m.market_cap_rank ?? null,
-        change24h:
+        price: clean.market(m.current_price ?? null, FIELD_LIMITS.priceMax, "price"),
+        mcapUsd: clean.market(m.market_cap ?? null, FIELD_LIMITS.mcapUsdMax, "mcapUsd"),
+        rank: clean.rank(m.market_cap_rank ?? null),
+        change24h: clean.signed(
           m.price_change_percentage_24h_in_currency != null
             ? m.price_change_percentage_24h_in_currency
-            : m.price_change_percentage_24h ?? null,
-        volume24h: clean(m.total_volume ?? null, FIELD_LIMITS.volume24hMax, "volume24h"),
+            : m.price_change_percentage_24h ?? null
+        ),
+        volume24h: clean.market(m.total_volume ?? null, FIELD_LIMITS.volume24hMax, "volume24h"),
         _src: "coingecko",
       });
     }
@@ -130,6 +139,38 @@ export function normalizeCgGlobal(rawData, asOfMs) {
   };
 }
 
+// F7-15 两源共用字段清洗器：market=非负上限（price/mcapUsd/volume24h）、
+// signed=带符号上限（change24h）、rank=正整数。坏值置 null 并按字段计数，
+// invalidFields 恒含 {price, mcapUsd, volume24h, change24h, rank, total}。
+export function makeFieldCleaner(invalidFields) {
+  const bump = (field, invalid) => {
+    if (invalid) {
+      invalidFields[field] = (invalidFields[field] || 0) + 1;
+      invalidFields.total = (invalidFields.total || 0) + 1;
+    }
+  };
+  return {
+    market: (v, max, field) => {
+      const r = sanitizeMarketNumber(v, max);
+      bump(field, r.invalid);
+      return r.value;
+    },
+    signed: (v) => {
+      const r = sanitizeSignedNumber(v, CHANGE24H_MAX_ABS);
+      bump("change24h", r.invalid);
+      return r.value;
+    },
+    rank: (v) => {
+      const r = sanitizeRank(v);
+      bump("rank", r.invalid);
+      return r.value;
+    },
+  };
+}
+export function emptyInvalidFields() {
+  return { price: 0, mcapUsd: 0, volume24h: 0, change24h: 0, rank: 0, total: 0 };
+}
+
 // CoinPaprika /v1/tickers 归一化（W2-03 §5 字段映射表）
 // W5-01（F5-01）形变全链统一：币种元素标准形为 fetcher COINS 的 {id, paprikaId}。
 // 旧实现按 {coingeckoId, paprikaId} 读 c.coingeckoId，与 COINS 的 {id,...} 永不相遇，
@@ -137,6 +178,11 @@ export function normalizeCgGlobal(rawData, asOfMs) {
 // c.coingeckoId 仅作旧形兼容别名；missingIds 恒为真实 id。
 export function normalizePaprikaTickers(tickers, coins) {
   // coins: [{id, paprikaId}]；映射缺失（paprikaId=null）的币直接计 missing。
+  // F7-15：与 CG 路径同一清洗口径——price/mcapUsd/volume24h 走非负上限清洗、
+  // change24h 带符号清洗、rank 正整数清洗；坏值置 null 并计入 invalidFields，
+  // 不再透传脏值靠 validateBlob 整 blob 拒绝（单币坏字段不得拖垮整轮）。
+  const invalidFields = emptyInvalidFields();
+  const clean = makeFieldCleaner(invalidFields);
   const coinId = (c) => (c ? (c.id != null ? c.id : c.coingeckoId) : undefined);
   const byPaprikaId = new Map();
   if (Array.isArray(tickers)) {
@@ -154,11 +200,11 @@ export function normalizePaprikaTickers(tickers, coins) {
     const gid = coinId(c);
     rows.push({
       id: gid,
-      price: usd.price ?? null,
-      mcapUsd: usd.market_cap ?? null,
-      rank: t.rank ?? null,
-      change24h: usd.percent_change_24h ?? null,
-      volume24h: usd.volume_24h ?? null,
+      price: clean.market(usd.price ?? null, FIELD_LIMITS.priceMax, "price"),
+      mcapUsd: clean.market(usd.market_cap ?? null, FIELD_LIMITS.mcapUsdMax, "mcapUsd"),
+      rank: clean.rank(t.rank ?? null),
+      change24h: clean.signed(usd.percent_change_24h ?? null),
+      volume24h: clean.market(usd.volume_24h ?? null, FIELD_LIMITS.volume24hMax, "volume24h"),
       _src: "coinpaprika",
     });
     hit.add(gid);
@@ -167,7 +213,7 @@ export function normalizePaprikaTickers(tickers, coins) {
     coins.map((c) => coinId(c)),
     hit
   );
-  return { rows, coverage };
+  return { rows, coverage, invalidFields };
 }
 
 // CoinPaprika /v1/global 归一化
@@ -235,7 +281,7 @@ export const PRICE_NULL_CATASTROPHE_RATIO = 0.5;
 export function validateBlob(blob) {
   const errors = [];
   const warnings = [];
-  const stats = { invalidFields: { price: 0, mcapUsd: 0, volume24h: 0, total: 0 }, nullPriceCount: 0, rowCount: 0, uniqueIdCount: 0 };
+  const stats = { invalidFields: { price: 0, mcapUsd: 0, volume24h: 0, change24h: 0, rank: 0, total: 0 }, nullPriceCount: 0, rowCount: 0, uniqueIdCount: 0 };
   if (!blob || typeof blob !== "object") return { ok: false, errors: ["blob_not_object"], warnings, stats };
   if (blob.schemaVersion !== SCHEMA_VERSION) errors.push("schema_version");
   if (blob.source !== "coingecko" && blob.source !== "coinpaprika") errors.push("source");
@@ -265,6 +311,18 @@ export function validateBlob(blob) {
           stats.invalidFields.total += 1;
           fieldBad = true;
         }
+      }
+      // F7-15：change24h/rank 两字段补类型门禁（此前两路均未清洗、此处亦不查，
+      // 只靠前端 num() 兜底）：非 null 时 change24h 须有限数、rank 须正整数。
+      if (r.change24h != null && sanitizeSignedNumber(r.change24h, CHANGE24H_MAX_ABS).invalid) {
+        stats.invalidFields.change24h = (stats.invalidFields.change24h || 0) + 1;
+        stats.invalidFields.total += 1;
+        fieldBad = true;
+      }
+      if (r.rank != null && sanitizeRank(r.rank).invalid) {
+        stats.invalidFields.rank = (stats.invalidFields.rank || 0) + 1;
+        stats.invalidFields.total += 1;
+        fieldBad = true;
       }
       if (r.price == null) stats.nullPriceCount += 1;
     }

@@ -1,9 +1,10 @@
 # crypto-top200-fetcher — W2-01 抓取 Worker（独立于 Pages 项目 crypto-top200）
-# G0 形态（2026-11-10）：禁用 Cron —— BOARD_FETCH_DISABLED="1" 且暂不注册 triggers。
-# 启用影子 Cron（G1）须同时：删 BOARD_FETCH_DISABLED（或置 "0") + 加回下述 triggers 块，
-# 且前置 fetcher 侧 COINGECKO_API_KEY 已由协调者注入（否则每 run 必失败、空烧无数据可比对）。
-# [triggers]
-# crons = ["*/10 * * * *"]
+# 现行形态（G3 终局，2026-11-19 起）：Cron 已启用 */10 * * * *（见下方 [triggers]）、
+# BOARD_TARGET_KEY="current" 直写生产键、无 BOARD_FETCH_DISABLED（未设置=启用抓取；
+# 紧急停抓才置 "1"，口径见 README 开关表）。fetcher 侧 COINGECKO_API_KEY 已注入
+# （Secret，不在本文件）。PAPRIKA_ENABLED="false"，Paprika 备源保持关闭。
+# 历史注记：2026-11-10 的 G0 形态曾禁用 Cron（BOARD_FETCH_DISABLED="1" 且不注册
+# triggers），G1 曾以 BOARD_TARGET_KEY="shadow" 影子运行——均为历史，不得照此操作。
 name = "crypto-top200-fetcher"
 main = "src/index.js"
 compatibility_date = "2026-11-01"
