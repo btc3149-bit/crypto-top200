@@ -405,7 +405,18 @@ export function globalForContract(blobGlobal, servedAtMs) {
     stale: false,
   };
   if (asOfMs == null) return { global: out, globalStale: false };
-  const ageSec = Math.max(0, Math.floor((servedAtMs - asOfMs) / 1000));
+  const rawAgeSec = Math.floor((servedAtMs - asOfMs) / 1000);
+  // F8-13：未来时间戳盲区（F6-05 board 级口径向 global 通道补齐）——asOf 在
+  // 未来超过 clockSkewToleranceSec（60s，既有 time_tolerance 口径）即判时钟
+  // 偏移，不得以 Math.max(0,…) 钳制后输出 stale:false 长期放行：未来幅度
+  // 超过 globalNullSec（6h）时与超龄同口径置 null；容差与 6h 之间则保留值
+  // 但判 stale:true（与 board 级 clockSkew 时封顶/判 stale 同精神）。
+  if (rawAgeSec < -FRESHNESS_THRESHOLDS.clockSkewToleranceSec) {
+    if (rawAgeSec < -FRESHNESS_THRESHOLDS.globalNullSec) return { global: null, globalStale: true };
+    out.stale = true;
+    return { global: out, globalStale: true };
+  }
+  const ageSec = Math.max(0, rawAgeSec);
   if (ageSec > FRESHNESS_THRESHOLDS.globalNullSec) return { global: null, globalStale: true };
   out.stale = ageSec > FRESHNESS_THRESHOLDS.globalStaleSec;
   return { global: out, globalStale: out.stale };
