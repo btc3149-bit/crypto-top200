@@ -233,10 +233,10 @@ await test("v2 dual 模式: 对外仍 legacy 结果（走抓取路径），KV �
 await test("v2 dual 模式 + rows 形态 coins.json（W3-22）: getIds 解码 rows、对外仍 legacy 结果", async () => {
   const mod = await freshBoard();
   Date.now = () => T0;
-  const FIELDS = ["table", "estRank", "rankNow", "rankNote", "name", "symbol", "coingeckoId", "snapshotPrice", "snapshotMcapUsd", "snapshotMcapRaw", "athPrice", "athDate", "athFlag", "estLo", "estHi", "multLo", "multHi", "impliedMcapLoUsd", "impliedMcapHiUsd", "impliedMcapRaw", "confidence", "reason", "dataDate"];
-  // F6-79：本地 FIELDS23 副本必须与产物 data/coins.json 的 meta.fields 运行时对账，漂移即红。
+  const FIELDS = ["table", "estRank", "rankNow", "rankNote", "name", "symbol", "coingeckoId", "snapshotPrice", "snapshotMcapUsd", "snapshotMcapRaw", "athPrice", "athDate", "athFlag", "estLo", "estHi", "multLo", "multHi", "impliedMcapLoUsd", "impliedMcapHiUsd", "impliedMcapRaw", "confidence", "reason", "dataDate", "paprikaId"];
+  // F6-79：本地 FIELDS24 副本（W5 起含 paprikaId）必须与产物 data/coins.json 的 meta.fields 运行时对账，漂移即红。
   const coinsJson = JSON.parse(readFileSync(new URL("../data/coins.json", import.meta.url), "utf-8"));
-  assert.deepEqual(FIELDS, coinsJson.meta.fields, "FIELDS23 副本与 data/coins.json meta.fields 漂移——以产物 meta 为准更新副本");
+  assert.deepEqual(FIELDS, coinsJson.meta.fields, "FIELDS24 副本与 data/coins.json meta.fields 漂移——以产物 meta 为准更新副本");
   const IDS4 = ["bitcoin", "ethereum", "solana", "filecoin"];
   globalThis.fetch = async (url) => {
     const u = String(url);

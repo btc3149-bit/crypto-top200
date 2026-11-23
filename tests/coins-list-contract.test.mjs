@@ -67,6 +67,12 @@ await test("F6-51: COINS 元素形为 {id, paprikaId}（W5-01 标准形，paprik
   }
 });
 
+await test("W5 落库: COINS.paprikaId 与 data/coins.json 的 paprikaId 逐币一致、非空数 == 196", async () => {
+  const byId = new Map(decoded.map((c) => [c.coingeckoId, c.paprikaId]));
+  for (const c of COINS) assert.equal(c.paprikaId, byId.get(c.id) ?? null, `${c.id} 两处 paprikaId 不一致`);
+  assert.equal(COINS.filter((c) => c.paprikaId).length, 196, "映射非空数应为 196（< 门禁 197，Paprika 保持关闭）");
+});
+
 const failed = results.filter(([, s]) => s !== "PASS");
 console.log(`\n=== ${results.length - failed.length}/${results.length} passed ===`);
 if (failed.length) process.exitCode = 1;

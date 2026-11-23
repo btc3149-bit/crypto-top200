@@ -232,6 +232,7 @@ async function getIds(request) {
     const data = await res.json();
     // W3-22：双形态解码——对象形态取 data.coins；rows 紧凑形态按 meta.fields
     // 中 coingeckoId 的列索引从 data.rows 抽列（与前端 decodeCoinsData 同口径）。
+    // W5：FIELDS24 追加 paprikaId 列不影响按名取 coingeckoId 索引，FIELDS23 旧数据同样可解。
     let list = null;
     if (data && Array.isArray(data.coins)) {
       list = data.coins;

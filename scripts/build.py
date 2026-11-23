@@ -349,7 +349,7 @@ def record_main(c, cid):
             "athDate": clean_date(c["athDate"]), "athFlag": c["athFlag"], "estLo": c["estLo"], "estHi": c["estHi"],
             "multLo": c["multLo"], "multHi": c["multHi"], "impliedMcapLoUsd": as_int(c["implLo"]),
             "impliedMcapHiUsd": as_int(c["implHi"]), "impliedMcapRaw": c["implRaw"],
-            "confidence": c["confidence"], "reason": c["reason"], "dataDate": "2026-11-08"}
+            "confidence": c["confidence"], "reason": c["reason"], "dataDate": "2026-11-08", "paprikaId": PAPRIKA_MAP.get(cid)}
 
 def record_refill(r, cid):
     return {"table": "A", "estRank": None, "rankNow": r["rankNow"], "rankNote": None,
@@ -359,7 +359,7 @@ def record_refill(r, cid):
             "estLo": r["estLo"], "estHi": r["estHi"], "multLo": r["multLo"], "multHi": r["multHi"],
             "impliedMcapLoUsd": round(r["impliedMcapLoUsd"]), "impliedMcapHiUsd": round(r["impliedMcapHiUsd"]),
             "impliedMcapRaw": r["impliedMcapRaw"], "confidence": r["confidence"], "reason": r["reason"],
-            "dataDate": "2026-11-10"}
+            "dataDate": "2026-11-10", "paprikaId": PAPRIKA_MAP.get(cid)}
 
 def mid(c):
     return (c["multLo"] + c["multHi"]) / 2.0
@@ -375,10 +375,27 @@ FIELDS23 = ["table", "estRank", "rankNow", "rankNote", "name", "symbol", "coinge
             "multLo", "multHi", "impliedMcapLoUsd", "impliedMcapHiUsd", "impliedMcapRaw",
             "confidence", "reason", "dataDate"]
 
+# W5 Paprika 映射落库（2026-11-23，FIELDS23→FIELDS24 字段规范变更）：
+# paprikaId 事实源 = workers/fetcher/src/coins-list.js 的 COINS（{id, paprikaId} 标准形）；
+# 本管线只透传：全量构建的 record_* 与 --emit 迁移均按 coingeckoId 从该事实源取值，
+# 不在本文件另立映射表。FIELDS24 = FIELDS23 + ["paprikaId"]（新列追加于末尾）——
+# 全部解码端（check_meta.decode_coins / 前端 decodeCoinsData / board.js getIds /
+# scripts/decode-coins.mjs）均按 meta.fields 动态解码，故旧 FIELDS23 数据仍可解码、
+# 新数据对旧解码端也只是多一列，向后兼容；切换方式同 W3-22 一次性切换先例。
+FIELDS24 = FIELDS23 + ["paprikaId"]
+
+def load_paprika_map():
+    """从事实源 coins-list.js 解析 {coingeckoId: paprikaId}（文件为单行 JSON 数组）。"""
+    txt = (ROOT / "workers/fetcher/src/coins-list.js").read_text(encoding="utf-8")
+    arr = json.loads(txt.split("export const COINS = ", 1)[1].split(";\n", 1)[0])
+    return {c["id"]: c.get("paprikaId") for c in arr}
+
+PAPRIKA_MAP = load_paprika_map()
+
 def validate(coins, overrides_entries):
     for c in coins:
         sym = c.get("symbol", "?")
-        missing = [f for f in FIELDS23 if f not in c]
+        missing = [f for f in FIELDS24 if f not in c]
         if missing:
             fail("G3", sym, f"字段缺失 {missing}")
         if c["confidence"] not in ("高", "中", "低"):
@@ -444,7 +461,7 @@ def build_meta(coins, report_paths):
         reports.append({"title": title, "date": "2026-11-10", "path": rel, "sha256": sha})
     meta = {"schemaVersion": 2, "generatedAt": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "dataHash": data_hash(coins),
-            "fields": FIELDS23,
+            "fields": FIELDS24,
             "estimateWindow": "2029 年 9 月下旬 ~ 10 月中旬（下一轮牛市高点推算窗口）",
             "sourceReports": reports,
             "generator": {"script": "scripts/build.py", "version": VERSION,
@@ -458,7 +475,7 @@ def build_meta(coins, report_paths):
 def emit(doc):
     """只编码+校验，不落盘（F6-69/F6-70）：返回 (sha256, text)。
 
-    F6-70：编码前断言每币字段集恰等于 FIELDS23，多/少都 GateFail 并列出 symbol
+    F6-70：编码前断言每币字段集恰等于 FIELDS24（W5 起，含 paprikaId），多/少都 GateFail 并列出 symbol
     （旧实现以 c.get(f) 静默丢弃多余字段且不重算 dataHash，产物自洽性被破坏）。
     """
     BUILD_DIR.mkdir(exist_ok=True)
@@ -466,17 +483,21 @@ def emit(doc):
     # 入参 doc 内部恒为规范对象形态（{"meta","coins"}）；--emit 重读已落盘的
     # rows 文档时先经 check_meta.decode_coins 解码（口径 A：dataHash 不变）。
     coins = check_meta.decode_coins(doc)
-    want = set(FIELDS23)
+    # 向后兼容迁移：FIELDS23 旧文档（无 paprikaId 键）按事实源补齐后再按 FIELDS24 编码。
+    for c in coins:
+        if "paprikaId" not in c:
+            c["paprikaId"] = PAPRIKA_MAP.get(c.get("coingeckoId"))
+    want = set(FIELDS24)
     bad = []
     for c in coins:
         keys = set(c.keys())
         if keys != want:
             bad.append(f"{c.get('symbol', '?')}(多:{sorted(keys - want)} 少:{sorted(want - keys)})")
     if bad:
-        fail("G10", "emit", f"字段集 != FIELDS23：{bad}")
+        fail("G10", "emit", f"字段集 != FIELDS24：{bad}")
     meta = dict(doc.get("meta") or {})
-    meta["fields"] = FIELDS23
-    out = {"meta": meta, "rows": [[c.get(f) for f in FIELDS23] for c in coins]}
+    meta["fields"] = FIELDS24
+    out = {"meta": meta, "rows": [[c.get(f) for f in FIELDS24] for c in coins]}
     text = json.dumps(out, ensure_ascii=False, separators=(",", ":"))
     return hashlib.sha256(text.encode("utf-8")).hexdigest(), text
 
@@ -527,7 +548,7 @@ def diff_vs_prior(prior, new):
     for s in sorted(set(old) - set(cur)):
         lines.append(f"删除 {s}")
     for s in sorted(set(old) & set(cur)):
-        for k in FIELDS23:
+        for k in FIELDS24:
             if old[s].get(k) != cur[s].get(k):
                 lines.append(f"{s}: {k} {old[s].get(k)}→{cur[s].get(k)}")
     return lines
@@ -673,7 +694,7 @@ def main():
                            "athFlag": r["athFlag"], "estLo": r["estLo"], "estHi": r["estHi"], "multLo": r["multLo"],
                            "multHi": r["multHi"], "impliedMcapLoUsd": r["impliedMcapLoUsd"],
                            "impliedMcapHiUsd": r["impliedMcapHiUsd"], "impliedMcapRaw": r["impliedMcapRaw"],
-                           "confidence": r["confidence"], "reason": reason, "dataDate": "2026-11-10"})
+                           "confidence": r["confidence"], "reason": reason, "dataDate": "2026-11-10", "paprikaId": PAPRIKA_MAP.get(cid)})
         rerank(merged)
         if unresolved:
             fail("G5", "resolve", f"未决 id 清单: {unresolved}（只许经 overrides.json 或修报告解决）")
