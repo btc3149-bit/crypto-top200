@@ -51,13 +51,13 @@
 | HC3 2026-11-21 复核守夜 | 一次性 cron 型 | cron 表达式 `0 9 21 11 *`、时区 **Asia/Shanghai**、grace 6 小时 | 复核任务（`ops/reviews/2026-11-21-review.md` 清单）执行完成并留痕后 ping success；若当天取消复核，须手动 ping 或删除该 check 并留痕 | 到期未复核 → 当日下午即告警；复核完成后删除/停用 HC3，不得自行滚动生成下一个复核点 |
 | HC4 fetcher 影子链新鲜度（W4-03，2026-11-13 新增） | 每 1 小时 | period 1h、grace 20 分钟 | 每小时只读检查 `scripts/check-shadow-health.py`：读 KV `v1:meta:health`，lastSuccessAt ≤25 分钟且 consecutiveFailures ≤2 → ping success；否则 ping `/fail` 附日志；检查本身读不到 KV（退出码 2）同样 ping `/fail` | fetcher 假死断档 >2 个 run 即经 /fail 告警（不再等结算人工发现，补 F4-03 的最长约 73h 盲窗）；报到 cron 自身缺席则 period+grace 到期缺席告警 |
 
-### 落地状态（2026-11-12 更新）
+### 落地状态（2026-11-12 更新；F7-54 于 2026-11-23 补 HC4 核对范围）
 
-- **账号与钥匙**：账号已注册（kwl134999@gmail.com，免费档）；HC1–HC3 三个检查的参数与上表逐项核对一致。完整访问 API key 已轮换一次（旧 key 撤销、新 key 经用户从弹窗复制）并存入保险箱自定义连接 `custom.healthchecks`；ping URL 仍按红线只由助手程序在运行时经 API 现查现用，不落盘、不入仓库。
+- **账号与钥匙**：账号已注册（kwl134999@gmail.com，免费档）；HC1–HC3 三个检查的参数与上表逐项核对一致。**【F7-54 修订，2026-11-23】核对范围已扩至 HC1–HC4：HC4（2026-11-13 接线，见下文 HC4 条目）的参数（period 1h、grace 20m、邮件通道挂载）已列入同表并随本节一并视为已核对范围；本节标题日期仍为原落地时点，HC4 部分以本修订日期为准。** 完整访问 API key 已轮换一次（旧 key 撤销、新 key 经用户从弹窗复制）并存入保险箱自定义连接 `custom.healthchecks`；ping URL 仍按红线只由助手程序在运行时经 API 现查现用，不落盘、不入仓库。
 - **HC1 已接线**：手动首 ping 已转 UP；每小时报到由 cron `top200-hc1-hourly-probe` 承担（跑 probe.sh 全量断言，pass → success ping，fail → fail ping 附日志，并向用户汇总）。2026-11-12 已做 /fail 触发演练：HC1 实测 down → success 恢复 up，告警与恢复邮件由 healthchecks 投递至 kwl134999@gmail.com（收件箱由用户目视确认）。
 - **HC2 已接线**：部署管线的 env 变量路径保留给外部部署环境；助手本人执行的部署改走等价路径——部署冒烟通过后用连接器助手脚本按检查名 ping（`hc_api.py ping HC2-top200-deploy success`），2026-11-12 已为当日 health.js 修复部署补发 success ping 并转 UP。
 - **HC3 已接线**：一次性复核任务 `crypto-bottom-window-review`（2026-11-21 09:17）的交付步骤已追加"复核消息发出后 ping HC3 success"，避免到期未报到误告警。
-- **HC4 已接线（2026-11-13，W4-03）**：经 API 创建检查 `HC4-top200-fetcher-shadow`（period 1h、grace 20m、邮件通道已挂），手动首 ping 已转 UP；每小时报到由 cron `top200-hc4-shadow-probe` 承担（只读 KV，全程不写 KV、不触发抓取、零 CoinGecko 额度）。影子链异常不影响当前 legacy 线上路径，但直接关系 G1/G2 证据完整性。
+- **HC4 已接线（2026-11-13，W4-03）**：经 API 创建检查 `HC4-top200-fetcher-shadow`（period 1h、grace 20m、邮件通道已挂），手动首 ping 已转 UP；每小时报到由 cron `top200-hc4-shadow-probe` 承担（只读 KV，全程不写 KV、不触发抓取、零 CoinGecko 额度）。**【F7-54 修订，2026-11-23】本条原写「影子链异常不影响当前 legacy 线上路径」为 G3 前口径，已过时：G3（2026-11-19）后 fetcher 抓取链即生产数据链（写 current 键供线上 `/api/board` 只读组装），HC4 异常 = 生产数据新鲜度异常，须按生产故障处置；「关系 G1/G2 证据完整性」仅为其历史定位。检查名中的 shadow 为创建时命名沿用，不代表现行链路性质。**
 
 ## 告警收敛（两家平台同口径）
 

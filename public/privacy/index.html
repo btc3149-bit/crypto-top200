@@ -23,7 +23,7 @@
 <body>
 <div class="wrap">
   <h1>隐私说明</h1>
-  <p class="sub">最后更新：2026-11-11 ｜ 适用域名：仅 <strong>top200.oppcal.com</strong></p>
+  <p class="sub">最后更新：2026-11-23 ｜ 适用域名：仅 <strong>top200.oppcal.com</strong></p>
   <p class="sub">当前状态：<strong>网站统计（Web Analytics）已启用</strong>（2026-11-11 经站长签收后启用）。本页如实描述当前实际数据流。</p>
 
   <section>
@@ -45,15 +45,14 @@
 
   <section>
     <h2>四、数据流二 · 榜单数据代理（CoinGecko）</h2>
-    <p>榜单的实时行情来自 CoinGecko。您的浏览器<strong>不直连 CoinGecko</strong>：浏览器只请求本站的同源接口 <code>/api/board</code>，由本站服务端函数向 CoinGecko 拉取行情后转发给您。因此 CoinGecko 一侧看到的是本站服务器发出的请求，而不是您的身份信息。</p>
-    <p>按服务端函数的实际代码：行情结果在服务端缓存 <strong>120 秒</strong>，缓存期内多人访问共用同一份数据；上游故障时回退最近一次成功数据并明确标注为缓存/快照状态，不会把旧数据冒充实时。本站服务端函数<strong>不记录、不存储访客的 IP 地址</strong>，其运行日志仅包含错误类型、上游状态码与耗时。本站不把榜单请求数据用于画像，也不出售或共享给任何第三方。</p>
+    <p>榜单的实时行情来自 CoinGecko。您的浏览器<strong>不直连 CoinGecko</strong>：浏览器只请求本站的同源接口 <code>/api/board</code>。行情由本站的抓取服务<strong>约每 10 分钟</strong>向 CoinGecko 抓取一次并写入本站缓存，<code>/api/board</code> 只读该缓存组装榜单后转发给您，不逐次回源拉取。因此 CoinGecko 一侧看到的是本站抓取服务发出的请求，而不是您的身份信息。</p>
+    <p>按现行实际架构：多人访问共用同一份缓存数据，数据新鲜度以约 10 分钟的抓取节奏为限；上游故障时回退最近一次成功数据并明确标注为缓存/快照状态，不会把旧数据冒充实时。本站服务端函数<strong>不记录、不存储访客的 IP 地址</strong>，其运行日志仅包含错误类型、上游状态码与耗时。本站不把榜单请求数据用于画像，也不出售或共享给任何第三方。</p>
   </section>
 
   <section>
     <h2>五、数据流三 · 浏览器本地存储</h2>
     <p>本站自身<strong>不设置任何 Cookie</strong>，这也是本站不弹 Cookie 横幅的原因。</p>
-    <!-- [待 W2-06 前端包落地后复核] 下段为「若使用」口径预写：自选功能上线时键名以实际上线代码为准复核后去掉本注释。 -->
-    <p>若您使用本站的自选/收藏功能，该功能会使用浏览器 <code>localStorage</code>（键名以实际上线版本为准，预定为 <code>top200.watchlist.v1</code>）把您选中的币种<strong>只保存在您本机浏览器里</strong>，不上传到任何服务器；清除浏览器站点数据即可删除。未使用该功能时，不写入该键。</p>
+    <p>本站的自选/收藏功能已上线：当您使用该功能时，它会使用浏览器 <code>localStorage</code>（键名 <code>top200.watchlist.v1</code>，与实际上线代码一致）把您选中的币种<strong>只保存在您本机浏览器里</strong>，不上传到任何服务器；清除浏览器站点数据即可删除。未使用该功能时，不写入该键。</p>
   </section>
 
   <section>

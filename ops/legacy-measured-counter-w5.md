@@ -13,4 +13,4 @@
 - 触发点：`functions/api/board.js` 的 `fetchUpstreamInternal` 在 key 已配置、请求发出前调用 `addLegacyCredits(env, 2)`（markets 1 + global 1）；缓存命中、熔断短路、kv 模式均不触发——现行生产为 kv 模式，计数应恒为 0/无键。计数失败不影响主流程；不改 `/api/board` 响应结构（只新增内部 KV 计数键）。
 - 约定突破注明：此举突破「Function 只 get」旧约定（`tests/kv-write-guard.test.mjs` 已改为逐点核准这唯一例外）；**用户已于 2026-11-23 通过批准本项授权**。
 - 核账呈现：`scripts/quota-check.py` 读该键并在记录中新增 `legacyMeasured` 字段，与建模 scenarios 并列标注；判级仍按 F6-07 的 G3 口径，实测值不回填已用、不改变 verdict。
-- 状态：代码已施工并有测试（`tests/legacy-credits.test.mjs` 5 例、`tests/quota_check_test.py` 新增第 ⑥ 例），**尚未部署**；部署后计数才开始产生。
+- 状态：代码已施工并有测试（`tests/legacy-credits.test.mjs` 5 例、`tests/quota_check_test.py` 新增第 ⑥ 例）。**【F7-48 修订，2026-11-23】本条原写「尚未部署」为施工落盘时点口径，现已过时：计数已随 W5 Pages 部署 `eba9cb0d` 上线生效（见 `CONSTRUCTION_PHASE5.md`），部署后 quota-check 已实测读到 `legacyMeasured`（现行 kv 形态下无回源、available=false 属预期）。上文「核查结论：未覆盖（激活前）」一节为激活前的历史核查记录，保留原文备查，不得按现行状态引用。**

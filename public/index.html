@@ -111,7 +111,12 @@
   @media (max-width:1500px){.c-reason{display:none}col.c-reason{width:0}}
   @media (max-width:640px){
     .c-conf{display:none}
-    col.c-rank{width:36px}col.c-coin{width:112px}col.c-price{width:68px}col.c-est{width:80px}col.c-mult{width:88px}
+    /* F7-37 定版：五列总宽 34+98+64+62+68=326px ≤ 360px 视口下 tablewrap clientWidth≈330，
+       390px 视口（clientWidth≈360）亦一屏可见、不横溢；下方 th,td 内边距同步收至 3px，
+       币种列内容宽 98-2×3=92px ≥ 展开钮 44 + 星标 44 = 88px，两钮同行不折行。 */
+    col.c-rank{width:34px}col.c-coin{width:98px}col.c-price{width:64px}col.c-est{width:62px}col.c-mult{width:68px}
+    table{font-size:12px}
+    th,td{padding:6px 3px}
     col.c-estrank{width:0}col.c-ranknow{width:0}col.c-chg{width:0}col.c-mcap{width:0}col.c-ath{width:0}col.c-conf{width:0}
     /* 2026-11-13 移动端修复（真机 V3-3 失败回炉）：table-layout:fixed 下只用 display:none 隐藏
        单元格时，Blink 按 colgroup 顺序把列宽顺位配给存活列——价格列吃到报告排名列的 0 宽、
@@ -119,12 +124,17 @@
        溢出叠印、预估数字逐字竖排撑高整行。隐藏列的 <col> 必须一并 display:none，列宽规格
        才与存活列一一对齐（无头 Chrome 157 与真机 WebView 同为 Blink，几何实测一致）。 */
     col.c-estrank,col.c-ranknow,col.c-chg,col.c-mcap,col.c-ath,col.c-conf,col.c-reason{display:none}
-    th.c-coin,td.c-coin{left:36px}
+    th.c-coin,td.c-coin{left:34px}
     td.c-est{white-space:normal;overflow-wrap:break-word}
-    /* 表头长标签允许在窄列内换行，避免 nowrap 溢出与相邻表头文字叠印；排名列表头文字
-       （预估排名/实时预估排名，最长 6 字）在 36px 列内无法排下，视觉隐藏但读屏保留，只留排序箭头 */
+    td.c-mult{overflow-wrap:break-word}
+    /* 表头长标签允许在窄列内换行，避免 nowrap 溢出与相邻表头文字叠印 */
     th.c-price,th.c-est,th.c-mult{white-space:normal}
-    #thRank{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    /* F7-37 定版：首列表头文字对明眼用户可见——不再 clip 视觉隐藏。排名列内容宽
+       = 34 - th 内边距 2×3 - .th-sort 内边距 2×2 = 24px，#thRank 以 10px 字号逐字
+       折行（每行 2 字，「预估排名」2 行、「实时预估排名」3 行），排序箭头紧随其后，
+       明眼用户可辨列名与可排序状态；读屏 aria-label 口径不变。 */
+    #thRank{font-size:10px;line-height:1.3;white-space:normal;word-break:break-all}
+    .th-sort{padding:4px 0}
     .toolbar{gap:6px}
     .toolbar input[type=search]{flex:1 1 150px}
   }
@@ -139,7 +149,12 @@
   footer{color:var(--dim);font-size:12px;line-height:1.7;margin-top:16px}
   .hidden{display:none}
   .ath-flag{color:var(--dim);font-size:10px;margin-left:1px}
-  button.ath-flag{background:none;border:none;cursor:pointer;padding:0 1px;font-family:inherit}
+  /* F7-35 定版：† 视觉字形保持 10px 不动（不改行高/表格布局），命中域用 ::after 透明
+     扩展层放大——字形盒约 9×13px，::after 上下各扩 16px、左右各扩 12px，有效命中域
+     约 33×45px（≥本站 44px 高目标与 WCAG AA 24×24 下限）。扩展只覆盖本单元格内的
+     价格文字/跌幅副行区域（同格无其他交互元素），点击落入扩展区与点击字形同效（打开图例）。 */
+  button.ath-flag{background:none;border:none;cursor:pointer;padding:0 1px;font-family:inherit;position:relative}
+  button.ath-flag::after{content:"";position:absolute;inset:-16px -12px}
   button.ath-flag:focus-visible{outline:2px solid var(--acc);outline-offset:1px}
   .legend.flash-note{color:var(--txt);background:var(--chip);border-radius:6px}
   .badge.unverified{background:transparent;border:1px solid var(--line);color:var(--dim)}
@@ -161,10 +176,15 @@
   .conf-低{font-weight:600}
   .mult-warn{color:var(--dim)}
   .exp{background:none;border:1px solid var(--line-strong);color:var(--dim);border-radius:6px;cursor:pointer;min-width:28px;min-height:28px;padding:2px 6px;margin-right:4px;vertical-align:middle;position:relative}
-  /* W5 命中域放大：视觉盒保持 28×28（不改列宽/行高布局），::after 透明扩展层每边外扩 8px，
-     有效命中域 28+2×8=44×44px；扩展仅覆盖相邻单元格内边距/按钮外边距等无内容死区，不绘制像素。
-     本体已达 44px 的档位（≤640、粗指针 ≥641）在各自媒体查询内把扩展收回 inset:0，命中域恰 44。 */
-  .exp::after{content:"";position:absolute;inset:-8px}
+  /* W5 命中域放大 + F7-34 横向收敛定版：视觉盒保持 28×28（不改列宽/行高布局），::after
+     透明扩展层上/下/左各外扩 8px、右仅外扩 4px（inset:-8px -4px -8px -8px）。
+     几何关系：.exp 的 margin-right 为 4px，星标盒左缘 = .exp 盒右缘 + 4px；右扩 4px
+     恰好填满该外边距间隙、止于星标左缘，不侵入星标 32px 命中域（W5 的右扩 8px 曾蚀
+     星标左缘 4px，F7-34 已收敛）。有效命中域 = 宽 28+8+4=40px × 高 28+2×8=44px：
+     纵向维持 44，横向 40 为「不侵星标、不改布局」约束下的最大值，左侧 8px 覆盖币种
+     单元格内边距死区。本体已达 44px 的档位（≤640、粗指针 ≥641）在各自媒体查询内把
+     扩展收回 inset:0，命中域恰 44×44 不变。 */
+  .exp::after{content:"";position:absolute;inset:-8px -4px -8px -8px}
   /* W5 级联修复：≤640 档 .exp 本体 44×44 的规则原写在上方 ≤640 媒体块内（基础 .exp 规则之前），
      同特异性被后写的基础 28px 覆盖而长期失效（实测各宽度均为 28×28 的根源）；现移至基础规则之后
      定版，本档命中域=本体 44、::after 扩展收回。勿再把 .exp 尺寸规则写回基础规则之前的媒体块。 */
@@ -183,7 +203,8 @@
   tbody tr:not(.detail-row):hover td.c-rank,tbody tr:not(.detail-row):hover td.c-coin{background:#171d2c}
   /* W2-09 立规：本期新增动效默认不加；将来若加，必须写在 @media (prefers-reduced-motion: no-preference) 内，reduce 档保持瞬时切换 */
   .sub-toggle{display:none}
-  @media (pointer:coarse) and (min-width:641px){.exp,.star{min-width:44px;min-height:44px}.exp::after{inset:0}.toolbar button,.toolbar select,.toolbar input[type=search]{min-height:44px}}
+  /* F7-36：粗指针档 .th-sort 排序表头按钮高度同步放大至 44px（基础档仍 36px，见 .th-sort 定版） */
+  @media (pointer:coarse) and (min-width:641px){.exp,.star{min-width:44px;min-height:44px}.exp::after{inset:0}.toolbar button,.toolbar select,.toolbar input[type=search]{min-height:44px}.th-sort{min-height:44px}}
   @media (max-width:640px){
     #subMain{display:none}
     #subMain.show{display:block}
@@ -469,8 +490,8 @@
   </section>
 
   <footer>
-    数据来源：行情由 <a href="https://www.coingecko.com" target="_blank" rel="noopener" style="color:var(--txt)">CoinGecko<span class="sr-only">（在新窗口打开）</span></a> 提供（经本站服务端缓存代理，每 120 秒更新）；预估数据来自上述三份研究报告（主榜单价格快照为 CoinGecko 口径 2026-11-08 日收盘，与 CoinMarketCap 交叉核对；两轮补位批为 2026-11-10 CoinGecko 实盘核验）。<br>
-    本站仅供信息参考，不构成投资建议。加密货币投资可损失全部本金，请独立判断、量力而行。
+    数据来源：行情由 <a href="https://www.coingecko.com" target="_blank" rel="noopener" style="color:var(--txt)">CoinGecko<span class="sr-only">（在新窗口打开）</span></a> 提供（由本站抓取服务约每 10 分钟抓取一次并写入缓存，本站页面只读缓存组装榜单，不逐次回源）；预估数据来自上述三份研究报告（主榜单价格快照为 CoinGecko 口径 2026-11-08 日收盘，与 CoinMarketCap 交叉核对；两轮补位批为 2026-11-10 CoinGecko 实盘核验）。<br>
+    本站仅供信息参考，不构成投资建议。加密货币投资可损失全部本金，请独立判断、量力而行。｜ <a href="/privacy" style="color:var(--txt)">隐私说明</a>
   </footer>
 </main>
 
@@ -788,12 +809,20 @@ function sortVal(c, key) {
   if (key === "athDrop") return c._d.athDrop;
   return c._d.multMid;
 }
+// F7-38：tie-break 名次经 num() 归一——estRank 为字符串/非数时不产 NaN 比较结果；
+// 缺失名次沉底，两侧皆缺失视为相等（返回 0），排序结果确定性不依赖畸形字段。
+function rankTie(c) { const n = num(c.estRank); return n == null ? null : n; }
+function cmpRankTie(x, y) {
+  const xr = rankTie(x), yr = rankTie(y);
+  if (xr == null || yr == null) { if (xr == null && yr == null) return 0; return xr == null ? 1 : -1; }
+  return xr - yr;
+}
 function cmpCoins(x, y) {
   const xv = sortVal(x, sortState.key), yv = sortVal(y, sortState.key);
   const xn = xv == null, yn = yv == null;
-  if (xn || yn) { if (xn && yn) return x.estRank - y.estRank; return xn ? 1 : -1; }
+  if (xn || yn) { if (xn && yn) return cmpRankTie(x, y); return xn ? 1 : -1; }
   if (xv !== yv) return (xv - yv) * (sortState.dir === "asc" ? 1 : -1);
-  return x.estRank - y.estRank;
+  return cmpRankTie(x, y);
 }
 function updateSortHeaders() {
   for (const key of Object.keys(SORT_DEFS)) {
@@ -906,10 +935,12 @@ function detailHTML(c) {
 }
 function syncHashForExpand(c, open) {
   try {
-    if (open) { history.replaceState(null, "", "#" + c.symbol); return; }
+    // F7-38：symbol 非字符串时以空串代行，不抛 TypeError（正常数据恒为字符串）
+    const sym = typeof c.symbol === "string" ? c.symbol : "";
+    if (open) { history.replaceState(null, "", "#" + sym); return; }
     let raw = "";
     try { raw = decodeURIComponent(String(location.hash || "").replace(/^#/, "")).trim().toUpperCase(); } catch (e) {}
-    if (raw === c.symbol.toUpperCase()) {
+    if (sym && raw === sym.toUpperCase()) {
       history.replaceState(null, "", "/");
       if (hashTarget === c.coingeckoId) hashTarget = null;
       document.title = DEFAULT_TITLE;
@@ -1129,10 +1160,11 @@ function parseHashTarget() {
   raw = raw.trim();
   if (!raw) return null;
   const up = raw.toUpperCase();
-  let c = COINS.find((x) => x.symbol.toUpperCase() === up);
+  // F7-38：symbol/coingeckoId 非字符串时跳过该行，不得 TypeError 中断 hash 直达路径
+  let c = COINS.find((x) => typeof x.symbol === "string" && x.symbol.toUpperCase() === up);
   if (c) return c;
   const low = raw.toLowerCase();
-  c = COINS.find((x) => x.coingeckoId === low);
+  c = COINS.find((x) => typeof x.coingeckoId === "string" && x.coingeckoId === low);
   return c || null;
 }
 function clearFlash() {
@@ -1177,10 +1209,21 @@ function decodeCoinsData(data) {
   // W5：FIELDS24 仅在末尾追加 paprikaId 列，本解码器按 meta.fields 动态 zip，天然兼容 FIELDS23 旧数据与 FIELDS24 新数据，无需改逻辑。
   // F6-59：解码后加最小健全性校验——fields 改名/行形变时产出的垃圾对象不得替换
   // 构建快照行，不合即 throw，由 init 的 catch 走既有快照兜底（W2-17）。
+  // F7-38：校验由「只验首行」扩为全行——任一行关键字段（coingeckoId / symbol /
+  // estRank）类型不合即整表 throw 走快照兜底，不得放行后段畸形行（如 symbol 为
+  // 数字）在 hash 直达路径抛 TypeError、或令排序 tie-break 产 NaN。
+  const validateAll = (arr) => {
+    for (const c of arr) {
+      if (!c || typeof c.coingeckoId !== "string" || !c.coingeckoId ||
+          typeof c.symbol !== "string" || !c.symbol ||
+          typeof c.estRank !== "number" || !isFinite(c.estRank)) {
+        throw new Error("coins schema invalid: row fields");
+      }
+    }
+    return arr;
+  };
   if (data && Array.isArray(data.coins)) {
-    const f = data.coins[0];
-    if (f && (typeof f.coingeckoId !== "string" || !f.coingeckoId || typeof f.estRank !== "number")) throw new Error("coins schema invalid");
-    return data.coins;
+    return validateAll(data.coins);
   }
   if (data && Array.isArray(data.rows)) {
     const fields = data.meta && Array.isArray(data.meta.fields) ? data.meta.fields : null;
@@ -1193,9 +1236,7 @@ function decodeCoinsData(data) {
       for (let i = 0; i < fields.length; i++) o[fields[i]] = r[i];
       return o;
     });
-    const f = out[0];
-    if (f && (typeof f.coingeckoId !== "string" || !f.coingeckoId || typeof f.estRank !== "number")) throw new Error("coins schema invalid");
-    return out;
+    return validateAll(out);
   }
   return [];
 }
@@ -1203,7 +1244,15 @@ async function init() {
   loadWatch(); // F6-54：最先按原始数组载入自选，与 coins 取数成败无关（失败态点星不覆写已存自选）
   loadBoard(); // W3-16：与 coins 取数并行启动，不再串行等待
   try {
-    const res = await fetch("data/coins.json");
+    // F7-43（前端部分）：与 loadBoard 同口径加 10 秒 AbortController 超时——同源静态
+    // 拉取异常挂起时落入下方 catch 走既有快照兜底（失败信号 = console.error + 快照
+    // 横幅），不再无限停留在构建快照行且无任何信号；降级方向不变。
+    const ctl = typeof AbortController !== "undefined" ? new AbortController() : null;
+    const timer = ctl ? setTimeout(() => ctl.abort(), 10000) : null;
+    let res;
+    try { res = await fetch("data/coins.json", ctl ? { signal: ctl.signal } : undefined); }
+    finally { if (timer) clearTimeout(timer); }
+    if (!res.ok) throw new Error("coins " + res.status);
     const data = await res.json();
     COINS = decodeCoinsData(data);
     if (!COINS.length) throw new Error("coins empty");

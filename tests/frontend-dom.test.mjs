@@ -683,7 +683,7 @@ await test("⑰ F7-31 命中域行为断言：CSSOM 级联计算（.exp position
     for (const r of rules) if (r.selector === selector && mediaOk(r.media, sc)) Object.assign(out, r.decls);
     return out;
   };
-  const px = (v) => { const m = /^(-?\d+(?:\.\d+)?)px$/.exec(String(v ?? "").trim()); return m ? Number(m[1]) : null; };
+  const px = (v) => { const m = /^(-?\d+(?:\.\d+)?)(?:px)?$/.exec(String(v ?? "").trim()); return m ? Number(m[1]) : null; };
   // inset 简写 → {top,right,bottom,left}（px 数值；负值表示外扩量取其相反数在调用处处理）
   const insetOf = (v) => {
     const parts = String(v ?? "").trim().split(/\s+/).map(px);
@@ -741,6 +741,39 @@ await test("⑱ W5 SRI 处置守卫：全站外部脚本仅 CF beacon 一支（�
     assert.equal(m[1], "https://static.cloudflareinsights.com/beacon.min.js", "外部脚本只允许 CF Web Analytics beacon");
     assert.ok(!/integrity=/.test(m[0]), "beacon 不得带 integrity（CF 不支持版本锁定、内容随版本更新，见 §5.4 接受登记）；变更处置须先改登记再改本断言");
   }
+});
+
+await test("⑲ F7-38/F7-35/F7-36/F7-37 第七期前端定版：decode 全行校验、hash/排序防 NaN、† 与 th-sort 命中域、≤640 五列几何", () => {
+  // F7-38：后段行（第 50 行）symbol 为数字 → decodeCoinsData 应整表 throw 走快照兜底
+  const badDoc = JSON.parse(JSON.stringify(coinsDoc));
+  const si = coinsDoc.meta.fields.indexOf("symbol");
+  badDoc.rows[49][si] = 123;
+  ctx.__badDoc = badDoc;
+  assert.equal(inPage("try { decodeCoinsData(__badDoc); 'no-throw' } catch (e) { 'threw' }"), "threw", "第 50 行 symbol 非字符串应被全行校验拦下");
+  const badRank = JSON.parse(JSON.stringify(coinsDoc));
+  badRank.rows[10][coinsDoc.meta.fields.indexOf("estRank")] = "11";
+  ctx.__badRank = badRank;
+  assert.equal(inPage("try { decodeCoinsData(__badRank); 'no-throw' } catch (e) { 'threw' }"), "threw", "estRank 为字符串应被全行校验拦下");
+  delete ctx.__badDoc; delete ctx.__badRank;
+  // hash 路径防御：即便 COINS 被注入畸形行，parseHashTarget 不得 TypeError
+  ctx.__keepCoins = null;
+  inPage("__keepCoins = COINS; COINS = [{ symbol: 123, coingeckoId: 9, estRank: 1 }, ...__keepCoins.slice(0, 3)]; location.hash = '#BTC'");
+  assert.equal(inPage("try { parseHashTarget(); 'no-throw' } catch (e) { 'threw:' + e.constructor.name }"), "no-throw", "畸形 symbol 下 parseHashTarget 不得抛错");
+  inPage("COINS = __keepCoins; location.hash = ''; delete __keepCoins");
+  // 排序 tie-break 不产 NaN：estRank 字符串参与 cmpCoins 结果须为有限数
+  const cmp = inPage("(() => { const a = { ...COINS[0], estRank: '5', _d: {} }, b = { ...COINS[1], estRank: 7, _d: {} }; const r = cmpRankTie(a, b); return Number.isFinite(r) ? 'finite' : 'nan'; })()");
+  assert.equal(cmp, "finite", "cmpRankTie 对字符串 estRank 应产有限比较值");
+  // CSS 定版断言（F7-35/36/37）
+  const style = /<style>([\s\S]*?)<\/style>/.exec(html)[1];
+  assert.ok(/button\.ath-flag::after\{content:"";position:absolute;inset:-16px -12px\}/.test(style), "† 按钮应有 ::after 命中扩展（约 33×45）");
+  assert.ok(/@media \(pointer:coarse\) and \(min-width:641px\)\{[\s\S]*?\.th-sort\{min-height:44px\}/.test(style), "粗指针档 .th-sort 应为 44px");
+  const m640 = /@media \(max-width:640px\)\{([\s\S]*?)\n  \}/.exec(style)[1];
+  const cols = [...m640.matchAll(/col\.c-(rank|coin|price|est|mult)\{width:(\d+)px\}/g)];
+  assert.equal(cols.length, 5, "≤640 应找到五列列宽");
+  const sum = cols.reduce((s, m) => s + Number(m[2]), 0);
+  assert.ok(sum <= 330, `≤640 五列总宽应 ≤330（360 视口 clientWidth），实际 ${sum}`);
+  assert.ok(!/#thRank\{[^}]*clip:rect/.test(m640), "≤640 #thRank 不得再被 clip 视觉隐藏");
+  assert.ok(/#thRank\{font-size:10px/.test(m640), "≤640 #thRank 应以可见小字号折行呈现");
 });
 
 const failed = results.filter(([, s]) => s !== "PASS");
