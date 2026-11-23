@@ -70,7 +70,7 @@ bash scripts/smoke.sh https://preview.crypto-top200.pages.dev
 
 ```bash
 python3 scripts/build.py --emit   # 只校验 + 把源拷贝为产物（本地、无网络、秒级）
-npx wrangler pages dev public     # 本地预览（不要双击 index.html：file:// 下 fetch 会被浏览器拦截，只能看静态壳）
+bash scripts/wrangler-pinned.sh pages dev public     # 本地预览（不要双击 index.html：file:// 下 fetch 会被浏览器拦截，只能看静态壳）；wrangler 一律走锁版入口 scripts/wrangler-pinned.sh（F7-45，版本从 package.json pin 读取，禁止裸 npx wrangler）
 npm run deploy:preview            # 预览冒烟通过后再上生产
 ```
 
@@ -113,7 +113,7 @@ python3 scripts/build.py --offline  # 离线构建（跳过在线审计，构建
 可选但推荐：到 CoinGecko 申请免费 Demo key，用 Secret 方式写入（不要写进任何文件、不要用普通明文环境变量）：
 
 ```bash
-npx wrangler pages secret put COINGECKO_API_KEY --project-name crypto-top200
+bash scripts/wrangler-pinned.sh pages secret put COINGECKO_API_KEY --project-name crypto-top200
 ```
 
 改 Secret 后必须重新部署才生效。注意：CoinGecko Demo 档**全账号仅 1 把 key**——Preview 环境不配 key、改走 fixture 样例数据（W2-20 定版）；轮换流程：新建 → 替换并重新部署 → 在 CoinGecko 后台吊销旧 key，剧本全文见 `ops/security/rotation-playbook.md`。
@@ -121,7 +121,7 @@ npx wrangler pages secret put COINGECKO_API_KEY --project-name crypto-top200
 ## 本地预览（可选）
 
 ```bash
-npx wrangler pages dev public
+bash scripts/wrangler-pinned.sh pages dev public
 ```
 
 浏览器打开它给的本地地址，效果与线上一致（含实时行情）。

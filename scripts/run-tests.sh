@@ -22,6 +22,8 @@ SUITES=(
   "node:tests/legacy-credits.test.mjs"
   "node:tests/coins-list-contract.test.mjs"
   "node:tests/compare-shadow.test.mjs"
+  "node:tests/wrangler-pinned.test.mjs"
+  "node:tests/audit-deps.test.mjs"
   "python3:tests/test_render_snapshot.py"
   "python3:tests/weekly_check_test.py"
   "python3:tests/quota_check_test.py"

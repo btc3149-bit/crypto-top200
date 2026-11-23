@@ -4,7 +4,8 @@
 // 用法：
 //   node ops/headers/gen-headers.mjs [--variant=off|on] [--out=<path>]
 //   node ops/headers/gen-headers.mjs --check [--variant=off|on] [--out=<path>]
-//   node ops/headers/gen-headers.mjs --report-only [--out=ops/headers/_headers.report-only.txt]
+//   node ops/headers/gen-headers.mjs --report-only --variant=on [--out=ops/headers/_headers.report-only.txt]
+//   node ops/headers/gen-headers.mjs --check --report-only --variant=on   （F7-47：report-only 产物纳入 --check，deploy.sh 门禁覆盖）
 //   node ops/headers/gen-headers.mjs --no-csp   （§18.9 应急：仅删 CSP 一行，其余头保留）
 //
 // 规则（PHASE2_PLAN.md W2-18；W4-13 扩范围）：
@@ -63,6 +64,12 @@ if (variant !== "off" && variant !== "on") {
   process.exit(2);
 }
 if (!outPath) outPath = reportOnly ? DEFAULT_REPORT_ONLY_OUT : DEFAULT_OUT;
+// F7-47：report-only 产物必须显式传 --variant（默认 off 会生成 WA-OFF 旧口径预演文件，
+// 2026-11-10 陈旧产物即此形态；线上为 WA-ON，预演/事故对照必须同变体才有意义）。
+if (reportOnly && !variantExplicit) {
+  console.error("[gen-headers] 失败：--report-only 必须显式传 --variant=off|on（线上为 WA-ON：node ops/headers/gen-headers.mjs --report-only --variant=on；--check 时同样须带 --variant=on）。");
+  process.exit(2);
+}
 // F6-37：生成目标为 public/_headers 时必须显式传 --variant（默认 off 会把线上 WA-ON 刷成 WA-OFF）。
 if (!check && !reportOnly && outPath === DEFAULT_OUT && !variantExplicit) {
   console.error("[gen-headers] 失败：生成目标为 public/_headers 时必须显式传 --variant=off|on（线上为 WA-ON：node ops/headers/gen-headers.mjs --variant=on）。");
@@ -251,7 +258,11 @@ if (check) {
       console.error(`  第 ${i + 1} 行 应为：${b[i] ?? "<无此行>"}`);
     }
   }
-  console.error("[gen-headers] 处置：运行 node ops/headers/gen-headers.mjs --variant=on 重新生成（禁手改 _headers；--variant=on 为线上 WA-ON 变体，漏写会刷成 WA-OFF）。");
+  console.error(
+    reportOnly
+      ? "[gen-headers] 处置：运行 node ops/headers/gen-headers.mjs --report-only --variant=on 重新生成 report-only 产物（禁手改；变体须与线上 WA-ON 一致）。"
+      : "[gen-headers] 处置：运行 node ops/headers/gen-headers.mjs --variant=on 重新生成（禁手改 _headers；--variant=on 为线上 WA-ON 变体，漏写会刷成 WA-OFF）。"
+  );
   process.exit(1);
 }
 

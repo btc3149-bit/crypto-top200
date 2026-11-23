@@ -170,3 +170,40 @@
     且 tests/frontend-dom.test.mjs ⑱ 守卫断言会先行变红拦截。
   - 变更纪律：若未来给 beacon 强加 integrity，须同时建立 beacon hash
     漂移监测告警，否则不得上线。
+
+### 5.5 依赖漏洞审计记录（F7-46，第七期 2026-11-23）
+
+- **当期结论：未审计（不是「0 漏洞」）。** 第六期「npm audit 0 漏洞」在本期
+  无当期证据续证，禁止再沿用引用。
+- 已尝试路径（2026-11-23，本沙箱环境）：
+  1. `npm audit`：注册表端点返回 **403 Forbidden、类别 `policy_denied`**
+     （POST /-/npm/v1/security/audits/quick 被环境注册表策略拒绝），与第六、七期
+     评审实测一致，非包本身的问题；
+  2. `osv-scanner`：本机未安装（`which osv-scanner` 无结果）；
+  3. OSV 公共 API（api.osv.dev）：本轮外呼未获完成确认（直连请求未返回、
+     审批超时），**未取得任何 OSV 查询结果**，不得据此下结论。
+- 仓库依赖面（事实登记，非审计结论）：package.json 仅 devDependency
+  `wrangler 4.159.0`、无运行时依赖、无 CDN 库；package-lock.json 共 91 个包
+  （含 wrangler 的传递依赖与各平台可选二进制包）。
+- 补跑工具（已落盘）：`scripts/audit-deps.mjs`——从 package-lock.json 枚举
+  全部包版本、经 OSV 公共 API（querybatch + vulns 明细）批量查询，输出漏洞
+  计数/明细/审计日期，无需凭证；退出码 0=已审计且 0 漏洞、1=有漏洞、
+  2=未完成审计（脚本在失败时明示「未审计」，不会冒充 0 漏洞）。其离线枚举
+  与桩服务流程已由 tests/audit-deps.test.mjs 覆盖。
+- **后续补跑方法**：在可直达 api.osv.dev 的环境运行
+  `node scripts/audit-deps.mjs --out=ops/security/audit-deps-<日期>.json`，
+  并把工具、日期与漏洞计数回填本节；或在不受注册表策略限制的环境跑
+  `npm audit` / `osv-scanner scan --lockfile package-lock.json` 并同样登记。
+
+### 5.6 wrangler 锁版入口与 report-only 门禁（F7-45 / F7-47，第七期 2026-11-23）
+
+- F7-45：人工运维 wrangler 命令统一走 `scripts/wrangler-pinned.sh`（从
+  package.json 读 pin、校验 lockfile、参数透传）；README、轮换剧本、
+  fetcher-runbook、季度清单与 deploy.sh 均已改用该入口，禁止再写裸
+  `npx wrangler`。deploy.sh 的部署步亦改经该入口（与原内联
+  `npx wrangler@<pin>` 等价）。
+- F7-47：`ops/headers/_headers.report-only.txt` 已纳入 gen-headers 的
+  `--check` 体系并重新生成到现行口径（WA-ON+report-only，与线上同变体、
+  仅 CSP 头名为 Report-Only）；`--report-only` 现强制显式 `--variant`
+  （防再生成 WA-OFF 陈旧产物），deploy.sh 新增 (b2b) 门禁在每次部署时
+  校验该产物与当前全站 HTML 一致。
