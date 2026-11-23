@@ -342,6 +342,28 @@ await test("F7-13: blob coverage.missingIds 非数组（190/200 行）→ assemb
   assert.deepEqual(body.coverage, { expected: 190, returned: 190, missingIds: [] });
 });
 
+await test("F8-09: missingIds 非数组且老化至 L3 → coverage 守恒（returned=0 时 missingIds=全部期望/在场 id，不得为 []）", async () => {
+  const mod = await freshBoard();
+  Date.now = () => T0 + 7 * 3600 * 1000;
+  const missing = Array.from({ length: 10 }, (_, i) => `coin-${190 + i}`);
+  const blob = makeBigBlob(200, { missing });
+  blob.coverage.missingIds = "not-an-array";
+  const res = await mod.onRequestGet(ctx(kvEnv(blob)));
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.freshness.level, "L3");
+  assert.equal(body.mode, "snapshot");
+  assert.equal(body.coverage.returned, 0);
+  assert.equal(body.coverage.expected - body.coverage.returned, body.coverage.missingIds.length, "L3 coverage 必须守恒: expected-returned == missingIds.length");
+  // recomputed expected 退化为在场数 190；被扣下的 190 个在场 id 全部应列为缺失
+  assert.equal(body.coverage.expected, 190);
+  assert.equal(body.coverage.missingIds.length, 190);
+  assert.ok(body.coverage.missingIds.includes("coin-0"));
+  assert.ok(body.coverage.missingIds.includes("coin-189"));
+  assert.deepEqual(body.coins, {});
+  assert.equal(body.count, 0);
+});
+
 await test("F6-04: blob 自报 returned=4 但 rows 仅 3 行 → 读端拒绝假绿（落 snapshot、count=0）", async () => {
   const mod = await freshBoard();
   Date.now = () => T0;

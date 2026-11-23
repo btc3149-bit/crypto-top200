@@ -828,6 +828,14 @@ function assembleV2(blob, servedFrom, health, now) {
     } catch (_) {}
   }
   if (fresh.level === "L3") {
+    // F8-09：missingIds 非数组时 recomputedCoverage 已退化为
+    // {expected:在场数, returned:在场数, missingIds:[]}——L3 把 coins 全部扣下
+    // （returned=0），若仍直取该 [] 会出现 returned:0 却 missingIds:[]、且
+    // expected−returned ≠ missingIds.length 的守恒破裂。此形态下真实缺失不可知，
+    // 但被扣下的全部在场 id 在本应答中确属缺失，故 missingIds = 全部在场 id，
+    // 使 expected−0 == missingIds.length 恒成立。missingIds 为数组的正常形态
+    // 仍按 F6-30 口径只列真缺失（在场 id 不入列）。
+    const l3MissingIds = expectedIds ? recomputedCoverage.missingIds : [...presentIds];
     return {
       contractVersion: 2,
       source: "snapshot",
@@ -837,7 +845,7 @@ function assembleV2(blob, servedFrom, health, now) {
       stale: true,
       staleAgeSec: fresh.staleAgeSec,
       // F6-30：L3 missingIds = 真缺失（自报缺失 ∪ 期望全集−在场集），在场 id 绝不入列。
-      coverage: { expected: recomputedCoverage.expected, returned: 0, missingIds: recomputedCoverage.missingIds },
+      coverage: { expected: recomputedCoverage.expected, returned: 0, missingIds: l3MissingIds },
       global: null,
       coins: {},
       count: 0,
