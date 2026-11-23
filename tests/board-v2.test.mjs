@@ -328,6 +328,20 @@ await test("F6-30: L3 分支 missingIds = 真缺失（200 期望、190 在场、
   assert.ok(!body.coverage.missingIds.includes("coin-0"), "在场 id 绝不得出现在 missingIds");
 });
 
+await test("F7-13: blob coverage.missingIds 非数组（190/200 行）→ assemble 守恒：expected-returned == missingIds.length，不产出 200/190/[] 矛盾组合", async () => {
+  const mod = await freshBoard();
+  Date.now = () => T0;
+  const missing = Array.from({ length: 10 }, (_, i) => `coin-${190 + i}`);
+  const blob = makeBigBlob(200, { missing });
+  blob.coverage.missingIds = "not-an-array"; // 非数组输入：validateBlob 仅在 Array.isArray 时互补校验、实测放行（见 P7_NOTES_API）
+  const res = await mod.onRequestGet(ctx(kvEnv(blob)));
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.coverage.returned, 190);
+  assert.equal(body.coverage.expected - body.coverage.returned, body.coverage.missingIds.length, "coverage 必须守恒");
+  assert.deepEqual(body.coverage, { expected: 190, returned: 190, missingIds: [] });
+});
+
 await test("F6-04: blob 自报 returned=4 但 rows 仅 3 行 → 读端拒绝假绿（落 snapshot、count=0）", async () => {
   const mod = await freshBoard();
   Date.now = () => T0;

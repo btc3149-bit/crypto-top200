@@ -170,17 +170,34 @@ async function handleGet(context) {
     const complete = returned === expected && expected === EXPECTED_COUNT;
     // F6-04：count 必须与 coverage.returned 一致（count 缺失同样不判 ok）。
     const countConsistent = count != null && count === returned;
-    const ok = fresh && complete && countConsistent;
+    // F7-08：验 board.coins 本体实际键数——coins 必须是非数组对象且键数与
+    // returned/count 三方守恒；coins 缺失/为空但汇总自报满格一律 503，
+    // 堵住「coins 为空但 coverage/count 正确」的汇总假绿通道。
+    const coinsCount =
+      board.coins && typeof board.coins === "object" && !Array.isArray(board.coins)
+        ? Object.keys(board.coins).length
+        : null;
+    const coinsConsistent = coinsCount != null && coinsCount === returned && coinsCount === count;
+    const ok = fresh && complete && countConsistent && coinsConsistent;
 
     return jsonResponse(
       {
         ok,
-        reason: ok ? undefined : !fresh ? "board_stale" : !complete ? "board_incomplete" : "board_count_mismatch",
+        reason: ok
+          ? undefined
+          : !fresh
+            ? "board_stale"
+            : !complete
+              ? "board_incomplete"
+              : !countConsistent
+                ? "board_count_mismatch"
+                : "board_coins_mismatch",
         mode: typeof board.mode === "string" ? board.mode : null,
         ageSec,
         freshnessThresholdSec: FRESHNESS_THRESHOLD_SEC,
         coverage: { expected, returned },
         count,
+        coinsCount,
         updatedAt: board.updatedAt,
         checkedAt,
       },
@@ -192,6 +209,8 @@ async function handleGet(context) {
 }
 
 // HEAD 与 GET 同判定：复用 handleGet 的状态与响应头，body 置空（HTTP 语义）。
+// F7-09：handleGet 内嵌的是对 /api/board 的 GET fetch（非 HEAD），故 health 的
+// HEAD 探测不会绕过 board 的 sfsShadowCheck / 回源 / 计数口径。
 async function handleHead(context) {
   const res = await handleGet(context);
   return new Response(null, { status: res.status, headers: res.headers });

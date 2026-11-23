@@ -754,6 +754,45 @@ await test("22 F6-44: estimateQuotaMode 按当前 mode 日速率分段投影 + �
   assert.equal(storedNormal.quotaMode, "saving", "normal 速率投影 8976 > 8500 → 升 saving");
 });
 
+// ---------- 23. F7-44 /run 节流 fail-closed + 拒绝回写竞态 ----------
+await test("23a F7-44: /run 节流读 health 抛错 → fail-closed 503 throttle_check_failed、零上游调用、无 blob（旧 fail-open 会进入 runFetch）", async () => {
+  const kv = makeKv({ failGetKeys: new Set([KV_KEYS.health]) });
+  const counts = installCgFetch();
+  const res = await fetcher.fetch(runRequest("secret-token-test"), baseEnv(kv, { MANUAL_RUN_TOKEN: "secret-token-test" }));
+  assert.equal(res.status, 503);
+  assert.deepEqual(await res.json(), { error: "throttle_check_failed" });
+  assert.equal(counts.total, 0);
+  assert.equal(kv.store.has(KV_KEYS.current), false);
+});
+
+await test("23b F7-44: 节流拒绝回写不覆盖并发 health 更新（重读合并 + 专用节流键）", async () => {
+  const stale = { lastManualRunAt: new Date().toISOString(), consecutiveFailures: 0, status: "ok" };
+  const fresh = { ...stale, consecutiveFailures: 7, status: "failing" };
+  let healthGets = 0;
+  const kv = {
+    store: new Map(),
+    async get(key, opts) {
+      if (key === KV_KEYS.health) {
+        healthGets += 1;
+        const v = healthGets === 1 ? stale : fresh; // 第二次（重读）看到 cron 已更新的 health
+        return opts && opts.type === "json" ? v : JSON.stringify(v);
+      }
+      return null;
+    },
+    async put(key, value) { this.store.set(key, String(value)); },
+  };
+  kv.store.set(KV_KEYS.health, JSON.stringify(stale));
+  installCgFetch();
+  const res = await fetcher.fetch(runRequest("secret-token-test"), baseEnv(kv, { MANUAL_RUN_TOKEN: "secret-token-test" }));
+  assert.equal(res.status, 429);
+  const finalHealth = JSON.parse(kv.store.get(KV_KEYS.health));
+  assert.equal(finalHealth.consecutiveFailures, 7, "并发更新不得被节流拒绝的旧快照回写覆盖");
+  assert.equal(finalHealth.status, "failing");
+  assert.ok(finalHealth.lastManualRunRejectedAt, "拒绝留痕合并入最新 health");
+  const throttleKey = JSON.parse(kv.store.get("v1:meta:manual-run-throttle"));
+  assert.ok(throttleKey.lastManualRunRejectedAt, "专用节流键落盘");
+});
+
 globalThis.fetch = originalFetch;
 const failed = results.filter(([, s]) => s !== "PASS");
 console.log(`\n=== ${results.length - failed.length}/${results.length} passed ===`);
