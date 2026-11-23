@@ -123,6 +123,22 @@
       新增 Function 时逐一复核其 KV 用法，除该例外外的写方只能是 workers/fetcher。
 - [ ] 新增/变更 Pages Function 不得引入超出其职责的 KV、环境变量与外部抓取面
       （与 §5.1 权限面登记一并复核）。
+- [ ] **（F8-36，2026-11-23 新增）Reflect / Proxy 元编程人工检查项**：KV 写守卫
+      扫描器（tests/helpers/kv-guard-scan.mjs）已声明不覆盖元编程写路径——
+      `Reflect.get`/`Reflect.apply` 抽取写方法、Proxy `get`/`set` 陷阱转手等
+      对守卫不可见（红队样本 p8-boundary-reflect.js 固化此边界）。评审
+      `functions/` 与 `shared/` 新增/变更代码时必须人工 grep 并逐处复核
+      `Reflect`、`Proxy` 的出现：凡借其取得、转手或调用 `BOARD_KV` 写能力者
+      一律按未批准写处理，不得以「守卫未报」为由放行。此项为守卫盲区的
+      唯一兜底，缺此复核不得签核。
+- [ ] **（F8-37，2026-11-23 新增）动态代码构造双层禁令**：①守卫层——
+      `functions/` 与 `shared/` 扫描范围内出现 `eval(` 或 `Function(` 构造
+      即被 kv-write-guard 判 offender（字符串内的写调用对守卫不可见，故禁
+      构造本身）；②运行时层——Cloudflare Workers 运行时禁止 `eval` 与
+      `Function` 构造（调用即抛错），为第二层兜底。证据边界：本期未在本地
+      wrangler dev 环境实跑验证运行时抛错（无可用本地 Workers 运行时证据），
+      该层以平台公开口径登记、未实测；若未来运行时口径变化，F8-37 须升级
+      为确认绕过重新定级。评审时对 `eval`/`Function` 出现一律不放行。
 
 ### 5.3 Sec-Fetch-Site 影子模式复核点（F6-94，W2-19 条目）
 
