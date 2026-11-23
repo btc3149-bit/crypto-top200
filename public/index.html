@@ -125,7 +125,6 @@
        （预估排名/实时预估排名，最长 6 字）在 36px 列内无法排下，视觉隐藏但读屏保留，只留排序箭头 */
     th.c-price,th.c-est,th.c-mult{white-space:normal}
     #thRank{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
-    .exp{min-width:44px;min-height:44px}
     .toolbar{gap:6px}
     .toolbar input[type=search]{flex:1 1 150px}
   }
@@ -161,7 +160,15 @@
   .result-meta{color:var(--dim);font-size:12px;margin:0 0 8px}
   .conf-低{font-weight:600}
   .mult-warn{color:var(--dim)}
-  .exp{background:none;border:1px solid var(--line-strong);color:var(--dim);border-radius:6px;cursor:pointer;min-width:28px;min-height:28px;padding:2px 6px;margin-right:4px;vertical-align:middle}
+  .exp{background:none;border:1px solid var(--line-strong);color:var(--dim);border-radius:6px;cursor:pointer;min-width:28px;min-height:28px;padding:2px 6px;margin-right:4px;vertical-align:middle;position:relative}
+  /* W5 命中域放大：视觉盒保持 28×28（不改列宽/行高布局），::after 透明扩展层每边外扩 8px，
+     有效命中域 28+2×8=44×44px；扩展仅覆盖相邻单元格内边距/按钮外边距等无内容死区，不绘制像素。
+     本体已达 44px 的档位（≤640、粗指针 ≥641）在各自媒体查询内把扩展收回 inset:0，命中域恰 44。 */
+  .exp::after{content:"";position:absolute;inset:-8px}
+  /* W5 级联修复：≤640 档 .exp 本体 44×44 的规则原写在上方 ≤640 媒体块内（基础 .exp 规则之前），
+     同特异性被后写的基础 28px 覆盖而长期失效（实测各宽度均为 28×28 的根源）；现移至基础规则之后
+     定版，本档命中域=本体 44、::after 扩展收回。勿再把 .exp 尺寸规则写回基础规则之前的媒体块。 */
+  @media (max-width:640px){.exp{min-width:44px;min-height:44px}.exp::after{inset:0}}
   .detail-row td{background:var(--chip);text-align:left;white-space:normal;padding:12px 14px}
   .detail-row dl{max-width:980px;display:grid;grid-template-columns:1fr 1fr;gap:6px 18px;margin:0}
   .detail-row dt{color:var(--dim);font-size:11px}
@@ -176,7 +183,7 @@
   tbody tr:not(.detail-row):hover td.c-rank,tbody tr:not(.detail-row):hover td.c-coin{background:#171d2c}
   /* W2-09 立规：本期新增动效默认不加；将来若加，必须写在 @media (prefers-reduced-motion: no-preference) 内，reduce 档保持瞬时切换 */
   .sub-toggle{display:none}
-  @media (pointer:coarse) and (min-width:641px){.exp,.star{min-width:44px;min-height:44px}.toolbar button,.toolbar select,.toolbar input[type=search]{min-height:44px}}
+  @media (pointer:coarse) and (min-width:641px){.exp,.star{min-width:44px;min-height:44px}.exp::after{inset:0}.toolbar button,.toolbar select,.toolbar input[type=search]{min-height:44px}}
   @media (max-width:640px){
     #subMain{display:none}
     #subMain.show{display:block}
