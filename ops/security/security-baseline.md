@@ -138,3 +138,35 @@
   一致——Observatory 135 / A+ 的唯一未过项即 SRI（−5）。
 - 处置路径不变：**维持 W5 增补包既有处置路径**（实施 SRI 或正式接受并在
   本文件销项），第六期不重复施工、不重复定级。
+- **W5 处置定版（2026-11-23）：正式接受现状，本条销项。** 全站外部脚本盘点
+  （public/index.html 与 public/privacy/index.html 全部 HTML）：仅一支外部
+  脚本——Cloudflare Web Analytics beacon
+  `https://static.cloudflareinsights.com/beacon.min.js`（两页各一处，手动嵌入、
+  带站点 token），无其他外链脚本；内联脚本与 JSON-LD 为同源内联、由 CSP
+  sha256 hash 放行，不属 SRI 范围。
+  - 无法承载 SRI 的证据：① Cloudflare 官方 FAQ（Web Analytics FAQ“How can
+    I enforce Subresource Integrity (SRI) with the JS beacon?”）明确：手动
+    嵌入方式「没有安全施加 integrity 属性的办法」，因 beacon 不支持版本
+    锁定（version-pinning），官方为能持续发布安全/缺陷更新而保留同名更新；
+    仅自动注入方式由 CF 在边缘为其版本化 URL（/beacon.min.js/v<hash>）自动
+    附加 integrity。② 托管方实测口径（2026-11-23）：该 URL 响应 ETag 为
+    W/"2026.10.1"、Last-Modified 2026-10-15、Cache-Control: max-age=86400
+    ——内容按版本在同一无版本 URL 上整体更换；当日两次间隔抓取内容一致
+    （31,853 字节，sha384 =
+    DSBfgE0somecFTMgit0M4sNXN8O0JQ/LGM3DGGPVvgXIPZvW+H1zSYjc6O83LLBv），
+    仅证明当前版本内稳定。一旦 CF 发布新版本，预置 hash 即失效、浏览器将
+    拒绝执行 beacon，统计静默中断且页面侧无报错——中断风险大于 SRI 收益，
+    故不给 beacon 强加 integrity（亦无需回滚口径）。
+  - 残余风险接受理由：托管方即站点自身 CDN 与统计服务方（Cloudflare），
+    信任边界与站点托管重合；CSP script-src 已按主机收窄至
+    https://static.cloudflareinsights.com（非通配），beacon 仅向
+    cloudflareinsights.com POST 遥测；本地实测（无头 Chrome 加载本地页）
+    beacon 正常请求完成、页面功能不受影响。
+  - 预期 Observatory 结果：SRI 项维持 −5、总分维持 135 / A+。本条为未部署
+    代码的方案登记，现网复测对象只能是既有基线；部署后如需复测另行执行。
+  - 再评估触发条件：① 站点改为 CF 自动注入 Web Analytics（边缘自动带
+    SRI）；② CF 为 beacon 提供版本锁定 URL 或官方 SRI 指引变更；③ 新增
+    任何其他外部脚本——新增脚本必须逐个做 SRI 可行性评估并在此登记，
+    且 tests/frontend-dom.test.mjs ⑱ 守卫断言会先行变红拦截。
+  - 变更纪律：若未来给 beacon 强加 integrity，须同时建立 beacon hash
+    漂移监测告警，否则不得上线。
