@@ -90,6 +90,42 @@ class UpstreamError extends Error {
   }
 }
 
+// ===================== W5 legacy 实测计量（W4-02 计数键，2026-11-23 激活） =====================
+// ⚠️ 约定突破（已批准）：原约定「Function 只 get、写方为 fetcher」（W2-01）。
+// 本计数器是该约定的唯一局部突破——只写 KV_KEYS.legacyCredits
+// （v1:meta:legacy-credits）这一个计数键，不写任何数据键（current/shadow/
+// health/sourceState 仍严格只读）。授权：用户已于 2026-11-23 通过批准本项。
+// 理由：legacy 回源只发生在 Function 侧，fetcher 无从记账；不记账则双路总账
+// （F4-02）永远缺实测一半。设计沿用 prep/w402-w406-w415 分支 W4-02 既有方案。
+// 口径：fetchUpstreamInternal 每被真正执行一轮（Cache 未命中、非熔断短路、
+// 非缓存命中，且 key 已配置、请求已发出）计 markets 1 + global 1 = 2 credits
+// （两端恒并发同发，按已发出计，与成败无关——额度按调用计）。in-flight 合并
+// 后的一轮只计一次。kv 模式不走本函数，计数恒不触发（现行生产应恒为 0/无键）。
+// 结构：{month:"YYYY-MM"(UTC), credits, updatedAt}；跨月自动重置。
+// 计数为实测口径但非原子：KV 读-改-写多 colo 并发可少量漏计；计数失败绝不影响主流程。
+async function addLegacyCredits(env, credits) {
+  try {
+    if (!env || !env.BOARD_KV || typeof env.BOARD_KV.put !== "function") return;
+    const now = Date.now();
+    const month = new Date(now).toISOString().slice(0, 7);
+    let prev = null;
+    try {
+      prev = await env.BOARD_KV.get(KV_KEYS.legacyCredits, { type: "json" });
+      if (typeof prev === "string") prev = JSON.parse(prev);
+    } catch (_) {
+      prev = null;
+    }
+    const base = prev && prev.month === month && typeof prev.credits === "number" ? prev.credits : 0;
+    const next = { month, credits: base + credits, updatedAt: new Date(now).toISOString() };
+    await env.BOARD_KV.put(KV_KEYS.legacyCredits, JSON.stringify(next));
+    try {
+      console.log(JSON.stringify({ level: "info", event: "legacy_credits", month, added: credits, total: next.credits }));
+    } catch (_) {}
+  } catch (_) {
+    // 计数失败不得影响行情主流程
+  }
+}
+
 function logUpstreamError(err, durationMs) {
   // 结构化日志：只记错误类型、上游状态、耗时；不记 key、不记上游原文。
   try {
@@ -264,6 +300,9 @@ async function fetchUpstreamInternal(env, ids) {
     "https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&per_page=250&price_change_percentage=24h&ids=" +
     encodeURIComponent(ids.join(","));
   const gl = "https://api.coingecko.com/api/v3/global";
+
+  // W5 legacy 实测计量：本轮两端真实回源成立（markets 1 + global 1 = 2），先记账再发请求。
+  await addLegacyCredits(env, 2);
 
   // markets 与 global 并发、各自独立超时、互不连带（allSettled）。
   const marketsPromise = fetchWithTimeout(mk, headers);

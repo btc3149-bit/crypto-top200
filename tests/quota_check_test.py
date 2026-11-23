@@ -109,6 +109,22 @@ with redirect_stdout(buf):
     code = qc.main()
 check("⑤ health 缺 creditsUsedEst → 核账证据不足退出 3", code, 3)
 
+# ---------- W5 实测计数并列呈现 ----------
+qc.read_legacy_credits = lambda: {"month": "2026-11", "credits": 42, "updatedAt": "2026-11-15T11:00:00.000Z"}
+{
+    "quota": {"month": "2026-11", "quotaMode": "normal", "creditsUsedEst": 1000},
+    "lastUpstreamStatus": 200, "consecutiveFailures": 0, "lastRunAt": "2026-11-15T11:50:00Z", "lastRunId": "run-test",
+}
+qc.read_health = lambda: {"quota": {"month": "2026-11", "quotaMode": "normal", "creditsUsedEst": 1000}, "lastUpstreamStatus": 200, "consecutiveFailures": 0, "lastRunAt": "2026-11-15T11:50:00Z", "lastRunId": "run-test"}
+_buf = io.StringIO()
+with redirect_stdout(_buf):
+    _code = qc.main()
+_rec = json.loads(_buf.getvalue())
+check("⑥ W5 legacyMeasured 实测计数并列呈现（available/credits=42，判级仍 OK）",
+      (_rec.get("legacyMeasured", {}).get("available"), _rec.get("legacyMeasured", {}).get("credits"), _rec.get("verdict")),
+      (True, 42, "OK"))
+qc.read_legacy_credits = lambda: None
+
 print(f"\nquota_check: {len(PASS)} PASS / {len(FAIL)} FAIL")
 if FAIL:
     print("未过用例（批 0 的 F6-07 新口径合并后应转绿，见文件头与 P6_NOTES F6-16）：")

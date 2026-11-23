@@ -6,6 +6,8 @@ pages_build_output_dir = "public"
 compatibility_date = "2026-11-01"
 
 # W2-01：KV 只读绑定（Function 只 get，写方为 fetcher Worker crypto-top200-fetcher）。
+# W5 例外（2026-11-23 站长批准）：board.js 只可对计数键 v1:meta:legacy-credits 做 put
+# （legacy 实测计量，见 board.js W5 注释与 tests/kv-write-guard.test.mjs），其余键仍只 get。
 # namespace BOARD_KV 与 fetcher 侧共用同一 id，禁止另建。
 [[kv_namespaces]]
 binding = "BOARD_KV"
