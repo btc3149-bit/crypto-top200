@@ -103,24 +103,68 @@ class UpstreamError extends Error {
 // 后的一轮只计一次。kv 模式不走本函数，计数恒不触发（现行生产应恒为 0/无键）。
 // 结构：{month:"YYYY-MM"(UTC), credits, updatedAt}；跨月自动重置。
 // 计数为实测口径但非原子：KV 读-改-写多 colo 并发可少量漏计；计数失败绝不影响主流程。
-async function addLegacyCredits(env, credits) {
+// F7-10：计数点已移到上游请求发出之后（见 fetchUpstreamInternal），KV 往返与
+// 上游请求在途时间重叠，不再串行前置拖慢回源。
+// F7-11：prev.credits 做有限非负钳制——非有限/负数/异常大/非数一律自愈为 0 并
+// 记 warn 日志（legacy_credits_prev_invalid），坏值不得原样累加污染整月实测。
+// F7-42：写频率上限——同 isolate 内两次实际 KV 写至少间隔
+// LEGACY_CREDITS_MIN_WRITE_INTERVAL_MS；间隔内的增量先累积在内存 pending 中，
+// 到期后的下一次计数把 pending 一并 flush（近似计量口径不变，总量不丢、
+// 只是落盘延迟），避免回滚形态下未认证流量把每次回源都放大成一次 KV 写。
+export const LEGACY_CREDITS_MIN_WRITE_INTERVAL_MS = 60 * 1000;
+export const LEGACY_CREDITS_SANITY_MAX = 1000000; // 月 credits 合理上限（远超任何真实回源量）
+let legacyCreditsPending = 0;
+let legacyCreditsLastWriteAt = 0;
+let legacyCreditsFlushInFlight = null;
+
+export async function addLegacyCredits(env, credits) {
   try {
     if (!env || !env.BOARD_KV || typeof env.BOARD_KV.put !== "function") return;
+    if (typeof credits !== "number" || !Number.isFinite(credits) || credits <= 0) return;
+    legacyCreditsPending += credits;
     const now = Date.now();
-    const month = new Date(now).toISOString().slice(0, 7);
-    let prev = null;
-    try {
-      prev = await env.BOARD_KV.get(KV_KEYS.legacyCredits, { type: "json" });
-      if (typeof prev === "string") prev = JSON.parse(prev);
-    } catch (_) {
-      prev = null;
+    if (legacyCreditsLastWriteAt && now - legacyCreditsLastWriteAt < LEGACY_CREDITS_MIN_WRITE_INTERVAL_MS) {
+      try {
+        console.log(JSON.stringify({ level: "info", event: "legacy_credits_throttled", pending: legacyCreditsPending }));
+      } catch (_) {}
+      return;
     }
-    const base = prev && prev.month === month && typeof prev.credits === "number" ? prev.credits : 0;
-    const next = { month, credits: base + credits, updatedAt: new Date(now).toISOString() };
-    await env.BOARD_KV.put(KV_KEYS.legacyCredits, JSON.stringify(next));
+    if (legacyCreditsFlushInFlight) return legacyCreditsFlushInFlight;
+    const flushAmount = legacyCreditsPending;
+    legacyCreditsFlushInFlight = (async () => {
+      const month = new Date(now).toISOString().slice(0, 7);
+      let prev = null;
+      try {
+        prev = await env.BOARD_KV.get(KV_KEYS.legacyCredits, { type: "json" });
+        if (typeof prev === "string") prev = JSON.parse(prev);
+      } catch (_) {
+        prev = null;
+      }
+      let base = 0;
+      if (prev && prev.month === month) {
+        const c = prev.credits;
+        if (typeof c === "number" && Number.isFinite(c) && c >= 0 && c <= LEGACY_CREDITS_SANITY_MAX) {
+          base = c;
+        } else {
+          try {
+            console.warn(JSON.stringify({ level: "warn", event: "legacy_credits_prev_invalid", month, prevCreditsType: typeof c, prevCredits: typeof c === "number" ? c : null, action: "clamped_to_zero" }));
+          } catch (_) {}
+          base = 0;
+        }
+      }
+      const next = { month, credits: base + flushAmount, updatedAt: new Date(now).toISOString() };
+      await env.BOARD_KV.put(KV_KEYS.legacyCredits, JSON.stringify(next));
+      legacyCreditsPending -= flushAmount;
+      legacyCreditsLastWriteAt = now;
+      try {
+        console.log(JSON.stringify({ level: "info", event: "legacy_credits", month, added: flushAmount, total: next.credits }));
+      } catch (_) {}
+    })();
     try {
-      console.log(JSON.stringify({ level: "info", event: "legacy_credits", month, added: credits, total: next.credits }));
-    } catch (_) {}
+      await legacyCreditsFlushInFlight;
+    } finally {
+      legacyCreditsFlushInFlight = null;
+    }
   } catch (_) {
     // 计数失败不得影响行情主流程
   }
@@ -222,7 +266,9 @@ async function getIds(request) {
   if (IDS_INFLIGHT) return IDS_INFLIGHT;
   IDS_INFLIGHT = (async () => {
     const url = new URL("/data/coins.json", request.url);
-    const res = await fetch(url.toString());
+    // F7-43：同源静态拉取同样走 fetchWithTimeout（UPSTREAM_TIMEOUT_MS + AbortController/Promise.race），
+    // 不得无限挂起拖死 board（前端 coins fetch 的超时由 frontdocs 组处理）。
+    const res = await fetchWithTimeout(url.toString(), { accept: "application/json" });
     if (!res.ok) {
       throw new UpstreamError("coins.json fetch failed", {
         status: typeof res.status === "number" ? res.status : null,
@@ -302,12 +348,13 @@ async function fetchUpstreamInternal(env, ids) {
     encodeURIComponent(ids.join(","));
   const gl = "https://api.coingecko.com/api/v3/global";
 
-  // W5 legacy 实测计量：本轮两端真实回源成立（markets 1 + global 1 = 2），先记账再发请求。
-  await addLegacyCredits(env, 2);
-
   // markets 与 global 并发、各自独立超时、互不连带（allSettled）。
   const marketsPromise = fetchWithTimeout(mk, headers);
   const globalPromise = fetchWithTimeout(gl, headers);
+  await addLegacyCredits(env, 2);
+  // F7-10/W5 legacy 实测计量：两端请求已发出之后才记账（markets 1 + global 1 = 2，
+  // 按已发出计、与成败无关——额度按调用计）。计数 KV 往返与上游在途重叠，
+  // 不再串行前置于请求发出之前（旧实现计数后未发请求即终止会多计、且延迟全额前置）。
   const [mSettled, gSettled] = await Promise.allSettled([marketsPromise, globalPromise]);
 
   // --- global：失败 / 超时 / 非 2xx 一律降级为 null，绝不连带整单 ---
@@ -743,6 +790,17 @@ function assembleV2(blob, servedFrom, health, now) {
     blob.coverage && Array.isArray(blob.coverage.missingIds)
       ? [...new Set([...presentIds, ...blob.coverage.missingIds])]
       : null;
+  // F7-13：missingIds 非数组时不得透传 blob 自报 expected——缺失 id 不可知，
+  // 若照旧 expected=自报/returned=实数/missingIds=[] 会产出 expected-returned≠
+  // missingIds.length 的矛盾 coverage（已构造 blob 复现：200/190/[] 且
+  // validateBlob 因仅在 Array.isArray 时互补校验而放行）。assemble 层守恒处理：
+  // expected 重算为在场数、missingIds=[]（expected-returned=0=missing 数），
+  // 并记 error 日志；health 因 expected≠200 仍会判红，不构成假绿。
+  if (!expectedIds && blob.coverage && !Array.isArray(blob.coverage.missingIds)) {
+    try {
+      console.error(JSON.stringify({ level: "error", event: "coverage_missing_ids_invalid", blobExpected: typeof blob.coverage.expected === "number" ? blob.coverage.expected : null, returned: presentIds.size }));
+    } catch (_) {}
+  }
   const recomputedCoverage = expectedIds
     ? {
         expected: expectedIds.length,
@@ -750,9 +808,9 @@ function assembleV2(blob, servedFrom, health, now) {
         missingIds: expectedIds.filter((id) => !presentIds.has(id)),
       }
     : {
-        expected: blob.coverage && typeof blob.coverage.expected === "number" ? blob.coverage.expected : presentIds.size,
+        expected: presentIds.size,
         returned: presentIds.size,
-        missingIds: blob.coverage && Array.isArray(blob.coverage.missingIds) ? blob.coverage.missingIds : [],
+        missingIds: [],
       };
   if (
     blob.coverage &&
@@ -841,15 +899,22 @@ function snapshotV2Body(now, health, expectedIds = null) {
   };
 }
 
-// 无 blob / 模式 fail-closed 共用：尽力取 ids 作 coverage.expected，取不到则 null。
-async function snapshotV2Response(context, health) {
+// 无 blob 共用：尽力取 ids 作 coverage.expected，取不到则 null。
+// F7-12：模式 fail-closed 专用形态走 opts.failClosed——HTTP 503 + body.error=
+// "board_mode_unknown" 显式标记，使以状态码判活的探针不再假绿；合法模式下的
+// 无 blob snapshot（handleKv）仍为 200，不受误伤。
+async function snapshotV2Response(context, health, opts = {}) {
   let ids = null;
   try {
     ids = await getIds(context.request);
   } catch (_) {
     ids = null;
   }
-  return jsonResponse(snapshotV2Body(Date.now(), health, ids));
+  const body = snapshotV2Body(Date.now(), health, ids);
+  if (opts && opts.failClosed) {
+    return jsonResponse({ ...body, error: "board_mode_unknown" }, { status: 503 });
+  }
+  return jsonResponse(body);
 }
 
 async function handleKv(context) {
@@ -913,7 +978,7 @@ async function dispatchGet(context) {
         fallback: "snapshot_v2",
       })
     );
-    return snapshotV2Response(context, await readHealthSummary(context.env));
+    return snapshotV2Response(context, await readHealthSummary(context.env), { failClosed: true });
   }
   if (rawMode === "kv") return handleKv(context);
   if (rawMode === "dual") {
@@ -935,7 +1000,14 @@ export async function onRequestGet(context) {
 
 // F6-31：HEAD 与 health.js 同模式——复用 GET 的状态与头、body 置空，
 // 避免以 HEAD 探活的监控误报 405。
+// F7-09：HEAD 与 GET 同过 sfsShadowCheck（旧实现直接 dispatchGet 绕过影子计数、
+// ENFORCE_SFS=true 时亦不拦）；HEAD 经 dispatchGet 与 GET 同路，legacy/dual 下
+// 回源与 legacy-credits 计数口径与 GET 一致，不再是廉价/隐形探测。
 export async function onRequestHead(context) {
+  const blocked = sfsShadowCheck(context.request);
+  if (blocked) {
+    return new Response(null, { status: blocked.status, headers: blocked.headers });
+  }
   const res = await dispatchGet(context);
   return new Response(null, { status: res.status, headers: res.headers });
 }

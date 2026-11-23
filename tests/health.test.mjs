@@ -14,7 +14,20 @@ async function freshHealth() {
   return import(url.href);
 }
 
+function coinsObj(n) {
+  const o = {};
+  for (let i = 0; i < n; i++) o[`coin-${i}`] = { price: 1 };
+  return o;
+}
 function boardBody(overrides = {}) {
+  // F7-08 后 health 验 coins 本体：默认按 count/coverage 生成守恒的 coins，
+  // 用例可用 overrides.coins 显式构造假汇总形态。
+  const n =
+    typeof overrides.count === "number"
+      ? overrides.count
+      : overrides.coverage && typeof overrides.coverage.returned === "number"
+        ? overrides.coverage.returned
+        : 200;
   return {
     contractVersion: 2,
     mode: "live",
@@ -22,6 +35,7 @@ function boardBody(overrides = {}) {
     staleAgeSec: 60,
     coverage: { expected: 200, returned: 200, missingIds: [] },
     count: 200,
+    coins: coinsObj(n),
     freshness: { level: "L0", clockSkew: false, fetchedAt: new Date().toISOString(), servedFrom: "kv" },
     ...overrides,
   };
@@ -170,6 +184,35 @@ await test("health 安全：响应文本 grep 无 key/token 字样；HEAD 与 GE
   const head = await mod.onRequestHead(ctx());
   assert.equal(head.status, 200);
   assert.equal(await head.text(), "");
+});
+
+await test("F7-08: coins 为空但 coverage/count 自报满格（200/200/200）→ 503 board_coins_mismatch（汇总假绿封堵）", async () => {
+  const mod = await freshHealth();
+  mockBoard(boardBody({ coins: {} }));
+  const res = await mod.onRequestGet(ctx());
+  assert.equal(res.status, 503);
+  const body = await res.json();
+  assert.equal(body.ok, false);
+  assert.equal(body.reason, "board_coins_mismatch");
+  assert.equal(body.coinsCount, 0);
+});
+
+await test("F7-08: coins 字段缺失但汇总满格 → 503 board_coins_mismatch", async () => {
+  const mod = await freshHealth();
+  const b = boardBody();
+  delete b.coins;
+  mockBoard(b);
+  const res = await mod.onRequestGet(ctx());
+  assert.equal(res.status, 503);
+  assert.equal((await res.json()).reason, "board_coins_mismatch");
+});
+
+await test("F7-08: coins 实际 199 个但 returned/count=200 → 503 board_coins_mismatch", async () => {
+  const mod = await freshHealth();
+  mockBoard(boardBody({ coins: coinsObj(199) }));
+  const res = await mod.onRequestGet(ctx());
+  assert.equal(res.status, 503);
+  assert.equal((await res.json()).reason, "board_coins_mismatch");
 });
 
 globalThis.fetch = originalFetch;

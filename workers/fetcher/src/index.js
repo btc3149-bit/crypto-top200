@@ -614,23 +614,42 @@ return new Response(JSON.stringify({ error: "not_found"}), { status: 404, header
 }
 // F6-49 最小间隔 60s：上次触发时刻记 health.lastManualRunAt；间隔内拒绝并留痕
 // （结构化日志 + health.lastManualRunRejectedAt），不触发抓取、不烧额度。
+// F7-44（已 stub KV 复现确认）：节流读失败改 fail-closed——旧实现 catch 吞错后
+// 直接 runFetch，KV 抖动窗口内节流整体失效；现读 health 抛错即 503
+// manual_run_throttle_check_failed、不触发抓取（health 键缺失返回 null 不算失败，照常放行）。
+// 拒绝回写竞态消除：不再以节流检查时读到的整对象回写 health；改先写专用节流键
+// v1:meta:manual-run-throttle（单字段、无并发写方），再重读最新 health 仅合并
+// lastManualRunRejectedAt 一个字段后回写，重读失败则跳过 health 回写——
+// 并发 cron run 的 health 更新不会被旧快照覆盖。
 if (env.BOARD_KV) {
+let h = null;
 try {
-const h = await env.BOARD_KV.get(KV_KEYS.health, { type: "json"});
+h = await env.BOARD_KV.get(KV_KEYS.health, { type: "json"});
+} catch (_) {
+logError({ event: "manual_run_throttle_check_failed"});
+return new Response(JSON.stringify({ error: "throttle_check_failed"}), {
+status: 503,
+headers: { "content-type": "application/json"},
+});
+}
 const lastMs = h? toMs(h.lastManualRunAt): null;
 if (lastMs != null && Date.now() - lastMs < MANUAL_RUN_MIN_INTERVAL_MS) {
 const retryAfterSec = Math.ceil((MANUAL_RUN_MIN_INTERVAL_MS - (Date.now() - lastMs)) / 1000);
 logError({ event: "manual_run_rejected_interval", retryAfterSec});
+const rejectedAt = toIso(Date.now());
 try {
-await env.BOARD_KV.put(KV_KEYS.health, JSON.stringify({...h, lastManualRunRejectedAt: toIso(Date.now())}));
+await env.BOARD_KV.put("v1:meta:manual-run-throttle", JSON.stringify({ lastManualRunRejectedAt: rejectedAt, retryAfterSec}));
+} catch (_) {}
+try {
+const fresh = await env.BOARD_KV.get(KV_KEYS.health, { type: "json"});
+if (fresh && typeof fresh === "object") {
+await env.BOARD_KV.put(KV_KEYS.health, JSON.stringify({...fresh, lastManualRunRejectedAt: rejectedAt}));
+}
 } catch (_) {}
 return new Response(JSON.stringify({ error: "rate_limited", retryAfterSec}), {
 status: 429,
 headers: { "content-type": "application/json"},
 });
-}
-} catch (_) {
-// health 读失败不阻断人工恢复通道（runFetch 内部另有 kv-get 保护）
 }
 }
 const result = await runFetch(env, { trigger: "manual"});

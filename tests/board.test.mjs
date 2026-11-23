@@ -293,8 +293,10 @@ await test("⑧ F6-03: BOARD_READ_MODE 误写（kvv）→ fail-closed：snapshot
   } finally {
     console.error = origErr;
   }
-  assert.equal(res.status, 200);
+  // F7-12：未知模式 fail-closed 改 503 + 显式 error 标记（旧口径 200 令状态码探针假绿）
+  assert.equal(res.status, 503);
   const body = await res.json();
+  assert.equal(body.error, "board_mode_unknown", "fail-closed 应答须带显式错误标记");
   assert.equal(body.contractVersion, 2, "fail-closed 应答须为契约 v2");
   assert.equal(body.mode, "snapshot");
   assert.deepEqual(body.coins, {});
@@ -316,8 +318,9 @@ await test("⑧b F6-03: BOARD_READ_MODE 缺失 → 同样 fail-closed（snapshot
     env: { COINGECKO_API_KEY: "test-key-not-real" },
     waitUntil: () => {},
   });
-  assert.equal(res.status, 200);
+  assert.equal(res.status, 503, "F7-12: 缺失模式 fail-closed 同样 503");
   const body = await res.json();
+  assert.equal(body.error, "board_mode_unknown");
   assert.equal(body.contractVersion, 2);
   assert.equal(body.mode, "snapshot");
   assert.equal(counts.markets, 0);
@@ -394,6 +397,42 @@ await test("⑩ F6-34: coins.json 有行缺 id / 重复 id → ids_parse_failed 
   });
   const bodyB = await resB.json();
   assert.equal(bodyB.mode, "snapshot", "重复 id 应判 ids_parse_failed 并走回退");
+});
+
+await test("⑪b F7-09: HEAD 带 Sec-Fetch-Site → sfs_shadow 日志出现（HEAD 不再绕过 sfsShadowCheck）", async () => {
+  const mod = await freshBoard();
+  installFetch({});
+  const logs = [];
+  const origLog = console.log;
+  console.log = (...args) => logs.push(args.join(" "));
+  let res;
+  try {
+    res = await mod.onRequestHead({
+      request: new Request("https://example.com/api/board", { method: "HEAD", headers: { "Sec-Fetch-Site": "cross-site" } }),
+      env: { BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "test-key-not-real" },
+      waitUntil: () => {},
+    });
+  } finally {
+    console.log = origLog;
+  }
+  assert.equal(res.status, 200);
+  const hit = logs.map((s) => { try { return JSON.parse(s); } catch (_) { return null; } }).filter(Boolean).find((o) => o.event === "sfs_shadow");
+  assert.ok(hit, "HEAD 必须过 sfsShadowCheck 并留下 sfs_shadow 日志");
+  assert.equal(hit.secFetchSite, "cross-site");
+});
+
+await test("⑪c F7-43: getIds 拉 coins.json 永不返回（abort 响应）→ 超时后走回退 snapshot、不无限挂起", async () => {
+  const mod = await freshBoard();
+  globalThis.fetch = (url, opts) =>
+    new Promise((_, reject) => {
+      if (opts && opts.signal) opts.signal.addEventListener("abort", () => reject(Object.assign(new Error("aborted"), { name: "AbortError" })));
+    });
+  const t0 = Date.now();
+  const res = await callGet(mod);
+  const elapsed = Date.now() - t0;
+  assert.equal(res.status, 200);
+  assert.equal((await res.json()).mode, "snapshot");
+  assert.ok(elapsed < 8000, `getIds 应在 UPSTREAM_TIMEOUT_MS 内超时，实际 ${elapsed}ms`);
 });
 
 await test("⑪ F6-31: HEAD /api/board → 与 GET 同状态、body 置空（不再 405）", async () => {

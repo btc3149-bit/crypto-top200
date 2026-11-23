@@ -106,7 +106,75 @@ try {
     assert.equal((await res.json()).mode, "live");
     console.log("PASS 5 计数写失败不影响主流程");
   }
-  console.log("\n=== 5/5 passed ===");
+  // 6) F7-10/F7-30 口径：markets 失败（已发出、成败无关）仍 +2；熔断短路不计数
+  {
+    installFetch();
+    globalThis.fetch = async (url) => {
+      const u = String(url);
+      if (u.includes("/data/coins.json")) return jsonRes({ coins: IDS.map((id) => ({ coingeckoId: id })) });
+      if (u.includes("/coins/markets")) return jsonRes({ error: "boom" }, { status: 500 });
+      if (u.includes("/global")) return jsonRes({ data: { total_market_cap: { usd: 1 }, market_cap_percentage: { btc: 1 }, market_cap_change_percentage_24h_usd: 0 } });
+      throw new Error("unexpected " + u);
+    };
+    const mod = await freshBoard();
+    const kv = makeKv();
+    const res = await mod.onRequestGet(ctx({ BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "test-key-not-real", BOARD_KV: kv }));
+    assert.equal(res.status, 200);
+    assert.equal(counterOf(kv).credits, 2, "请求已发出即计、与成败无关");
+    console.log("PASS 6 markets 失败仍 +2（已发出即计）");
+    installFetch();
+  }
+  // 7) F7-11: prev 坏值钳制自愈（负数 / 异常大 / 字符串）→ base 归 0、本轮 +2
+  for (const bad of [-50, 1e12, "999"]) {
+    const mod = await freshBoard();
+    const kv = makeKv();
+    kv.store.set(KV_KEYS.legacyCredits, JSON.stringify({ month: new Date().toISOString().slice(0, 7), credits: bad, updatedAt: new Date().toISOString() }));
+    await (await mod.onRequestGet(ctx({ BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "test-key-not-real", BOARD_KV: kv }))).json();
+    assert.equal(counterOf(kv).credits, 2, `prev=${JSON.stringify(bad)} 应钳制为 0 后 +2`);
+  }
+  console.log("PASS 7 prev 坏值（负/异常大/字符串）钳制自愈");
+  // 8) F7-42: 写节流 + pending 累积——间隔内不落 KV、到期后一并 flush
+  {
+    const mod = await freshBoard();
+    assert.equal(typeof mod.addLegacyCredits, "function");
+    const kv = makeKv();
+    const env = { BOARD_KV: kv };
+    const realNow = Date.now;
+    let fakeNow = realNow();
+    Date.now = () => fakeNow;
+    try {
+      await mod.addLegacyCredits(env, 2);
+      assert.equal(counterOf(kv).credits, 2);
+      await mod.addLegacyCredits(env, 2); // 间隔内：pending 累积、不写 KV
+      assert.equal(counterOf(kv).credits, 2, "节流间隔内不得再写 KV");
+      fakeNow += 61 * 1000;
+      await mod.addLegacyCredits(env, 2); // 到期：flush pending 2 + 本轮 2
+      assert.equal(counterOf(kv).credits, 6, "pending 应在下一次到期计数时一并 flush（总量不丢）");
+    } finally {
+      Date.now = realNow;
+    }
+    console.log("PASS 8 计数写节流 60s + pending 累积 flush");
+  }
+  // 9) dual 模式同走 legacy 抓取路径 → 同样 +2
+  {
+    const mod = await freshBoard();
+    const kv = makeKv();
+    const res = await mod.onRequestGet(ctx({ BOARD_READ_MODE: "dual", COINGECKO_API_KEY: "test-key-not-real", BOARD_KV: kv }));
+    assert.equal(res.status, 200);
+    assert.equal(counterOf(kv).credits, 2);
+    console.log("PASS 9 dual 模式计数 +2（与 legacy 同口径）");
+  }
+  // 10) F7-09: HEAD legacy 与 GET 同路 → 同样回源计数 +2、body 空
+  {
+    const mod = await freshBoard();
+    const kv = makeKv();
+    const res = await mod.onRequestHead({ request: new Request("https://example.com/api/board", { method: "HEAD" }), env: { BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "test-key-not-real", BOARD_KV: kv }, waitUntil: () => {} });
+    assert.equal(res.status, 200);
+    assert.equal(await res.text(), "");
+    assert.equal(counterOf(kv).credits, 2, "HEAD 与 GET 计数口径一致");
+    console.log("PASS 10 HEAD legacy 计数 +2（F7-09）");
+  }
+  console.log("\n=== 10/10 passed ===");
 } finally {
   globalThis.fetch = originalFetch;
 }
