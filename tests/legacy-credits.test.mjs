@@ -115,6 +115,8 @@ try {
   }
   // ---------- F7-10/F7-30：计数时机关键口径（按已发出计、与成败无关） ----------
   // 6) markets 失败（HTTP 500 / 网络抛错）→ 主流程回退，但已发出仍 +2
+  // F8-32：两子例合并为单行 PASS 输出（旧实现每子例一行、自报 14 项却 15 行 PASS）；
+  // 子断言仍逐个执行，任一失败照常抛错使整项 FAIL。
   for (const [label, behavior] of [["HTTP 500", "http500"], ["网络抛错", "throw"]]) {
     fetchBehavior.markets = behavior;
     const mod = await freshBoard();
@@ -122,9 +124,9 @@ try {
     const res = await mod.onRequestGet(ctx({ BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "test-key-not-real", BOARD_KV: kv }));
     assert.notEqual((await res.clone().json()).mode, "live", `${label} 时不应为 live`);
     assert.equal(counterOf(kv)?.credits, 2, `${label}：请求已发出应仍计数 +2（与成败无关）`);
-    console.log(`PASS 6 markets 失败（${label}）仍计数 +2`);
   }
   fetchBehavior.markets = "ok";
+  console.log("PASS 6 markets 失败（HTTP 500/网络抛错）仍计数 +2");
   // 7) 熔断短路不计数：首轮 429 触发熔断（该轮已发出计 +2），熔断期内第二轮不再发请求、不得再计
   {
     fetchBehavior.markets = "rate429";
