@@ -776,6 +776,64 @@ await test("⑲ F7-38/F7-35/F7-36/F7-37 第七期前端定版：decode 全行校
   assert.ok(/#thRank\{font-size:10px/.test(m640), "≤640 #thRank 应以可见小字号折行呈现");
 });
 
+await test("⑳ F8-05 ≤640 手机档排序按钮 44px：CSSOM 级联计算（360/390/640 须 44、桌面细指针仍 36、五列总宽不变）", () => {
+  // 与 ⑰ 同口径的级联计算（媒体条件求值 + 同特异性后写覆盖），非文本正则：
+  // 把 44px 规则写回基础规则之前的媒体块（W5 级联教训形态）会使计算结果变红。
+  const css = /<style>([\s\S]*?)<\/style>/.exec(html)[1].replace(/\/\*[\s\S]*?\*\//g, "");
+  const rules = [];
+  (function parse(text, media) {
+    let i = 0;
+    while (i < text.length) {
+      const open = text.indexOf("{", i);
+      if (open < 0) break;
+      const prelude = text.slice(i, open).trim();
+      let depth = 1, j = open + 1;
+      while (j < text.length && depth > 0) { if (text[j] === "{") depth++; else if (text[j] === "}") depth--; j++; }
+      const body = text.slice(open + 1, j - 1);
+      if (prelude.startsWith("@media")) parse(body, [...media, prelude.slice(6).trim()]);
+      else if (prelude && !prelude.startsWith("@")) {
+        const decls = {};
+        for (const d of body.split(";")) {
+          const k = d.indexOf(":");
+          if (k > 0) decls[d.slice(0, k).trim()] = d.slice(k + 1).trim();
+        }
+        for (const sel of prelude.split(",")) rules.push({ selector: sel.trim(), decls, media });
+      }
+      i = j;
+    }
+  })(css, []);
+  const mediaOk = (conds, sc) => conds.every((cond) =>
+    cond.split(/\s+and\s+/).every((part) => {
+      const m = /\(\s*([a-z-]+)\s*:\s*([^)]+)\)/.exec(part.trim());
+      if (!m) return false;
+      const [, feat, val] = m;
+      if (feat === "max-width") return sc.width <= parseFloat(val);
+      if (feat === "min-width") return sc.width >= parseFloat(val);
+      if (feat === "pointer") return val === "coarse" ? sc.coarse : !sc.coarse;
+      return false;
+    }));
+  const computed = (selector, sc) => {
+    const out = {};
+    for (const r of rules) if (r.selector === selector && mediaOk(r.media, sc)) Object.assign(out, r.decls);
+    return out;
+  };
+  const px = (v) => { const m = /^(-?\d+(?:\.\d+)?)(?:px)?$/.exec(String(v ?? "").trim()); return m ? Number(m[1]) : null; };
+  // 任务口径：360px 视口下 sortBtn 计算高度须为 44px
+  for (const w of [360, 390, 640]) {
+    assert.equal(px(computed(".th-sort", { width: w, coarse: true })["min-height"]), 44, `${w}px 触控档：.th-sort 计算 min-height 应为 44`);
+    assert.equal(px(computed(".th-sort", { width: w, coarse: false })["min-height"]), 44, `${w}px 细指针档：.th-sort 计算 min-height 应为 44（本档口径不分指针类型，与本档其余控件一致）`);
+  }
+  // 非回归：桌面细指针基础档仍 36（F7-36 定版不动）、粗指针 ≥641 仍 44
+  assert.equal(px(computed(".th-sort", { width: 1280, coarse: false })["min-height"]), 36, "桌面细指针：.th-sort 应仍为基础档 36");
+  assert.equal(px(computed(".th-sort", { width: 1024, coarse: true })["min-height"]), 44, "粗指针 ≥641：.th-sort 应仍为 44（F7-36）");
+  // 布局回归核查：≤640 五列总宽与列宽逐项不变（F7-37 定版 326px）、本档其余控件仍 44
+  const m640 = /@media \(max-width:640px\)\{([\s\S]*?)\n  \}/.exec(/<style>([\s\S]*?)<\/style>/.exec(html)[1])[1];
+  const cols = [...m640.matchAll(/col\.c-(rank|coin|price|est|mult)\{width:(\d+)px\}/g)];
+  assert.deepEqual(cols.map((m) => [m[1], Number(m[2])]), [["rank", 34], ["coin", 98], ["price", 64], ["est", 62], ["mult", 68]], "≤640 五列列宽应逐项不变");
+  assert.equal(cols.reduce((s, m) => s + Number(m[2]), 0), 326, "≤640 五列总宽应仍为 326px（不横溢）");
+  assert.equal(px(computed(".toolbar button", { width: 360, coarse: true })["min-height"]), 44, "≤640 工具栏按钮应仍为 44（对照组未被扰动）");
+});
+
 const failed = results.filter(([, s]) => s !== "PASS");
 console.log(`\nfrontend-dom: ${results.length - failed.length}/${results.length} PASS`);
 for (const [name, s] of failed) console.log(`红：${name}（见上方断言信息）`);

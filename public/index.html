@@ -214,6 +214,11 @@
     .toolbar input[type=search],.toolbar select{font-size:16px}
     .toolbar select,.toolbar button,button.act,.tab{min-height:44px;padding-top:10px;padding-bottom:10px}
     .toolbar input[type=search]{min-height:44px}
+    /* F8-05：排序按钮在本档同步 44px（F7-36 的粗指针 44px 规则限定 ≥641px、漏了本档）；
+       本块位于基础 .th-sort 规则（36px）之后，同特异性后写胜出。表头行高由 #thRank 折行
+       内容主导（10px/1.3 折 3 行 39px + 按钮上下内边距 8px ≈ 47px ≥ 44px），不抬高行高；
+       列宽与横向布局零改动（五列总宽仍 326px，见 frontend-dom ⑳ CSSOM 断言）。 */
+    .th-sort{min-height:44px}
   }
 </style>
 </head>
