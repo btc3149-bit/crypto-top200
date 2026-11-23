@@ -228,6 +228,12 @@
   fetcher-runbook、季度清单与 deploy.sh 均已改用该入口，禁止再写裸
   `npx wrangler`。deploy.sh 的部署步亦改经该入口（与原内联
   `npx wrangler@<pin>` 等价）。
+- F8-28（2026-11-23 登记）：部署门禁覆盖面——Pages 部署经 deploy.sh 全部门禁，
+  且 wrangler-pinned.sh 对 `pages deploy` 做技术拦截（须 deploy.sh 设置
+  DEPLOY_VIA_DEPLOY_SH=1，直调拒绝）；fetcher 经 wrangler-pinned.sh 单独部署
+  **不经 deploy.sh 测试门禁，为已知豁口**，靠操作纪律兜底（部署前自跑全量
+  测试；入口在 fetcher 部署时打印醒目警告、不硬拦）。汇报部署门禁状态时
+  不得表述为「所有部署路径都过门禁」。
 - F7-47：`ops/headers/_headers.report-only.txt` 已纳入 gen-headers 的
   `--check` 体系并重新生成到现行口径（WA-ON+report-only，与线上同变体、
   仅 CSP 头名为 Report-Only）；`--report-only` 现强制显式 `--variant`

@@ -5,6 +5,12 @@
 #   production → wrangler pages deploy public --branch main，部署后冒烟 https://top200.oppcal.com
 # 前置：已通过受限 API Token 配置 wrangler 凭证（CLOUDFLARE_API_TOKEN，Token 只授 Account → Cloudflare Pages → Edit）。
 # 本脚本只允许触碰 crypto-top200 这一个项目。
+# F8-28 已知豁口明示：fetcher（workers/fetcher）不经本脚本部署，而是经
+# scripts/wrangler-pinned.sh 单独部署，因此不经过本脚本的测试门禁——属已知
+# 豁口，靠操作纪律兜底（部署 fetcher 前自行跑全量测试，见 docs/fetcher-runbook.md
+# 与 ops/security/security-baseline.md 的 F8-28 登记）。Pages 侧已做技术拦截：
+# wrangler-pinned.sh 对 pages deploy 要求本脚本设置的 DEPLOY_VIA_DEPLOY_SH=1
+# 标志，直调会被拒绝。
 set -euo pipefail
 
 ENV_NAME="${1:-}"
@@ -215,7 +221,7 @@ echo "[deploy] W4-10 coins-list.js 名单门禁通过（200 个 id 与 data/coin
 # 与此前本节内联的 npx wrangler@<pin> 等价，版本来源仍只有 package.json 一处）。
 WRANGLER_VERSION="$(python3 -c "import json; print(json.load(open('package.json'))['devDependencies']['wrangler'])")"
 echo "[deploy] 使用 wrangler@${WRANGLER_VERSION}（经 scripts/wrangler-pinned.sh）部署到项目 crypto-top200（branch=$BRANCH）"
-bash scripts/wrangler-pinned.sh pages deploy public --project-name crypto-top200 --branch "$BRANCH"
+DEPLOY_VIA_DEPLOY_SH=1 bash scripts/wrangler-pinned.sh pages deploy public --project-name crypto-top200 --branch "$BRANCH"
 
 # (d) 部署后冒烟：失败则非零退出，部署虽已上线但必须人工处理/回滚
 # W2-13/HC2：冒烟结果同步 ping healthchecks（HEALTHCHECKS_DEPLOY_PING_URL 未设置时 hc_ping.sh 打印 skipped-no-url 并以 0 退出，不阻断部署）。
