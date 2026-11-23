@@ -10,8 +10,9 @@
 // 与 Pages Secret 是两处独立注入；由协调者经 wrangler secret put 注入本 Worker。
 // 未注入时本 Worker 走「数据源未配置」配置错误路径（记 health、绝不匿名重试、
 // 绝不覆写 blob）——W2-20 §20.5 代码侧口径。key 值绝不出现在日志/响应/health 中。
-// PAPRIKA_ENABLED：备源启用除该开关外还须过 F6-10 映射门禁（paprikaId 非 null ≥197），
-// 见 source-state.js 的 PAPRIKA_MIN_MAPPED 与主流程门禁段。
+// PAPRIKA_ENABLED：备源启用除该开关外还须过 F7-02 门禁（mapped/identityValid/
+// activeUsable/tickerHit 四项计数均 ≥94%），见 source-state.js 的
+// evaluatePaprikaGate 与主流程 preflight 门禁段。
 
 import {
 KV_KEYS,
@@ -25,7 +26,7 @@ toMs,
 } from "../../../shared/board-schema.js";
 import * as cg from "./providers/coingecko.js";
 import * as paprika from "./providers/coinpaprika.js";
-import { emptySourceState, resolveProvider, applyOutcome, paprikaEnabled, PAPRIKA_MIN_MAPPED} from "./source-state.js";
+import { emptySourceState, resolveProvider, applyOutcome, paprikaEnabled, evaluatePaprikaGate, paprikaGateThreshold } from "./source-state.js";
 import { COINS, IDS} from "./coins-list.js";
 
 export { buildBlob};
@@ -172,9 +173,14 @@ const coins = opts.coins || COINS;
 const ids = opts.ids || coins.map((c) => c.id);
 const manualRun = opts.trigger === "manual";
 // F6-10 映射计数：每 run 按本 run 币表计算，落 health.paprikaMappedCount 供监控读。
-const paprikaMappedCount = coins.filter((c) => c && c.paprikaId).length;
-// Paprika 实际可用 = 开关启用 且 映射过门禁；applyOutcome 的迁移许可与主流程门禁共用此口径（F6-43/F6-10）。
-const paprikaUsable = paprikaEnabled(env) && paprikaMappedCount >= PAPRIKA_MIN_MAPPED;
+// F7-02：计数只认非空字符串 paprikaId（数字/对象等真值畸形值不得计入 mapped）。
+const paprikaMappedCount = coins.filter((c) => c && typeof c.paprikaId === "string" && c.paprikaId.length > 0).length;
+// F7-02：Paprika 实际可用不再只看 mapped 计数——须在 resolveProvider 后对候选 run
+// 做 preflight（身份/活跃/tickers 有效命中四项计数均 ≥94%，见下方门禁段），
+// 结果落 health.paprikaGate（四项计数分开写，禁止以非空数冒充有效数）。
+// preflight 完成前 paprikaUsable=false；applyOutcome 的迁移许可共用此口径（F6-43）。
+let paprikaGate = null;
+let paprikaUsable = false;
 
 // W4-01：目标键在开头统一计算，prevBlob 必须读目标键本身——影子期写 shadow 时
 // 若误读 current，global.asOf 永不刷新、globalDue 每 run 误判到期（每 10min 重抓）。
@@ -252,6 +258,7 @@ sourceState: { state: sourceState.state, activeProvider: resolvedProvider || sou
 globalLast429At,
 globalSkipUntil,
 paprikaMappedCount,
+paprikaGate,
 lastManualRunAt: manualRun? toIso(nowMs): prevLastManualRunAt,
 };
 Object.assign(health, healthStatusFor(health.consecutiveFailures));
@@ -319,15 +326,39 @@ logEvent({ event: "fetch_run_skip_bypassed_global_stale", runId, note: "prev glo
 const resolved = resolveProvider(env, sourceState, nowMs);
 let { provider, probeCg} = resolved;
 const warnings = [...resolved.warnings];
-// F6-10 启用门禁：映射未达门槛时即使 PAPRIKA_ENABLED=true 或 state=PAPRIKA_ACTIVE 也强制 CG。
-if (provider === "coinpaprika" && !paprikaUsable) {
+// F7-02 启用门禁（代 F6-10 单一计数门禁）：provider 候选为 Paprika 时才做
+// candidate preflight——拉 Paprika 目录+tickers 算四项计数（mapped / identityValid /
+// activeUsable / tickerHit），四项均须 ≥ 发布覆盖门禁 94%（200 币即 188）才放行；
+// 任一不足或 preflight 失败 → 强制 CG（同 run fallback，不影响 CG 正常路径：
+// CG 为 provider 的 run 不做任何额外 Paprika 调用）。生产 PAPRIKA_ENABLED="false"
+// 时 provider 恒为 CG，本段不触发，Paprika 保持关闭。
+if (provider === "coinpaprika") {
+let gateStats = null;
+// mapped 为本地可算计数：其本身已低于门槛时门禁必然不过，跳过 preflight
+// （零 Paprika 调用，与 F6-10 旧门禁的拦截后零调用口径一致）。
+const mappedBelowGate = paprikaMappedCount < paprikaGateThreshold(coins.length);
+if (!mappedBelowGate) {
+try {
+gateStats = await paprika.fetchGateStats(coins);
+ledgerCall(false, 2);
+} catch (e) {
+logError({ event: "paprika_gate_preflight_failed", runId, message: String(e && e.message).slice(0, 200) });
+}
+}
+const gate = evaluatePaprikaGate(
+gateStats || { mapped: paprikaMappedCount, identityValid: 0, activeUsable: 0, tickerHit: 0 },
+coins.length
+);
+paprikaGate = { ...gate.counts, threshold: gate.threshold, total: gate.total, ok: gate.ok, checkedAt: toIso(nowMs) };
+if (gate.ok) {
+paprikaUsable = paprikaEnabled(env);
+} else {
 warnings.push(
-paprikaEnabled(env)
-? `paprika gate: mapped ${paprikaMappedCount}/${coins.length} < ${PAPRIKA_MIN_MAPPED} required; forcing coingecko (F6-10)`
-: "paprika gate: PAPRIKA_ENABLED is not true; forcing coingecko (F6-10)"
+`paprika gate: ${gateStats ? gate.failures.join("; ") : mappedBelowGate ? `mapped ${paprikaMappedCount}/${coins.length} below 94% gate; preflight skipped` : "preflight failed"}; forcing coingecko (F7-02)`
 );
 provider = "coingecko";
 probeCg = false;
+}
 }
 resolvedProvider = provider;
 for (const w of warnings) logError({ event: "source_config_warning", runId, message: w});
@@ -552,6 +583,7 @@ sourceState: { state: sourceState.state, activeProvider: provider},
 globalLast429At,
 globalSkipUntil,
 paprikaMappedCount,
+paprikaGate,
 lastManualRunAt: manualRun? toIso(nowMs): prevLastManualRunAt,
 };
 await writeHealth(env, health);

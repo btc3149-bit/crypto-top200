@@ -4,6 +4,7 @@
 // 本适配器只被 fetcher 在 PAPRIKA_ENABLED=true 且状态机/人工覆盖允许时调用；
 // Function 与前端永不直连 Paprika（W2-03 §1）。
 import { normalizePaprikaTickers, normalizePaprikaGlobal } from "../../../../shared/board-schema.js";
+import { countPaprikaGateStats } from "../../../../shared/paprika-identity.js";
 import { UpstreamError, UPSTREAM_TIMEOUT_MS } from "./coingecko.js";
 
 const UA =
@@ -73,8 +74,25 @@ export async function fetchMarkets(coins) {
   if (!Array.isArray(tickers)) {
     throw new UpstreamError("coinpaprika tickers payload invalid", { errorType: "parse_error", stage: "markets" });
   }
-  const { rows, coverage } = normalizePaprikaTickers(tickers, coins);
-  return { rows, coverage, upstreamStatus: 200, attempts: 1 };
+  const { rows, coverage, invalidFields } = normalizePaprikaTickers(tickers, coins);
+  return { rows, coverage, invalidFields, upstreamStatus: 200, attempts: 1 };
+}
+
+// F7-02 candidate preflight：仅在 Paprika 成为候选 provider 的 run 调用（CG 正常
+// 路径零额外调用、零风险）。拉 /v1/coins 目录 + /v1/tickers（limit=5000，与主抓
+// 同口径），按 shared/paprika-identity.js 统一口径产出四项门禁计数
+// {total, mapped, identityValid, activeUsable, tickerHit, failures}。
+// 注意：运行时 COINS 只有 {id, paprikaId}，身份判定为目录 symbol/前缀一致性
+// （via=symbol-prefix）；全名身份复核由落库脚本 verify-paprika-identity.mjs 强制。
+export async function fetchGateStats(coins) {
+  const [directory, tickers] = await Promise.all([
+    fetchJson("https://api.coinpaprika.com/v1/coins", "coins"),
+    fetchJson("https://api.coinpaprika.com/v1/tickers?quotes=USD&limit=5000", "markets"),
+  ]);
+  if (!Array.isArray(directory) || !Array.isArray(tickers)) {
+    throw new UpstreamError("coinpaprika gate preflight payload invalid", { errorType: "parse_error", stage: "gate" });
+  }
+  return countPaprikaGateStats(coins, directory, tickers);
 }
 
 export async function fetchGlobal() {

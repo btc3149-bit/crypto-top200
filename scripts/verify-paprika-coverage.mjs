@@ -1,12 +1,18 @@
 // scripts/verify-paprika-coverage.mjs — W2-03 §2 覆盖率实测
-// 单次 GET /v1/tickers?quotes=USD（1 call）→ 按映射交集计数 → 命中数/缺失清单/
-// 每币 last_updated 新鲜度/与 CoinGecko 同刻价差分布（Markdown 输出到 stdout）。
+// 单次 GET /v1/tickers?quotes=USD&limit=5000（1 call，与 fetcher F6-53 同口径）→
+// 按映射交集计数 → 命中数/缺失清单/每币 last_updated 新鲜度/与 CoinGecko 同刻
+// 价差分布（Markdown 输出到 stdout）。
+// F7-14：命中口径与 fetcher 对齐——ticker 存在且报价字段经清洗有效（price 有限
+// 正数，见 shared/paprika-identity.js paprikaQuoteValid）才计 hit；仅存在但报价
+// 无效单列 presentInvalidQuote，不再以「存在性」冒充命中。输出分项计数：
+// mapped / present / validQuoteHit / presentInvalidQuote / missing。
 // 映射来源：优先 data/coins.json 的 paprikaId（W2-11 落库后）；未落库时读
 // docs/paprika-mapping-proposal.json 的核定提案（本期形态）。
 // 启用门槛：命中 ≥197/200 且缺失均有归因；195–196 黄区须站长知情；<195 禁止启用。
 // 启用前须连续 3 天各跑 1 次、三日均达标；结果存 docs/paprika-coverage-<日期>.md。
 import { readFileSync, readdirSync } from "node:fs";
 import { decodeCoins } from "./decode-coins.mjs"; // F6-71：JS 侧解码单一来源（带行长断言）
+import { paprikaQuoteValid } from "../shared/paprika-identity.js";
 
 // F6-77：天数不再写死「第 1 天」——优先 --day N 参数；未给时按 docs/ 下已有
 // paprika-coverage-<日期>.md 报告文件数 +1 推导（连测第几天 = 已有报告数 +1）。
@@ -34,13 +40,14 @@ if (map.size === 0) {
 }
 const allIds = coinsList.map((c) => c.coingeckoId);
 
-const tickers = await (await fetch("https://api.coinpaprika.com/v1/tickers?quotes=USD")).json();
+const tickers = await (await fetch("https://api.coinpaprika.com/v1/tickers?quotes=USD&limit=5000")).json();
 if (!Array.isArray(tickers)) throw new Error("paprika tickers payload invalid");
 const tickById = new Map(tickers.map((t) => [t.id, t]));
 const live = await (await fetch("https://top200.oppcal.com/api/board")).json();
 
 const hits = [];
 const missing = [];
+const presentInvalidQuote = [];
 const diffs = [];
 for (const cgId of allIds) {
   const pid = map.get(cgId);
@@ -51,6 +58,12 @@ for (const cgId of allIds) {
   const t = tickById.get(pid);
   if (!t) {
     missing.push({ cgId, paprikaId: pid, reason: "映射存在但不在免费层 tickers 前 2000（或已下线）" });
+    continue;
+  }
+  if (!paprikaQuoteValid(t)) {
+    // F7-14：存在但报价无效——不计 hit，单列分项并计入缺失清单说明。
+    presentInvalidQuote.push({ cgId, paprikaId: pid });
+    missing.push({ cgId, paprikaId: pid, reason: "ticker 存在但报价无效（price 非有限正数，与 fetcher 清洗口径一致）" });
     continue;
   }
   hits.push({ cgId, paprikaId: pid, lastUpdated: t.last_updated });
@@ -67,13 +80,14 @@ const gate = hits.length >= 197 ? "达启用门槛（≥197）" : hits.length >=
 const resultTag = hits.length >= 197 ? "PASS" : hits.length >= 195 ? "WARN" : "FAIL";
 if (hits.length < 195) process.exitCode = 1;
 
+const presentCount = hits.length + presentInvalidQuote.length;
 const lines = [
-  `RESULT: ${resultTag} hits=${hits.length} required=195 enableGate=197 day=${day}`,
+  `RESULT: ${resultTag} hits=${hits.length} mapped=${map.size} present=${presentCount} validQuoteHit=${hits.length} presentInvalidQuote=${presentInvalidQuote.length} missing=${missing.length} required=195 enableGate=197 day=${day}`,
   `# CoinPaprika 覆盖率实测 ${today}（第 ${day} 天）`,
   "",
   `- 映射来源：${mappingSource}`,
-  `- 映射非空：${map.size}/${allIds.length}`,
-  `- tickers 命中：**${hits.length}/${allIds.length}** → ${gate}`,
+  `- 分项计数（F7-14）：映射非空 mapped=${map.size}/${allIds.length}；ticker 存在 present=${presentCount}；报价有效命中 validQuoteHit=${hits.length}；存在但报价无效 presentInvalidQuote=${presentInvalidQuote.length}；缺失 missing=${missing.length}`,
+  `- tickers 命中（报价有效口径）：**${hits.length}/${allIds.length}** → ${gate}`,
   `- 价差分布（命中且双边有价 ${diffs.length} 币）：中位数 ${pct(diffs, 0.5)?.toFixed(3)}%、P95 ${pct(diffs, 0.95)?.toFixed(3)}%、最大 ${diffs.length ? diffs[diffs.length - 1].diffPct.toFixed(3) : "—"}%`,
   `- 价差 >5% 的币：${diffs.filter((d) => d.diffPct > 5).map((d) => `${d.cgId}(${d.diffPct.toFixed(1)}%)`).join("、") || "无"}`,
   "",
