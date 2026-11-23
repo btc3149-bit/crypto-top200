@@ -242,8 +242,10 @@ def main():
         try:
             with open(LOG_PATH, "a", encoding="utf-8") as f:
                 f.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        except Exception:
-            pass
+        except Exception as e:
+            # F8-22：与正常路径同口径——写日志失败不得静默吞（旧实现 except: pass，
+            # 恰在核账失效时失效记录无声丢失）。stderr 报错 + 同一退出码 3 收尾。
+            print(f"quota-check: ERROR 写入 {LOG_PATH} 失败：{e}", file=sys.stderr)
         print(f"quota-check: ERROR health 陈旧、核账失效：{'；'.join(stale_reasons)}")
         return 3
     year, mon = int(month_str[:4]), int(month_str[5:7])

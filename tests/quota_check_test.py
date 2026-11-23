@@ -242,6 +242,21 @@ qc2.read_kv_key = lambda key, quiet=False: {"month": "2026-11", "credits": 42, "
 check("⑮ F7-07 read_legacy_credits 合法形态 → 原样返回",
       (qc2.read_legacy_credits() or {}).get("credits"), 42)
 
+# ---------- F8-22：INVALID 路径写日志失败不得静默吞 ----------
+from contextlib import redirect_stderr  # noqa: E402
+_orig_log_path = qc.LOG_PATH
+qc.LOG_PATH = "/nonexistent-dir-f8-22/quota-log.jsonl"  # 父目录不存在 → open 必失败（等价只读目录）
+qc.read_health = lambda: mk_health(month="2026-10")  # 陈旧 → INVALID 路径
+qc.read_board_mode = _orig_board_mode
+_out_buf, _err_buf = io.StringIO(), io.StringIO()
+with redirect_stdout(_out_buf), redirect_stderr(_err_buf):
+    _code = qc.main()
+qc.LOG_PATH = _orig_log_path
+check("⑯ F8-22 INVALID 路径写日志失败 → stderr 报错（含「写入」与 LOG_PATH）+ 退出 3（与正常路径同码，不静默吞）",
+      (_code, "写入" in _err_buf.getvalue(), "quota-log.jsonl" in _err_buf.getvalue(),
+       "核账失效" in _out_buf.getvalue()),
+      (3, True, True, True))
+
 print(f"\nquota_check: {len(PASS)} PASS / {len(FAIL)} FAIL")
 if FAIL:
     print("未过用例（批 0 的 F6-07 新口径合并后应转绿，见文件头与 P6_NOTES F6-16）：")
