@@ -113,6 +113,28 @@ class UpstreamError extends Error {
 // 只是落盘延迟），避免回滚形态下未认证流量把每次回源都放大成一次 KV 写。
 export const LEGACY_CREDITS_MIN_WRITE_INTERVAL_MS = 60 * 1000;
 export const LEGACY_CREDITS_SANITY_MAX = 1000000; // 月 credits 合理上限（远超任何真实回源量）
+// F8-10：计数 KV 往返超时——取 3500ms，与本文件既有上游单请求超时
+// UPSTREAM_TIMEOUT_MS（fetchWithTimeout 的 AbortController+Promise.race 口径）
+// 完全对齐：计数只是旁路计量，其可容忍延迟不应超过一次上游请求本身。
+// 超时按「计数失败吞掉」处理（见 addLegacyCredits 外层 catch 与 get 的内层
+// catch），绝不阻塞行情应答；底层 KV promise 迟到拒绝由 guarded.catch 兜住，
+// 不得留下未处理 rejection。
+export const LEGACY_CREDITS_KV_TIMEOUT_MS = UPSTREAM_TIMEOUT_MS;
+function withLegacyKvTimeout(promise) {
+  let timer = null;
+  const guarded = Promise.resolve(promise);
+  guarded.catch(() => {});
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error("legacy credits kv timeout");
+      err.name = "TimeoutError";
+      reject(err);
+    }, LEGACY_CREDITS_KV_TIMEOUT_MS);
+  });
+  return Promise.race([guarded, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
 let legacyCreditsPending = 0;
 let legacyCreditsLastWriteAt = 0;
 let legacyCreditsFlushInFlight = null;
@@ -135,7 +157,7 @@ export async function addLegacyCredits(env, credits) {
       const month = new Date(now).toISOString().slice(0, 7);
       let prev = null;
       try {
-        prev = await env.BOARD_KV.get(KV_KEYS.legacyCredits, { type: "json" });
+        prev = await withLegacyKvTimeout(env.BOARD_KV.get(KV_KEYS.legacyCredits, { type: "json" }));
         if (typeof prev === "string") prev = JSON.parse(prev);
       } catch (_) {
         prev = null;
@@ -153,7 +175,7 @@ export async function addLegacyCredits(env, credits) {
         }
       }
       const next = { month, credits: base + flushAmount, updatedAt: new Date(now).toISOString() };
-      await env.BOARD_KV.put(KV_KEYS.legacyCredits, JSON.stringify(next));
+      await withLegacyKvTimeout(env.BOARD_KV.put(KV_KEYS.legacyCredits, JSON.stringify(next)));
       legacyCreditsPending -= flushAmount;
       legacyCreditsLastWriteAt = now;
       try {
