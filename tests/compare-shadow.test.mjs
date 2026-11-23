@@ -189,6 +189,46 @@ await test("⑬ F7-06 live null 3 个（>2）：verdict=fail、liveFieldOk=false
   assert.equal(status, 1);
 });
 
+// ---------- F8-25：live 非 2xx 不判读（503 + 伪造 v2 体不得污染比对） ----------
+import { spawn } from "node:child_process";
+import { createServer } from "node:http";
+
+function runLiveAsync(shadow, base) {
+  const sp = join(dir, "shadow-live.json");
+  const hp = join(dir, "health-live.json");
+  writeFileSync(sp, JSON.stringify(shadow));
+  writeFileSync(hp, JSON.stringify(health));
+  return new Promise((resolve, reject) => {
+    const child = spawn(
+      process.execPath,
+      ["scripts/compare-shadow.mjs", "--shadow", sp, "--live", base, "--health", hp, "--required-runs", "10"],
+      { cwd: new URL("..", import.meta.url).pathname, encoding: "utf-8" }
+    );
+    let out = "";
+    child.stdout.on("data", (d) => (out += d));
+    child.on("error", reject);
+    child.on("close", (status) => resolve({ report: JSON.parse(out), status }));
+  });
+}
+
+await test("⑭ F8-25 live 返回 503 + 伪造 v2 体（与 shadow 全一致）→ verdict=fail、注明 HTTP 503、退出 1（旧实现判 pass）", async () => {
+  const fakeLive = makeLive(); // 形态完整、与 shadow 同 run 同价：旧实现会一路判到 pass
+  const server = createServer((req, res2) => {
+    res2.writeHead(503, { "content-type": "application/json" });
+    res2.end(JSON.stringify(fakeLive));
+  });
+  await new Promise((r) => server.listen(0, "127.0.0.1", r));
+  try {
+    const { report, status } = await runLiveAsync(makeShadow(), `http://127.0.0.1:${server.address().port}`);
+    assert.equal(report.verdict, "fail");
+    assert.equal(report.liveHttpStatus, 503);
+    assert.ok(report.failReasons.some((s) => s.includes("503")), report.failReasons.join(";"));
+    assert.equal(status, 1);
+  } finally {
+    server.close();
+  }
+});
+
 const failed = results.filter(([, s]) => s === "FAIL");
 console.log(`\ncompare-shadow: ${results.length - failed.length} PASS / ${failed.length} FAIL`);
 process.exit(failed.length ? 1 : 0);
