@@ -467,6 +467,22 @@ await test("⑫ F8-11: legacy 上游形变值（字符串价/负市值/字符串
   assert.equal(body.coins.ethereum.rank, 2);
 });
 
+await test("⑬ F8-12: legacy 上游含列表外 id → 剔除该 id、count===coverage.returned 不变量成立", async () => {
+  const mod = await freshBoard();
+  installFetch({
+    markets: () => jsonRes([...marketsPayload(), { id: "not-in-list", current_price: 999, market_cap: 999, market_cap_rank: 999, price_change_percentage_24h_in_currency: 9 }]),
+  });
+  const res = await callGet(mod);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.mode, "live");
+  assert.equal(body.coverage.expected, IDS.length);
+  assert.equal(body.coverage.returned, IDS.length);
+  assert.equal(body.count, body.coverage.returned, "count 必须等于 coverage.returned");
+  assert.equal(Object.keys(body.coins).length, body.coverage.returned);
+  assert.ok(!("not-in-list" in body.coins), "列表外 id 须被剔除、不得进入 coins");
+});
+
 restore();
 const failed = results.filter(([, s]) => s !== "PASS");
 console.log(`\n=== ${results.length - failed.length}/${results.length} passed ===`);

@@ -482,7 +482,11 @@ async function fetchUpstreamInternal(env, ids) {
     coverage,
     global,
     coins,
-    count: Object.keys(coins).length,
+    // F8-12：count 在结构上绑定 coverage.returned（不另按字典键数计）——
+    // 列表外 id 已由 normalizeCgMarkets 剔除、不进入 coins，故二者本已相等；
+    // 此处直接取 returned 使 legacy 应答与 v2 侧 health 强制的
+    // count===coverage.returned 不变量同源恒成立，而非靠巧合相等。
+    count: coverage.returned,
     snapshotDate: SNAPSHOT_DATE,
   };
 }
