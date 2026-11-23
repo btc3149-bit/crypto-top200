@@ -4,7 +4,7 @@
 - 额度：定版节奏月耗约 5,760 credits；health.quota.quotaMode 自动降频 normal→saving(>8500 预估)→critical(>9500)。
 - 429：按 Retry-After 跳过 K 个 run（health.skipRunsRemaining），跳过不计连续失败。
 - 故障判读：scripts/probe.mjs（consecutiveFailures≥3 / staleAgeSec>1800 / 组合规则）。
-- 回滚：Pages 侧置 BOARD_READ_MODE=legacy 即回旧路径（应急 ≤24h）；fetcher 侧关 Cron 即停抓。
+- 回滚（W4-12 定版口径，2026-11-13 演练实测修正）：模式回滚的真实路径 = 在 `wrangler.toml` 的 `[vars]` 注入 `BOARD_READ_MODE`（如改回 `legacy`）后跑 `scripts/deploy.sh` 重新部署（应急 ≤24h）；**经 API 改 Pages 项目级 env 不会被 Wrangler 直推部署携带、单独用 `scripts/rollback.sh` 的 mode 子命令不作数**（只改 API 配置层、不改变线上行为）。部署回滚（回上一个部署）是另一条路径，见 README「回滚方法」。fetcher 侧关 Cron 即停抓。
 - Paprika 备源状态（F6-10）：**当前不可用：映射未落库（0/200）、启用门禁未达，禁止置 PAPRIKA_ENABLED=true**。启用前须先完成映射落库（≥197 非空）并通过 verify-paprika-coverage 连测达标。
 
 ## 故障处置（W4-26 补齐，2026-11-13）

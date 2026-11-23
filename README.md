@@ -100,6 +100,7 @@ python3 scripts/build.py --offline  # 离线构建（跳过在线审计，构建
 
 - **控制台一键回滚**：Cloudflare 控制台 → Workers & Pages → `crypto-top200` → Deployments → 选中上一个正常的生产部署 → Rollback，即时生效。
 - **API / 命令行**：用同一枚受限 Token 调用 Pages 部署 API 回滚到指定部署，或把 Git 里上一个 tag 的产物用 `scripts/deploy.sh production` 重新推一遍。
+- **模式回滚（`BOARD_READ_MODE`，W4-12 定版口径，与上面的部署回滚是两回事）**：真实路径 = 在 `wrangler.toml` 的 `[vars]` 注入目标 `BOARD_READ_MODE` 后跑 `scripts/deploy.sh` 重新部署。**经 API 改 Pages 项目级 env 不会被 Wrangler 直推部署携带**（2026-11-13 演练实测），`scripts/rollback.sh` 的 mode 子命令只改 API 配置层、**不得单独作为模式回滚的完成依据**。证据见 `ops/disaster-recovery/rollback-drill-2026-11-13.md`。
 - 回滚后跑一次 `npm run smoke` 确认接口与页面恢复。
 
 ## 冒烟与探针

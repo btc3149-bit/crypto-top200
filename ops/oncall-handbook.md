@@ -57,7 +57,7 @@
 - 唯一部署入口：`scripts/deploy.sh`（`bash scripts/deploy.sh preview` 先预览冒烟、`bash scripts/deploy.sh production` 再上生产；含数据一致性、安全头、fetcher 数据三道门禁）。禁止控制台拖放部署，理由与废弃说明见 `README.md` 的「已废弃：控制台拖放部署」。
 - 冒烟单独跑：`bash scripts/smoke.sh <基址>`（口径见 `README.md` 的「冒烟与探针」）；部署后必走清单见 `ops/checklists.md` 的「① 部署后」。
 - fetcher 单独部署：不与 Pages 连推，命令与同步要求见 `scripts/deploy.sh` 的 W2-01 门禁注释与 `workers/fetcher/README.md`。
-- 回滚入口：Pages 侧控制台一键回滚 / 用上一个 tag 产物重推，步骤见 `README.md` 的「回滚方法」；数据链模式回滚（`BOARD_READ_MODE=legacy`）的口径、性质（部署操作而非开关）与时限目标见 `docs/fetcher-runbook.md` 的「KV 坏数据」——回滚怎么做以这两处为准，本页不另定口径。
+- 回滚入口：Pages 侧控制台一键回滚 / 用上一个 tag 产物重推，步骤见 `README.md` 的「回滚方法」；数据链模式回滚（`BOARD_READ_MODE=legacy`）是**部署操作而非开关**（W4-12 定版）：真实路径 = 在 `wrangler.toml` 的 `[vars]` 注入 `BOARD_READ_MODE` 后跑 `scripts/deploy.sh`；**经 API 改 Pages 项目级 env 不被直推部署携带、`scripts/rollback.sh` 的 mode 子命令单独不作数**。其性质与时限目标见 `docs/fetcher-runbook.md` 的「KV 坏数据」——回滚怎么做以这两处为准，本页不另定口径。
 
 ## 5. 凭据位置索引（只记位置，绝不记值）
 
