@@ -80,6 +80,15 @@ def week_monday(week_label):
     y, w = week_label.split("-W")
     return date.fromisocalendar(int(y), int(w), 1)
 
+def utc_today():
+    """F8-26：默认运行日期取 UTC 口径（纯函数，供单测）。
+
+    旧实现用 date.today()（运行机本地时区），与 quota/check-shadow 的 UTC
+    月/周判定不一致：周边界（如 UTC 周日中午 = Auckland 周一凌晨）时同一
+    时刻会得出相差一周的 week_label、state 的 ISO 周推进随之错位。
+    显式 --date 传参路径不经此函数、不受影响。"""
+    return datetime.now(timezone.utc).date()
+
 def advance_watch(prev_entry, week_label, fallback_last_week=None):
     """按 ISO 自然周推进连续周数，返回 (weeks, lastWeek)。
 
@@ -236,7 +245,7 @@ def main():
     args = sys.argv[1:]
     def opt(name, default):
         return args[args.index(name) + 1] if name in args else default
-    run_date = date.fromisoformat(opt("--date", date.today().isoformat()))
+    run_date = date.fromisoformat(opt("--date", utc_today().isoformat()))  # F8-26：默认 UTC 口径；--date 显式传参不变
     iso = run_date.isocalendar()
     week_label = f"{iso[0]}-W{iso[1]:02d}"
     state_path = Path(opt("--state", str(ROOT / "ops/weekly/state.json")))
