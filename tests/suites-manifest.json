@@ -125,6 +125,11 @@
       "path": "tests/coverage-report.test.mjs",
       "runner": "node",
       "expectedPass": 4
+    },
+    {
+      "path": "tests/paprika-verify-scripts.test.mjs",
+      "runner": "node",
+      "expectedPass": 6
     }
   ]
 }

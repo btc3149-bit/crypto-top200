@@ -21,6 +21,7 @@ buildBlob,
 validateBlob,
 emptyHealth,
 healthStatusFor,
+countValidPaprikaMappings,
 toIso,
 toMs,
 } from "../../../shared/board-schema.js";
@@ -173,14 +174,32 @@ const coins = opts.coins || COINS;
 const ids = opts.ids || coins.map((c) => c.id);
 const manualRun = opts.trigger === "manual";
 // F6-10 映射计数：每 run 按本 run 币表计算，落 health.paprikaMappedCount 供监控读。
-// F7-02：计数只认非空字符串 paprikaId（数字/对象等真值畸形值不得计入 mapped）。
-const paprikaMappedCount = coins.filter((c) => c && typeof c.paprikaId === "string" && c.paprikaId.length > 0).length;
+// F8-16：计数一律走 shared/board-schema.js 定版接口 countValidPaprikaMappings
+// （内部经 isValidPaprikaId），禁止 truthy/非空字符串计数——畸形串不得灌水 mapped。
+const paprikaMappedCount = countValidPaprikaMappings(coins);
 // F7-02：Paprika 实际可用不再只看 mapped 计数——须在 resolveProvider 后对候选 run
 // 做 preflight（身份/活跃/tickers 有效命中四项计数均 ≥94%，见下方门禁段），
 // 结果落 health.paprikaGate（四项计数分开写，禁止以非空数冒充有效数）。
+// F8-15：paprikaGate 未测态可区分——preflight 未执行/抛错时写
+// {measured:false, reason, identityValid:null, activeUsable:null, tickerHit:null}，
+// 不再零填充冒充实测 0；实测完成写 measured:true。非候选 run 仍为 null（不适用）。
 // preflight 完成前 paprikaUsable=false；applyOutcome 的迁移许可共用此口径（F6-43）。
 let paprikaGate = null;
 let paprikaUsable = false;
+// F8-14：本 run 字段清洗计数（分源汇总）——providers 返回的 invalidFields 在此
+// 并入 runInvalidFields 后落 health.invalidFields 并在 total>0 时打结构化日志，
+// 不再在运行路径丢弃。未发生抓取的源保持 null（未测 ≠ 实测 0）。
+let runInvalidFields = null;
+const noteInvalidFields = (source, fields) => {
+if (!fields) return;
+if (!runInvalidFields) runInvalidFields = { coingecko: null, coinpaprika: null};
+const cur = runInvalidFields[source] || { price: 0, mcapUsd: 0, volume24h: 0, change24h: 0, rank: 0, total: 0};
+for (const k of Object.keys(cur)) cur[k] += fields[k] || 0;
+runInvalidFields[source] = cur;
+if ((fields.total || 0) > 0) {
+logEvent({ event: "invalid_fields_cleaned", runId, source, invalidFields: fields});
+}
+};
 
 // W4-01：目标键在开头统一计算，prevBlob 必须读目标键本身——影子期写 shadow 时
 // 若误读 current，global.asOf 永不刷新、globalDue 每 run 误判到期（每 10min 重抓）。
@@ -259,6 +278,7 @@ globalLast429At,
 globalSkipUntil,
 paprikaMappedCount,
 paprikaGate,
+invalidFields: runInvalidFields,
 lastManualRunAt: manualRun? toIso(nowMs): prevLastManualRunAt,
 };
 Object.assign(health, healthStatusFor(health.consecutiveFailures));
@@ -334,27 +354,56 @@ const warnings = [...resolved.warnings];
 // 时 provider 恒为 CG，本段不触发，Paprika 保持关闭。
 if (provider === "coinpaprika") {
 let gateStats = null;
+let gateMeasured = false;
+let gateReason = null;
 // mapped 为本地可算计数：其本身已低于门槛时门禁必然不过，跳过 preflight
 // （零 Paprika 调用，与 F6-10 旧门禁的拦截后零调用口径一致）。
 const mappedBelowGate = paprikaMappedCount < paprikaGateThreshold(coins.length);
-if (!mappedBelowGate) {
+if (mappedBelowGate) {
+gateReason = "preflight_skipped_mapped_below_gate";
+} else {
+// F8-17：按调用发生时记账——fetchGateStats 每发出一次 Paprika 调用即回调，
+// 中途失败（如目录成功、tickers 500）已发生的 1–2 次调用也进 attemptsTotal，
+// 不再等成功后补记固定 2 次。
+let preflightAttempts = 0;
 try {
-gateStats = await paprika.fetchGateStats(coins);
-ledgerCall(false, 2);
+gateStats = await paprika.fetchGateStats(coins, () => {
+preflightAttempts += 1;
+});
+gateMeasured = true;
 } catch (e) {
+gateReason = "preflight_failed";
 logError({ event: "paprika_gate_preflight_failed", runId, message: String(e && e.message).slice(0, 200) });
+} finally {
+if (preflightAttempts > 0) ledgerCall(false, preflightAttempts);
 }
 }
-const gate = evaluatePaprikaGate(
-gateStats || { mapped: paprikaMappedCount, identityValid: 0, activeUsable: 0, tickerHit: 0 },
-coins.length
-);
-paprikaGate = { ...gate.counts, threshold: gate.threshold, total: gate.total, ok: gate.ok, checkedAt: toIso(nowMs) };
+if (gateMeasured) {
+const gate = evaluatePaprikaGate(gateStats, coins.length);
+paprikaGate = { measured: true, reason: null, ...gate.counts, threshold: gate.threshold, total: gate.total, ok: gate.ok, checkedAt: toIso(nowMs) };
 if (gate.ok) {
 paprikaUsable = paprikaEnabled(env);
 } else {
+warnings.push(`paprika gate: ${gate.failures.join("; ")}; forcing coingecko (F7-02)`);
+provider = "coingecko";
+probeCg = false;
+}
+} else {
+// F8-15：未测态——计数分项写 null + reason，不零填充冒充实测 0。
+paprikaGate = {
+measured: false,
+reason: gateReason,
+mapped: paprikaMappedCount,
+identityValid: null,
+activeUsable: null,
+tickerHit: null,
+threshold: paprikaGateThreshold(coins.length),
+total: coins.length,
+ok: false,
+checkedAt: toIso(nowMs),
+};
 warnings.push(
-`paprika gate: ${gateStats ? gate.failures.join("; ") : mappedBelowGate ? `mapped ${paprikaMappedCount}/${coins.length} below 94% gate; preflight skipped` : "preflight failed"}; forcing coingecko (F7-02)`
+`paprika gate: ${mappedBelowGate ? `mapped ${paprikaMappedCount}/${coins.length} below 94% gate; preflight skipped` : "preflight failed"}; forcing coingecko (F7-02/F8-15)`
 );
 provider = "coingecko";
 probeCg = false;
@@ -413,6 +462,7 @@ const upstreamStatus = { markets: null, global: null};
 if (probeCg && env.COINGECKO_API_KEY) {
 try {
 const probe = await cg.fetchMarkets(ids, env);
+noteInvalidFields("coingecko", probe.invalidFields);
 upstreamStatus.markets = probe.upstreamStatus;
 sourceState = applyOutcome(sourceState, { isProbe: true, ok: true, coverageRatio: probe.coverage.ratio}, nowMs, { paprikaEnabled: paprikaUsable});
 } catch (e) {
@@ -499,6 +549,7 @@ upstreamStatus: e.status!= null? e.status: null,
 }
 
 const mVal = mSettled.value;
+noteInvalidFields(provider, mVal.invalidFields);
 upstreamStatus.markets = mVal.upstreamStatus;
 
 if (!mVal.coverage || mVal.coverage.ratio < COVERAGE_RATIO) {
@@ -584,6 +635,7 @@ globalLast429At,
 globalSkipUntil,
 paprikaMappedCount,
 paprikaGate,
+invalidFields: runInvalidFields,
 lastManualRunAt: manualRun? toIso(nowMs): prevLastManualRunAt,
 };
 await writeHealth(env, health);
