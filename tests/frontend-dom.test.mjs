@@ -22,7 +22,10 @@
 // ⑥ F6-56/F6-60 显示全部/收起按钮；⑦ F6-12 置信度筛选；⑧ F6-63/F6-14 fmt
 // 边界与数值归一；⑨ F6-13/F6-18 实时字段 0/null 口径；⑩ F6-59 解码健全性
 // 校验；⑪ F6-68 搜索口径；⑫ F6-57 修补刷新已展开详情；⑬ F6-62 delayed
-// 横幅；⑭ F6-65 自选原始集落盘；⑮ F6-54 coins 失败态点星不覆写自选。
+// 横幅；⑭ F6-65 自选原始集落盘；⑮ F6-54 coins 失败态点星不覆写自选；
+// ⑯ W5 aria-controls 全量关联（快照/模板/patch 三路 200/200 + toggle 同步）；
+// ⑰ W5 展开按钮命中域 CSS 定版断言（28+2×8=44）；⑱ W5 SRI 处置守卫
+// （外部脚本仅 beacon 一支、无 integrity，登记见 security-baseline §5.4）。
 //
 // 桩覆盖的 DOM API 清单（F6-82）：getElementById（注册表自动建桩）、
 // document.querySelector（仅 thead）、querySelectorAll（tbody 仅
@@ -590,6 +593,84 @@ await test("⑮ F6-54 coins 加载失败态下点星不覆写已存自选", asyn
   await settle(3, 60); // saveWatch 防抖 100ms
   const saved = JSON.parse(c5.lsStore.get("top200.watchlist.v1") || "[]");
   assert.deepEqual([...saved].sort(), ["bitcoin", "solana"], "旧自选不得被失败态点星冲掉");
+});
+
+await test("⑯ W5 aria-controls 全量关联：快照静态行/JS 模板行/patchInPlace 修补后均 200/200 且指向详情行 id", async () => {
+  const pairCheck = (htmlStr, label) => {
+    const btns = [...htmlStr.matchAll(/<button class='exp'[^>]*>/g)].map((m) => m[0]);
+    assert.equal(btns.length, 200, `${label}：展开按钮应为 200 个，实际 ${btns.length}`);
+    for (const b of btns) {
+      const exp = /data-exp='([^']+)'/.exec(b)[1];
+      const ctl = /aria-controls='([^']+)'/.exec(b);
+      assert.ok(ctl, `${label}：${exp} 缺 aria-controls`);
+      assert.equal(ctl[1], "d-" + exp, `${label}：${exp} 的 aria-controls 应指向 d-${exp}，实际 ${ctl[1]}`);
+      assert.ok(/aria-expanded='(true|false)'/.test(b), `${label}：${exp} 缺 aria-expanded`);
+    }
+  };
+  // (a) 构建期快照静态行（文件原文 tbody）
+  const tbodyInit = html.match(/<tbody id="tbodyA">([\s\S]*?)<\/tbody>/)[1];
+  pairCheck(tbodyInit, "快照静态行");
+  // (b) JS 模板整表渲染（rowHTML × 200）
+  boardLive = false; // 先快照态建上下文，保证 (c) 走真实 patchInPlace 路径
+  const c6 = buildContext();
+  const inPage6 = (expr) => vm.runInContext(expr, c6.ctx);
+  await settle();
+  pairCheck(inPage6("COINS.map((c) => rowHTML(c)).join('')"), "JS 模板行");
+  // (c) patchInPlace 修补后：按钮随单元格 innerHTML 重建，aria-controls 不得丢失
+  boardLive = true;
+  await inPage6("loadBoard()");
+  await settle();
+  assert.equal(inPage6("livePatched"), true, "应走 patchInPlace 路径");
+  pairCheck(c6.tbody.innerHTML, "patchInPlace 修补后");
+  // (d) toggleExpand 属性同步：展开 aria-expanded=true 且 aria-controls 与实际插入的详情行 id 一致；收起保留 aria-controls
+  const btcTr = c6.tbody.mainRows().find((tr) => tr.id === "row-bitcoin");
+  const attrs = {};
+  const btn = { dataset: { exp: "bitcoin" }, textContent: "▸",
+    setAttribute(k, v) { attrs[k] = String(v); }, removeAttribute(k) { delete attrs[k]; },
+    closest: () => btcTr };
+  c6.ctx.__btn6 = btn;
+  inPage6("toggleExpand('bitcoin', __btn6)");
+  assert.equal(attrs["aria-expanded"], "true", "展开后 aria-expanded 应为 true");
+  assert.equal(attrs["aria-controls"], "d-bitcoin");
+  const det = c6.tbody._nodes[c6.tbody._nodes.indexOf(btcTr) + 1];
+  assert.ok(det && det.id === attrs["aria-controls"], "aria-controls 应指向实际插入的详情行");
+  inPage6("toggleExpand('bitcoin', __btn6)");
+  assert.equal(attrs["aria-expanded"], "false", "收起后 aria-expanded 应为 false");
+  assert.equal(attrs["aria-controls"], "d-bitcoin", "收起后 aria-controls 应保留");
+  delete c6.ctx.__btn6;
+});
+
+await test("⑰ W5 展开按钮命中域定版：基础档视觉 28 + ::after 每边外扩 8 = 有效 44×44；本体 44 的档位扩展收回", () => {
+  const style = /<style>([\s\S]*?)<\/style>/.exec(html)[1];
+  const base = /\.exp\{background:none;border:1px solid var\(--line-strong\)[^}]*?min-width:(\d+)px;min-height:(\d+)px/.exec(style);
+  assert.ok(base, "应找到 .exp 基础规则");
+  const bw = Number(base[1]), bh = Number(base[2]);
+  const ext = /\.exp::after\{content:"";position:absolute;inset:-(\d+)px\}/.exec(style);
+  assert.ok(ext, "应找到 .exp::after 命中扩展规则");
+  const e = Number(ext[1]);
+  assert.ok(bw + 2 * e >= 44 && bh + 2 * e >= 44, `基础档有效命中域应 ≥44×44，实际 ${bw + 2 * e}×${bh + 2 * e}`);
+  assert.equal(bw + 2 * e, 44, "基础档定版命中域应恰为 44（28+2×8）");
+  // ≤640 与粗指针 ≥641 两档本体已 44×44，对应 ::after 必须收回 inset:0（命中域恰 44、不再外扩）
+  assert.ok(/\.exp\{min-width:44px;min-height:44px\}/.test(style), "≤640 档 .exp 本体应为 44×44");
+  assert.equal((style.match(/\.exp::after\{inset:0\}/g) || []).length, 2, "两档本体 44 的媒体查询内应各有一处 ::after{inset:0} 收回");
+  // 级联顺序回归（W5 实测教训）：≤640 档 44px 规则必须位于基础 .exp 规则之后，
+  // 否则同特异性被基础 28px 覆盖而失效（修复前 computed min-width 实测恒 28px）
+  const baseIdx = style.indexOf(".exp{background:none");
+  const lateIdx = style.indexOf("@media (max-width:640px){.exp{min-width:44px");
+  assert.ok(baseIdx >= 0 && lateIdx > baseIdx, "≤640 档 .exp 44px 规则必须在基础 .exp 规则之后（级联顺序）");
+});
+
+await test("⑱ W5 SRI 处置守卫：全站外部脚本仅 CF beacon 一支（两页各一）且无 integrity——处置登记见 security-baseline §5.4", () => {
+  const priv = readFileSync(new URL("../public/privacy/index.html", import.meta.url), "utf-8");
+  const tags = [];
+  for (const doc of [html, priv]) {
+    for (const m of doc.matchAll(/<script\b[^>]*\bsrc=['"](https?:[^'"]+)['"][^>]*>/g)) tags.push(m);
+  }
+  assert.equal(tags.length, 2, `外部脚本应恰为两页各一支 beacon，实际 ${tags.length} 支`);
+  for (const m of tags) {
+    assert.equal(m[1], "https://static.cloudflareinsights.com/beacon.min.js", "外部脚本只允许 CF Web Analytics beacon");
+    assert.ok(!/integrity=/.test(m[0]), "beacon 不得带 integrity（CF 不支持版本锁定、内容随版本更新，见 §5.4 接受登记）；变更处置须先改登记再改本断言");
+  }
 });
 
 const failed = results.filter(([, s]) => s !== "PASS");
