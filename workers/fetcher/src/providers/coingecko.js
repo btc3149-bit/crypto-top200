@@ -126,8 +126,9 @@ export async function fetchMarkets(ids, env) {
   if (!Array.isArray(markets)) {
     throw new UpstreamError("coingecko markets payload invalid", { errorType: "parse_error", stage: "markets" });
   }
-  const { rows, coverage } = normalizeCgMarkets(markets, ids);
-  return { rows, coverage, upstreamStatus: 200, attempts: 1 };
+  // F8-14：invalidFields 不再丢弃——随结果返回，由主流程汇总进 health/日志留痕。
+  const { rows, coverage, invalidFields } = normalizeCgMarkets(markets, ids);
+  return { rows, coverage, invalidFields, upstreamStatus: 200, attempts: 1 };
 }
 
 export async function fetchGlobal(env) {

@@ -212,6 +212,7 @@ await test("F7-02 主流程: 门禁四项达标（4/4）→ Paprika 放行、hea
     { mapped: 4, identityValid: 4, activeUsable: 4, tickerHit: 4, ok: true }
   );
   assert.equal(health.paprikaMappedCount, 4);
+  assert.equal(health.paprikaGate.measured, true, "F8-15: 实测完成须标注 measured:true");
 });
 
 await test("F7-02 主流程: tickerHit 不足（3/4 < 94%）→ 同 run 强制 CG、health 记门禁分项、Paprika 主抓不发生", async () => {
@@ -324,6 +325,77 @@ await test("F8-16/F8-18: 畸形 paprikaId 不计 mapped；重复 paprikaId 只�
   assert.equal(s.tickerHit, 1, "重复 paprikaId 不得双计 tickerHit");
   assert.ok(s.failures.some((f) => f.stage === "mapped" && f.reason === "paprika_id_malformed"));
   assert.ok(s.failures.some((f) => f.stage === "duplicate" && f.reason === "duplicate_paprika_id"));
+});
+
+// ---------- 第八期批 4：F8-14/F8-15/F8-17 ----------
+function installCgMock({ badPriceId = null, paprikaTickersStatus = 200 } = {}) {
+  const counts = { cg: 0, paprikaCoins: 0, paprikaTickers: 0 };
+  const dir = RUN_COINS.map((c) => ({ id: c.paprikaId, name: c.id, symbol: c.paprikaId.split("-")[0].toUpperCase(), is_active: true, rank: 1 }));
+  const ticks = RUN_COINS.map((c) => ({ id: c.paprikaId, rank: 1, quotes: { USD: { price: 100, market_cap: 2e12, volume_24h: 500, percent_change_24h: 1 } } }));
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes("api.coinpaprika.com/v1/coins")) { counts.paprikaCoins += 1; return jsonRes(dir); }
+    if (u.includes("api.coinpaprika.com/v1/tickers")) {
+      counts.paprikaTickers += 1;
+      if (paprikaTickersStatus !== 200) return jsonRes({ error: "boom" }, paprikaTickersStatus);
+      return jsonRes(ticks);
+    }
+    if (u.includes("api.coinpaprika.com/v1/global")) return jsonRes({ market_cap_usd: 999, bitcoin_dominance_percentage: 55, market_cap_change_24h: 1 });
+    if (u.includes("coingecko.com")) {
+      counts.cg += 1;
+      if (u.includes("/coins/markets")) {
+        const ids = new URL(u).searchParams.get("ids").split(",");
+        return jsonRes(ids.map((id, i) => ({ id, current_price: id === badPriceId ? "3123" : 100 + i, market_cap: 10000, market_cap_rank: i + 1, price_change_percentage_24h_in_currency: 1, total_volume: 500 })));
+      }
+      return jsonRes({ data: { total_market_cap: { usd: 999 }, market_cap_percentage: { btc: 55 }, market_cap_change_percentage_24h_usd: 1 } });
+    }
+    throw new Error("unexpected " + u);
+  };
+  return counts;
+}
+
+await test("F8-14: CG 坏字段清洗计数落 health.invalidFields 分源计数（>0 可见），未抓源为 null", async () => {
+  const kv = makeKv();
+  installCgMock({ badPriceId: "ethereum" });
+  const r = await runFetch(baseEnv(kv, { PAPRIKA_ENABLED: "false" }), { coins: RUN_COINS, ids: RUN_IDS, nowMs: NOW });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  const health = JSON.parse(kv.store.get(KV_KEYS.health));
+  assert.equal(health.invalidFields.coingecko.price, 1, "字符串价被清洗须计数留痕");
+  assert.equal(health.invalidFields.coingecko.total, 1);
+  assert.equal(health.invalidFields.coinpaprika, null, "本 run 未抓 Paprika，须为 null 而非 0");
+});
+
+await test("F8-15: preflight 未执行（mapped 低于门槛）→ paprikaGate 未测态：measured:false + reason + 分项 null、零 Paprika 调用", async () => {
+  const kv = makeKv();
+  const counts = installCgMock();
+  const oneMapped = RUN_COINS.map((c, i) => (i === 0 ? c : { ...c, paprikaId: null }));
+  const r = await runFetch(baseEnv(kv), { coins: oneMapped, ids: RUN_IDS, nowMs: NOW });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.provider, "coingecko");
+  assert.equal(counts.paprikaCoins + counts.paprikaTickers, 0, "mappedBelowGate 应跳过 preflight");
+  const health = JSON.parse(kv.store.get(KV_KEYS.health));
+  assert.equal(health.paprikaGate.measured, false);
+  assert.equal(health.paprikaGate.reason, "preflight_skipped_mapped_below_gate");
+  assert.equal(health.paprikaGate.mapped, 1);
+  assert.equal(health.paprikaGate.identityValid, null, "未测不得零填充冒充实测 0");
+  assert.equal(health.paprikaGate.tickerHit, null);
+  assert.equal(health.paprikaGate.ok, false);
+});
+
+await test("F8-15/F8-17: preflight 中途失败（tickers 500）→ 未测态 reason=preflight_failed，且已发生的 2 次 Paprika 调用计入 attemptsTotal", async () => {
+  const kv = makeKv();
+  const counts = installCgMock({ paprikaTickersStatus: 500 });
+  const r = await runFetch(baseEnv(kv), { coins: RUN_COINS, ids: RUN_IDS, nowMs: NOW });
+  assert.equal(r.ok, true, JSON.stringify(r));
+  assert.equal(r.provider, "coingecko", "preflight 失败必须同 run 回 CG");
+  assert.equal(counts.paprikaCoins, 1);
+  assert.equal(counts.paprikaTickers, 1);
+  const health = JSON.parse(kv.store.get(KV_KEYS.health));
+  assert.equal(health.paprikaGate.measured, false);
+  assert.equal(health.paprikaGate.reason, "preflight_failed");
+  assert.equal(health.paprikaGate.identityValid, null);
+  // 账本：Paprika preflight 2 次（失败前已发生）+ CG markets 1 + CG global 1 = 4
+  assert.equal(health.quota.attemptsTotal, 4, "preflight 失败路径已发生的 Paprika 调用必须记账（F8-17）");
 });
 
 globalThis.fetch = originalFetch;
