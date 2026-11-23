@@ -88,6 +88,21 @@
     {
       "path": "tests/time_tolerance_test.py",
       "runner": "python3"
+    },
+    {
+      "path": "tests/smoke-chain.test.mjs",
+      "runner": "node",
+      "expectedPass": 10
+    },
+    {
+      "path": "tests/gen-paprika-map.test.mjs",
+      "runner": "node",
+      "expectedPass": 7
+    },
+    {
+      "path": "tests/coverage-report.test.mjs",
+      "runner": "node",
+      "expectedPass": 4
     }
   ]
 }
