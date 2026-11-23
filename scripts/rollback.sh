@@ -16,8 +16,9 @@
 # （authd 代用值，出站时才换成真实令牌），脚本与日志里不出现令牌。
 #
 # 账号 ID 与项目名不是机密：账号 ID 见 custom.cloudflare 的 CONNECTOR.md，
-# 项目名 crypto-top200 见 wrangler.toml；账号 ID 可用环境变量
-# CLOUDFLARE_ACCOUNT_ID 覆盖，cf_api.py 路径可用 CF_API_PY 覆盖。
+# 项目名 crypto-top200 见 wrangler.toml；账号 ID 必须经环境变量
+# CLOUDFLARE_ACCOUNT_ID 注入（F7-19：无字面量默认值、缺失即 fail-closed），
+# cf_api.py 路径可用 CF_API_PY 覆盖。
 #
 # 防误触：
 #   - deployment 真正执行前必须 ROLLBACK_CONFIRM=1，否则只打印目标并退出（退出码 3）。
@@ -39,8 +40,17 @@
 set -euo pipefail
 
 PROJECT="crypto-top200"
-ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-e6eae7d19e653edfedb12f4bb5e0227d}"
+# F7-19（补 F6-87 漏网）：ACCOUNT_ID 不再有字面量默认值，改为必填环境变量、
+# 缺失即 fail-closed（与 quota-check.py / check-shadow-health.py 同口径）。
+ACCOUNT_ID="${CLOUDFLARE_ACCOUNT_ID:-}"
 CF_API_PY="${CF_API_PY:-$HOME/workspace/custom-connectors/custom.cloudflare/bin/cf_api.py}"
+
+require_account_id() {
+  if [ -z "$ACCOUNT_ID" ]; then
+    echo "[rollback] 错误：未设置 CLOUDFLARE_ACCOUNT_ID（F7-19/F6-87：必填环境变量，缺失即 fail-closed，不再有字面量默认值）" >&2
+    exit 3
+  fi
+}
 
 TMPDIR_RB="$(mktemp -d)"
 trap 'rm -rf "$TMPDIR_RB"' EXIT
@@ -71,13 +81,13 @@ mode（模式回滚：改 BOARD_READ_MODE 环境变量）：
   ROLLBACK_CONFIRM=1          deployment 子命令的执行确认（必填才执行）
   ROLLBACK_MODE_API_ONLY=1    mode 子命令的执行确认（F6-74，必填才执行；仅改 API 配置层、不改变线上行为）
   ALLOW_PROD_MODE_ROLLBACK=1  mode 子命令改 production 的额外放行（必填才执行）
-  CLOUDFLARE_ACCOUNT_ID       覆盖账号 ID（默认取连接文档登记值，非机密）
+  CLOUDFLARE_ACCOUNT_ID       账号 ID（必填，缺失即 fail-closed 退出 3；F7-19 起无字面量默认值）
   CF_API_PY                   覆盖 cf_api.py 路径
 
-示例：
-  ROLLBACK_CONFIRM=1 bash scripts/rollback.sh deployment --env preview
-  bash scripts/rollback.sh mode legacy --env preview
-  ALLOW_PROD_MODE_ROLLBACK=1 bash scripts/rollback.sh mode legacy --env production
+示例（均须先注入 CLOUDFLARE_ACCOUNT_ID，且与各子命令门禁一致，照抄可执行）：
+  ROLLBACK_CONFIRM=1 bash scripts/rollback.sh deployment --env production
+  ROLLBACK_MODE_API_ONLY=1 bash scripts/rollback.sh mode legacy --env preview
+  ROLLBACK_MODE_API_ONLY=1 ALLOW_PROD_MODE_ROLLBACK=1 bash scripts/rollback.sh mode legacy --env production
 EOF
 }
 
@@ -320,8 +330,8 @@ PYEOF
 main() {
   local sub="${1:-}"
   case "$sub" in
-    deployment) shift; cmd_deployment "$@" ;;
-    mode) shift; cmd_mode "$@" ;;
+    deployment) shift; require_account_id; cmd_deployment "$@" ;;
+    mode) shift; require_account_id; cmd_mode "$@" ;;
     --help|-h|help) usage ;;
     "") usage >&2; exit 2 ;;
     *) echo "[rollback] 不认识的子命令：$sub" >&2; usage >&2; exit 2 ;;

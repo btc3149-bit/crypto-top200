@@ -140,4 +140,54 @@ assert "verified 95" in line and "unverified 36" in line and "ops/ath-review-pla
 assert "不自动修改" in line
 ok("附B ATH 计数 95/69/36 与提醒行（含计划路径与不自动改数声明）")
 
+# ---------- F7-22 退出码定版（高价值信号纳入，run_void=2 不破坏） ----------
+_base = dict(run_void=False, alerts=[], missing_rows=[], cand_in=[], cand_out=[],
+             due=[], queue=[], report_url_warn=0, incomplete=[])
+assert wc.exit_code_for(**_base) == 0
+for field, val in [("alerts", [("S", "i", "p", "a")]), ("missing_rows", [{"symbol": "X"}]),
+                   ("cand_in", [("X", 1, 2)]), ("cand_out", [("X", None, 2)]),
+                   ("due", ["X"]), ("queue", ["多源偏离 X"]), ("report_url_warn", 1),
+                   ("incomplete", ["C3 失败"])]:
+    kw = {**_base, field: val}
+    assert wc.exit_code_for(**kw) == 1, field
+ok("F7-22a 高价值信号（missing/cand_in/cand_out/due/queue/report_url_warn）任一非空 → 退出 1；全空 → 0")
+assert wc.exit_code_for(**{**_base, "run_void": True}) == 2
+assert wc.exit_code_for(**{**_base, "run_void": True, "missing_rows": [{"symbol": "X"}], "alerts": [1]}) == 2
+ok("F7-22b run_void 恒 2 且优先于一切 1 类信号（F6-09 语义不破坏）")
+
+# ---------- F7-23 state 读取/原子写 ----------
+import tempfile  # noqa: E402
+with tempfile.TemporaryDirectory() as _td:
+    _td = Path(_td)
+    missing = wc.load_state(_td / "nope.json", "2026-W47")
+    assert missing["baselineWeek"] == "2026-W47" and missing["watchOut"] == {}
+    good = _td / "state.json"
+    good.write_text(json.dumps({"version": 1, "watchOut": {"X": {"weeks": 1}}}), encoding="utf-8")
+    assert wc.load_state(good, "2026-W47")["watchOut"]["X"]["weeks"] == 1
+    bad = _td / "bad.json"
+    bad.write_text('{"version": 1, "watchOut": ', encoding="utf-8")  # 截断 JSON（旧实现在此 traceback exit 1）
+    try:
+        wc.load_state(bad, "2026-W47")
+        raise AssertionError("损坏 state 未抛 StateError")
+    except wc.StateError:
+        pass
+    notdict = _td / "list.json"
+    notdict.write_text("[1,2]", encoding="utf-8")
+    try:
+        wc.load_state(notdict, "2026-W47")
+        raise AssertionError("非 dict state 未抛 StateError")
+    except wc.StateError:
+        pass
+ok("F7-23a load_state：缺失→默认；正常→解析；损坏/非 dict→StateError（main 以退出 3 区分，不再 traceback 撞码 1）")
+
+with tempfile.TemporaryDirectory() as _td:
+    _td = Path(_td)
+    target = _td / "sub" / "report.md"
+    wc.atomic_write_text(target, "第一版\n")
+    assert target.read_text(encoding="utf-8") == "第一版\n"
+    wc.atomic_write_text(target, "第二版\n")
+    assert target.read_text(encoding="utf-8") == "第二版\n"
+    assert not list(target.parent.glob(".weekly-*")), list(target.parent.iterdir())
+ok("F7-23b atomic_write_text：tmp+os.replace 落盘、无临时文件残留、覆盖写一致")
+
 print(f"\nALL {len(PASS)} CHECKS PASSED")

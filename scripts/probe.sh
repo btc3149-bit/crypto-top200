@@ -4,6 +4,7 @@
 # 每次运行把一行 JSON 结果（时间戳、各断言结果、总判定）追加写入项目 ops/probe-log.jsonl。
 #
 # 新鲜度判定：
+# - updatedAt 在未来超过容差 300 秒 → FAIL（F7-27 双侧判定：时钟漂移/异常时间戳不得假绿；容差内未来按年龄 0 处理）
 # - updatedAt 距今 ≤15 分钟 → PASS
 # - mode=stale 且 staleAgeSec ≤3600 → WARN（降级警告，不算 FAIL；无 mode 字段时以 stale=true + 年龄 ≤3600 等价判定）
 # - mode=snapshot → FAIL（接口未生效、只有快照）
@@ -90,7 +91,7 @@ fail/fail)
 FRESH_OUT="fail:board body 不是 JSON（疑似 HTML 冒充接口）"
 ;;
 *)
-FRESH_OUT="$(python3 -c "import json,sys,time,datetime; b=json.load(open(sys.argv[1],encoding='utf-8')); mode=b.get('mode'); raw=b.get('updatedAt'); ts=(raw/1000.0 if raw > 1e12 else float(raw)) if isinstance(raw,(int,float)) else (datetime.datetime.fromisoformat(raw.replace('Z','+00:00')).timestamp() if isinstance(raw,str) else None); age=(time.time()-ts) if ts is not None else None; sa=b.get('staleAgeSec'); print('fail:mode=snapshot（接口未生效，只有快照数据）' if mode=='snapshot' else 'fail:updatedAt 缺失或不可解析' if age is None else 'pass:updatedAt 距今 ' + str(int(age)) + 's（≤15 分钟）' if age <= 900 else 'warn:mode=stale，staleAgeSec=' + str(sa) + '（≤3600，降级警告）' if (mode=='stale' and sa is not None and sa <= 3600) else 'warn:stale=true，数据年龄 ' + str(int(sa if sa is not None else age)) + 's（≤3600，降级警告）' if (b.get('stale') is True and (sa if sa is not None else age) <= 3600) else 'fail:updatedAt 距今 ' + str(int(age)) + 's，超过新鲜度上限')" "$BOARD_BODY" 2>/dev/null || echo "fail:新鲜度计算失败（updatedAt 不可解析）")"
+FRESH_OUT="$(python3 -c "import json,sys,time,datetime; b=json.load(open(sys.argv[1],encoding='utf-8')); mode=b.get('mode'); raw=b.get('updatedAt'); ts=(raw/1000.0 if raw > 1e12 else float(raw)) if isinstance(raw,(int,float)) else (datetime.datetime.fromisoformat(raw.replace('Z','+00:00')).timestamp() if isinstance(raw,str) else None); age=(time.time()-ts) if ts is not None else None; sa=b.get('staleAgeSec'); print('fail:mode=snapshot（接口未生效，只有快照数据）' if mode=='snapshot' else 'fail:updatedAt 缺失或不可解析' if age is None else 'fail:updatedAt 在未来 ' + str(int(-age)) + 's，超过未来容差 300s（时钟漂移/异常时间戳，F7-27）' if age < -300 else 'pass:updatedAt 距今 ' + str(int(max(age, 0))) + 's（≤15 分钟）' if age <= 900 else 'warn:mode=stale，staleAgeSec=' + str(sa) + '（≤3600，降级警告）' if (mode=='stale' and sa is not None and sa <= 3600) else 'warn:stale=true，数据年龄 ' + str(int(sa if sa is not None else age)) + 's（≤3600，降级警告）' if (b.get('stale') is True and (sa if sa is not None else age) <= 3600) else 'fail:updatedAt 距今 ' + str(int(age)) + 's，超过新鲜度上限')" "$BOARD_BODY" 2>/dev/null || echo "fail:新鲜度计算失败（updatedAt 不可解析）")"
 ;;
 esac
 C_FRESH="${FRESH_OUT%%:*}"

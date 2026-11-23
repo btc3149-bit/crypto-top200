@@ -30,15 +30,35 @@ echo "[deploy] 环境=$ENV_NAME 分支=$BRANCH 项目根=$PROJECT_ROOT"
 
 # (a0) F6-01/F6-26 绕过留痕：所有 DEPLOY_SKIP_*/DEPLOY_ALLOW_* 绕过必须带
 # DEPLOY_SKIP_REASON 且自动追加 ops/deploy-log.jsonl，无理由一律拒绝。
+# F7-20：除本地 deploy-log 外，同一事件再追加一份「可入版本控制的脱敏审计」
+# ops/deploy-audit.jsonl（.gitignore 已为例外放行该文件；其余 ops/*.jsonl
+# 仍被忽略）。审计记录只含时间/门禁名/环境/脱敏后原因：原因先做秘密形态
+# 脱敏（长 hex、token/secret/password/key=值形态一律打码）并截断 200 字，
+# 绝不记录任何秘密值。部署完成后脚本会提示把审计文件一并 commit。
 deploy_log() { # $1=门禁名 $2=原因
   python3 - "$1" "$2" "$ENV_NAME" <<'PYEOF'
-import json, sys
+import json, re, sys
 from datetime import datetime, timezone
-rec = {"at": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
-       "gate": sys.argv[1], "reason": sys.argv[2], "env": sys.argv[3]}
+gate, reason, env = sys.argv[1], sys.argv[2], sys.argv[3]
+at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+rec = {"at": at, "gate": gate, "reason": reason, "env": env}
 with open("ops/deploy-log.jsonl", "a", encoding="utf-8") as f:
     f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+def sanitize(s):
+    s = re.sub(r"\b[0-9a-fA-F]{32,}\b", "<redacted-hex>", s or "")
+    s = re.sub(r"(?i)(token|secret|password|passwd|api[-_ ]?key|bearer)\s*[:=]\s*\S+", r"\1=<redacted>", s)
+    s = re.sub(r"(?i)bearer\s+\S+", "Bearer <redacted>", s)
+    return s[:200]
+audit = {"at": at, "gate": gate, "env": env,
+         "event": "gate_bypass" if gate.startswith("DEPLOY_") else "gate_event",
+         "reason": sanitize(reason)}
+try:
+    with open("ops/deploy-audit.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps(audit, ensure_ascii=False) + "\n")
+except Exception as e:
+    print(f"[deploy] 警告：审计文件 ops/deploy-audit.jsonl 写入失败：{e}", file=sys.stderr)
 PYEOF
+  echo "[deploy] 审计留痕：ops/deploy-audit.jsonl 已追加（脱敏、可入版本控制）——部署后请将该文件随本次部署一并 git add/commit，否则审计链仍只在本机。"
 }
 require_bypass_reason() { # $1=绕过变量名
   if [ -z "${DEPLOY_SKIP_REASON:-}" ]; then
@@ -218,3 +238,4 @@ if [ "${HEADERS_RC:-0}" != "0" ]; then
   exit 1
 fi
 echo "[deploy] 冒烟通过，$ENV_NAME 部署完成：$BASE_URL"
+echo "[deploy] 提醒（F7-20）：若本次部署产生过门禁绕过/异常留痕，ops/deploy-audit.jsonl 已更新（脱敏审计、可入版本控制），请随本次部署一并 git add/commit 该文件，使审计链进入版本控制。"

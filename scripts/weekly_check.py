@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
 """weekly_check.py — 名单周检（W2-12 §1.3，C1–C7）。只读、只产报告。
 
-退出码语义（F6-73，第六期按协调人代站长确认口径实施）：
-  0 = 本轮有效且无告警、无 incomplete；
-  1 = 本轮有效，但 alerts>0 或 incomplete 非空（报告内容不变，靠退出码给流程信号）；
-  2 = 本轮作废（F6-09：关键拉取失败/为空，不覆写 watch、不推进 lastRunWeek）。
+退出码语义（F6-73 定版，F7-22/F7-23 第七期扩充）：
+  0 = 本轮有效且无告警、无 incomplete、无高价值信号；
+  1 = 本轮有效，但 alerts>0 或 incomplete 非空，或出现高价值信号——
+      missing_rows（疑似下架）、cand_in/cand_out（进出候选）、due（override
+      到期）、queue（人工队列，含多源偏离）、report_url_warn（外链 WARN）
+      任一非空（F7-22：这些信号此前不影响退出码、易被按码分流者静默放过）；
+  2 = 本轮作废（F6-09：关键拉取失败/为空，不覆写 watch、不推进 lastRunWeek；
+      作废优先于一切 1 类信号，语义不变）；
+  3 = 运行环境错误（F7-23 新增，与 1/2 区分）：state.json 损坏/不可读、
+      报告或 state 落盘失败。此码下不保证报告产出、state 不推进。
 
 红线：永不写 coins.json、永不触发部署。只写 ops/weekly/ 下的周报与 state.json。
 用法：python3 scripts/weekly_check.py [--state <path>] [--out <path>] [--date YYYY-MM-DD]
@@ -165,6 +171,50 @@ def c6_compare(coins, by_ids, cc_assets):
             lines.append(f"多源偏离 {c['symbol']}: CoinGecko={m['current_price']} CoinCap={cc_price} 偏离 {dev:.0%}")
     return checked, skipped, lines
 
+class StateError(Exception):
+    """state.json 损坏/不可读（F7-23）：与「有效但有告警」(1)、「本轮作废」(2)
+    区分，main 捕获后以退出码 3 收尾且不覆写 state。"""
+
+def load_state(state_path, week_label):
+    """读 state（纯 IO 封装，供单测）：文件不存在 → 默认初始 state；
+    存在但 JSON 损坏/顶层非 dict → 抛 StateError（旧实现 json.load 未捕获、
+    traceback exit 1 与「有效但有告警」撞码，F7-23）。"""
+    if not state_path.exists():
+        return {"version": 1, "baselineWeek": week_label, "watchOut": {}, "watchIn": {}, "driftMarked": []}
+    try:
+        state = json.loads(state_path.read_text(encoding="utf-8"))
+    except Exception as e:
+        raise StateError(f"state 文件损坏/不可读：{state_path}：{e}")
+    if not isinstance(state, dict):
+        raise StateError(f"state 文件顶层非对象：{state_path}")
+    return state
+
+def atomic_write_text(path, text):
+    """同目录 tmp + os.replace 原子写（F7-23）：中途崩溃不留截断文件。"""
+    import tempfile
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=".weekly-", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp_name, path)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
+
+def exit_code_for(run_void, alerts, missing_rows, cand_in, cand_out, due, queue, report_url_warn, incomplete):
+    """退出码定版（F7-22，纯函数）：作废恒 2（优先）；高价值信号
+    （alerts/missing_rows/cand_in/cand_out/due/queue/report_url_warn）
+    或 incomplete 任一非空 → 1；全空 → 0。"""
+    if run_void:
+        return 2
+    if alerts or missing_rows or cand_in or cand_out or due or queue or report_url_warn or incomplete:
+        return 1
+    return 0
+
 def ath_flag_counts(coins):
     """ATH 三类标记计数（W4-25 提醒用；字段 athFlag: verified/approx/unverified）。"""
     counts = {"verified": 0, "approx": 0, "unverified": 0, "other": 0}
@@ -194,8 +244,12 @@ def main():
     coins_doc = json.load(open(ROOT / "data/coins.json", encoding="utf-8"))
     coins = check_meta.decode_coins(coins_doc)
     overrides = json.load(open(opt("--overrides", str(ROOT / "scripts/overrides.json")), encoding="utf-8"))
-    state = json.load(open(state_path, encoding="utf-8")) if state_path.exists() else {
-        "version": 1, "baselineWeek": week_label, "watchOut": {}, "watchIn": {}, "driftMarked": []}
+    try:
+        state = load_state(state_path, week_label)
+    except StateError as e:
+        # F7-23：state 损坏以可区分的退出码 3 收尾，不 traceback、不覆写 state。
+        print(f"weekly_check: ERROR {e}（本轮未运行、state 未改动；请人工修复或移走损坏文件后重跑）", file=sys.stderr)
+        return 3
     incomplete = []
     alerts, cand_in, cand_out, queue, due = [], [], [], [], []
     missing_rows = []       # 疑似下架候选（markets 缺行；与 cand_out 移出候选严格区分）
@@ -345,8 +399,9 @@ def main():
         state["lastAttemptWeek"] = week_label  # F6-09：作废轮只记尝试周，不推进 lastRunWeek
     else:
         state["lastRunWeek"] = week_label
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    json.dump(state, open(state_path, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+    # F7-23：写序定版——先把报告成功落盘，之后才写 state 推进计数；
+    # 报告写失败则 state 不推进（旧实现先写 state 后写报告，报告失败即丢周
+    # 且计数已推进）。两处落盘均经 atomic_write_text（tmp+os.replace）。
 
     now = datetime.now(timezone.utc).isoformat(timespec="seconds")
     lines = [
@@ -390,16 +445,21 @@ def main():
         *([f"注记：本次运行执行 W4-09 清零重建——旧 state 的 watch 计数按跑次累加且含结构性假候选，与新口径不可比，已清零并按 ISO 自然周 + 基线适用性重新起算（watchBasis={WATCH_BASIS}）。"] if migrated else []),
         "注记：周号按 ISO 8601；watch 连续周数按自然周累加（同周重复运行不重复计数，间隔超一周重新起算）。",
     ]
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    out_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    try:
+        atomic_write_text(out_path, "\n".join(lines) + "\n")
+    except OSError as e:
+        # F7-23：报告落盘失败 → 退出 3 且 state 不推进，本周可重跑重建。
+        print(f"weekly_check: ERROR 报告落盘失败：{e}（state 未推进，本周未计入连续周计数，可重跑）", file=sys.stderr)
+        return 3
+    try:
+        atomic_write_text(state_path, json.dumps(state, ensure_ascii=False, indent=1))
+    except OSError as e:
+        print(f"weekly_check: ERROR state 落盘失败：{e}（报告已落盘 {out_path}，但 state 未推进，下轮将按旧 state 重算）", file=sys.stderr)
+        return 3
     print(f"weekly_check {week_label}: alerts={len(alerts)} missing={len(missing_rows)} cand_in={len(cand_in)} cand_out={len(cand_out)} queue={len(queue)} due={len(due)} incomplete={len(incomplete)} report_url_warn={report_url_warn} void={run_void}")
     print(f"report -> {out_path}")
-    # F6-73 退出码语义（见脚本头）：作废=2；alerts>0 或 incomplete 非空=1；其余=0。
-    if run_void:
-        return 2
-    if alerts or incomplete:
-        return 1
-    return 0
+    # 退出码定版（见脚本头与 exit_code_for）：作废=2；高价值信号/incomplete=1；运行环境错误=3；其余=0。
+    return exit_code_for(run_void, alerts, missing_rows, cand_in, cand_out, due, queue, report_url_warn, incomplete)
 
 if __name__ == "__main__":
     sys.exit(main())

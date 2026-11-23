@@ -11,4 +11,5 @@ node_modules/
 dist-upload/
 build/
 ops/*.jsonl
+!ops/deploy-audit.jsonl
 __pycache__/

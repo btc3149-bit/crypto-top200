@@ -157,6 +157,68 @@ def read_legacy_credits():
     return data
 
 
+FUTURE_TOLERANCE_SEC = 300  # F7-27：未来时间戳容差（秒），容忍小幅时钟抖动，超出即判异常
+
+def health_stale_reasons(health, now):
+    """F6-24 陈旧判定 + F7-27 双侧化（纯函数）：health.month 须与当前 UTC 月
+    一致；lastRunAt 距今 >3h 判陈旧，lastRunAt 在未来超过容差（300s）同样
+    判异常（旧实现只查单侧，未来时间戳可假绿）。返回原因列表，空=新鲜。"""
+    reasons = []
+    month_str = (health.get("quota") or {}).get("month")
+    if month_str != now.strftime("%Y-%m"):
+        reasons.append(f"health.month={month_str} 与当前 UTC 月 {now.strftime('%Y-%m')} 不一致")
+    last_run_raw = health.get("lastRunAt")
+    try:
+        last_run = datetime.fromisoformat(str(last_run_raw).replace("Z", "+00:00"))
+        if last_run.tzinfo is None:
+            last_run = last_run.replace(tzinfo=timezone.utc)
+        age = (now - last_run).total_seconds()
+        if age > 3 * 3600:
+            reasons.append(f"lastRunAt={last_run_raw} 距今超过 3 小时")
+        elif age < -FUTURE_TOLERANCE_SEC:
+            reasons.append(f"lastRunAt={last_run_raw} 在未来 {-age:.0f} 秒，超过未来容差 {FUTURE_TOLERANCE_SEC} 秒（时钟漂移/异常时间戳，F7-27）")
+    except Exception:
+        reasons.append(f"lastRunAt 不可解析：{last_run_raw!r}")
+    return reasons
+
+
+def build_legacy_measured(counter, month_str):
+    """F7-25（纯函数）：组装 legacyMeasured 记录字段。
+
+    仅当计数键存在、month 与核账月一致、credits 为非负数、updatedAt 可解析
+    且其年月与核账月一致时 available=True 并带真实值；跨月/陈旧/畸形任一
+    情形 → available=False 且 credits/month/updatedAt 全部置空（None），
+    只保留 available=false 与 reason——防只读 credits 的引用者把上月累计
+    当本月实测引用（旧实现 available 按 month 判定、但三字段无条件取现值）。
+    """
+    base = {"key": LEGACY_CREDITS_KEY, "available": False, "month": None,
+            "credits": None, "updatedAt": None, "reason": None,
+            "note": "实测（board.js 回源计数键）；kv 模式不回源，部署后应恒为 0/无键。与建模 scenarios 并列，判级仍按 G3 口径、不回填已用。"}
+    if not counter:
+        base["reason"] = "counter-missing：计数键不存在/读不到（部署前或恒 kv 形态属预期）"
+        return base
+    cmonth, credits, updated = counter.get("month"), counter.get("credits"), counter.get("updatedAt")
+    if not isinstance(credits, (int, float)) or isinstance(credits, bool) or credits < 0 or not cmonth:
+        base["reason"] = f"counter-malformed：计数键形态畸形（month={cmonth!r} credits={credits!r}）"
+        return base
+    if cmonth != month_str:
+        base["reason"] = f"counter-cross-month：计数键 month={cmonth} 与核账月 {month_str} 不一致（跨月未重置/陈旧值，credits 已置空）"
+        return base
+    if updated is not None:
+        try:
+            up = datetime.fromisoformat(str(updated).replace("Z", "+00:00"))
+            if up.tzinfo is None:
+                up = up.replace(tzinfo=timezone.utc)
+            if up.strftime("%Y-%m") != month_str:
+                base["reason"] = f"counter-stale：计数键 updatedAt={updated} 不在核账月 {month_str} 内（陈旧值，credits 已置空）"
+                return base
+        except Exception:
+            base["reason"] = f"counter-malformed：计数键 updatedAt 不可解析：{updated!r}"
+            return base
+    base.update({"available": True, "month": cmonth, "credits": credits, "updatedAt": updated})
+    return base
+
+
 def main():
     health = read_health()
     if health is None:
@@ -168,20 +230,10 @@ def main():
     if not isinstance(fetcher_used, (int, float)) or not month_str:
         print("quota-check: ERROR health.quota 缺 creditsUsedEst/month，核账证据不足")
         return 3
-    # F6-24 前置校验：health.month 须与当前 UTC 月一致、lastRunAt 距今 ≤3 小时，
-    # 否则核账失效——落一条带失效标记的记录并以退出码 3 收尾，不产出正常判级。
-    stale_reasons = []
-    if month_str != now.strftime("%Y-%m"):
-        stale_reasons.append(f"health.month={month_str} 与当前 UTC 月 {now.strftime('%Y-%m')} 不一致")
-    last_run_raw = health.get("lastRunAt")
-    try:
-        last_run = datetime.fromisoformat(str(last_run_raw).replace("Z", "+00:00"))
-        if last_run.tzinfo is None:
-            last_run = last_run.replace(tzinfo=timezone.utc)
-        if (now - last_run).total_seconds() > 3 * 3600:
-            stale_reasons.append(f"lastRunAt={last_run_raw} 距今超过 3 小时")
-    except Exception:
-        stale_reasons.append(f"lastRunAt 不可解析：{last_run_raw!r}")
+    # F6-24 前置校验（F7-27 双侧化，逻辑在 health_stale_reasons）：health.month
+    # 须与当前 UTC 月一致、lastRunAt 距今 ≤3 小时且不在未来超容差，否则核账
+    # 失效——落一条带失效标记的记录并以退出码 3 收尾，不产出正常判级。
+    stale_reasons = health_stale_reasons(health, now)
     if stale_reasons:
         rec = {"at": now.isoformat().replace("+00:00", "Z"), "tool": "quota-check",
                "scriptVersion": SCRIPT_VERSION, "methodology": METHODOLOGY,
@@ -224,16 +276,10 @@ def main():
     # 场景（floor_all_hit）；576/1152 两场景保留为历史参考列、不参与判级。
     board_mode = read_board_mode(health)
     planning_key = "floor_all_hit" if board_mode == "kv" else PLANNING_KEY
-    # W5 实测计量（与建模场景并列）：读计数键；当月对齐才标 available。
+    # W5 实测计量（与建模场景并列）：读计数键；F7-25 跨月/陈旧/畸形时
+    # credits/month/updatedAt 置空、只留 available=false 与 reason（build_legacy_measured）。
     legacy_counter = read_legacy_credits()
-    legacy_measured = {
-        "key": LEGACY_CREDITS_KEY,
-        "available": bool(legacy_counter and legacy_counter.get("month") == month_str),
-        "month": legacy_counter.get("month") if legacy_counter else None,
-        "credits": legacy_counter.get("credits") if legacy_counter else None,
-        "updatedAt": legacy_counter.get("updatedAt") if legacy_counter else None,
-        "note": "实测（board.js 回源计数键）；kv 模式不回源，部署后应恒为 0/无键。与建模 scenarios 并列，判级仍按 G3 口径、不回填已用。",
-    }
+    legacy_measured = build_legacy_measured(legacy_counter, month_str)
     plan = scenarios[planning_key]
     dte = plan["daysToExhaust"]
     if dte is not None and dte <= 3:
