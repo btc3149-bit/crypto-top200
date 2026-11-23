@@ -7,6 +7,7 @@
 - 回滚（W4-12 定版口径，2026-11-13 演练实测修正）：模式回滚的真实路径 = 在 `wrangler.toml` 的 `[vars]` 注入 `BOARD_READ_MODE`（如改回 `legacy`）后跑 `scripts/deploy.sh` 重新部署（应急 ≤24h）；**经 API 改 Pages 项目级 env 不会被 Wrangler 直推部署携带、单独用 `scripts/rollback.sh` 的 mode 子命令不作数**（只改 API 配置层、不改变线上行为）。部署回滚（回上一个部署）是另一条路径，见 README「回滚方法」。fetcher 侧关 Cron 即停抓。
 - Paprika 备源状态（F6-10）：**当前不可用：映射未落库（0/200）、启用门禁未达，禁止置 PAPRIKA_ENABLED=true**。启用前须先完成映射落库（≥197 非空）并通过 verify-paprika-coverage 连测达标。
 - wrangler 锁版（F7-45）：fetcher 的部署与 Secret 注入等一切人工 wrangler 操作一律走统一锁版入口 `bash scripts/wrangler-pinned.sh …`（版本从仓库根 package.json 的 pin 读取并校验 lockfile），禁止裸 `npx wrangler` / 裸 `wrangler`。例：部署 fetcher = `bash scripts/wrangler-pinned.sh deploy -c workers/fetcher/wrangler.toml`；注入 fetcher 侧 key = `bash scripts/wrangler-pinned.sh secret put COINGECKO_API_KEY -c workers/fetcher/wrangler.toml`。`workers/fetcher/README.md` 内的旧命令形态以本条为准（该文件由数据组重写时同步替换）。
+- **【F8-28 已知豁口，2026-11-23 登记】fetcher 经 wrangler-pinned.sh 单独部署、不经 deploy.sh 测试门禁**：deploy.sh 只管 Pages；fetcher 部署入口只锁版本、不跑测试。此豁口为已知并接受的操作纪律项：部署 fetcher 前必须自行先跑 `./scripts/run-tests.sh` 全绿再部署，wrangler-pinned.sh 在 fetcher 部署时也会打印醒目警告（不硬拦）。Pages 侧不同：`pages deploy` 直调 wrangler-pinned.sh 会被技术拦截，必须走 deploy.sh。
 
 ## 故障处置（W4-26 补齐，2026-11-13）
 

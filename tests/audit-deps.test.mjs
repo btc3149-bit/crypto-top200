@@ -5,11 +5,16 @@
 // 且输出含「未审计」而非「0 漏洞」。
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { dirname, resolve } from "node:path";
+import { dirname, resolve, join } from "node:path";
+import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { enumeratePackages } from "../scripts/audit-deps.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+// F8-30：wrangler pin 从 package.json 动态读取（对齐 wrangler-pinned.test.mjs），禁止写死版本号
+const WRANGLER_PIN = JSON.parse(readFileSync(join(ROOT, "package.json"), "utf8")).devDependencies.wrangler;
+const escRe = (v) => v.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+const WRANGLER_AT_PIN = new RegExp(`wrangler@${escRe(WRANGLER_PIN)}`);
 let failures = 0;
 const ok = (cond, label) => {
   console.log(`${cond ? "PASS" : "FAIL"} ${label}`);
@@ -85,7 +90,7 @@ function runAudit(env) {
 // ② 桩 OSV 有漏洞 → 退出 1、计数 1、明细含包名与 id
 {
   const r = await runAudit({ OSV_API_BASE: base });
-  ok(r.status === 1 && /漏洞 1 条/.test(r.stdout) && /wrangler@4\.159\.0 GHSA-TEST-0001/.test(r.stdout), `② 桩审计汇总（status=${r.status}）`);
+  ok(r.status === 1 && /漏洞 1 条/.test(r.stdout) && new RegExp(`wrangler@${escRe(WRANGLER_PIN)} GHSA-TEST-0001`).test(r.stdout), `② 桩审计汇总（status=${r.status}）`);
 }
 // ③ 上游不可达 → 退出 2、明示未审计
 {
@@ -95,7 +100,7 @@ function runAudit(env) {
 // ④ --list 离线枚举真实 lockfile
 {
   const r = spawnSync("node", ["scripts/audit-deps.mjs", "--list"], { cwd: ROOT, encoding: "utf8" });
-  ok(r.status === 0 && /wrangler@4\.159\.0/.test(r.stdout) && /未联网、未审计/.test(r.stdout), "④ --list 离线枚举含 wrangler@pin");
+  ok(r.status === 0 && WRANGLER_AT_PIN.test(r.stdout) && /未联网、未审计/.test(r.stdout), `④ --list 离线枚举含 wrangler@${WRANGLER_PIN}（pin 动态读 package.json，F8-30）`);
 }
 
 server.close();

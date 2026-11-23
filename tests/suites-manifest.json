@@ -1,93 +1,130 @@
 {
-  "comment": "F7-32 测试套件集合单一事实源：run-tests.sh 与 scripts/coverage-report.mjs 共用本清单；tests/ 新增/删除套件文件必须同步改此处，tests/suite-manifest.test.mjs 做双向一致性断言。",
+  "comment": "F7-32 测试套件集合单一事实源：run-tests.sh 与 scripts/coverage-report.mjs 共用本清单；tests/ 新增/删除套件文件必须同步改此处，tests/suite-manifest.test.mjs 做双向一致性断言。F8-27：识别口径扩至 *.test.js/*.check.* 与子目录套件，未登记即红。F8-32：expectedPass 为每套件 ^PASS 行数登记值，run-tests.sh 与 suite-manifest ⑦ 实跑比对；增删用例须同步改此数字（刷新只需改数字），集成时由协调人按最终实测刷新。",
   "suites": [
     {
       "path": "tests/board.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 15
     },
     {
       "path": "tests/board-v2.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 22
     },
     {
       "path": "tests/board-fetcher.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 15
     },
     {
       "path": "tests/fetcher-branches.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 42
     },
     {
       "path": "tests/frontend-dom.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 20
     },
     {
       "path": "tests/contract-real-data.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 11
     },
     {
       "path": "tests/snapshot-verify.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 5
     },
     {
       "path": "tests/health.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 15
     },
     {
       "path": "tests/kv-write-guard.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 39
     },
     {
       "path": "tests/legacy-credits.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 15
     },
     {
       "path": "tests/coins-list-contract.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 5
     },
     {
       "path": "tests/compare-shadow.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 13
     },
     {
       "path": "tests/suite-manifest.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 7
     },
     {
       "path": "tests/test_render_snapshot.py",
-      "runner": "python3"
+      "runner": "python3",
+      "expectedPass": 8
     },
     {
       "path": "tests/weekly_check_test.py",
-      "runner": "python3"
+      "runner": "python3",
+      "expectedPass": 18
     },
     {
       "path": "tests/quota_check_test.py",
-      "runner": "python3"
+      "runner": "python3",
+      "expectedPass": 22
     },
     {
       "path": "tests/paprika-gate.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 9
     },
     {
       "path": "tests/wrangler-pinned.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 6
     },
     {
       "path": "tests/audit-deps.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 4
     },
     {
       "path": "tests/probe-http-status.test.mjs",
-      "runner": "node"
+      "runner": "node",
+      "expectedPass": 3
     },
     {
       "path": "tests/build_paprika_map_test.py",
-      "runner": "python3"
+      "runner": "python3",
+      "expectedPass": 6
     },
     {
       "path": "tests/time_tolerance_test.py",
-      "runner": "python3"
+      "runner": "python3",
+      "expectedPass": 4
+    },
+    {
+      "path": "tests/smoke-chain.test.mjs",
+      "runner": "node",
+      "expectedPass": 10
+    },
+    {
+      "path": "tests/gen-paprika-map.test.mjs",
+      "runner": "node",
+      "expectedPass": 7
+    },
+    {
+      "path": "tests/coverage-report.test.mjs",
+      "runner": "node",
+      "expectedPass": 4
     }
   ]
 }

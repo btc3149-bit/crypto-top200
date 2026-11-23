@@ -123,6 +123,22 @@
       新增 Function 时逐一复核其 KV 用法，除该例外外的写方只能是 workers/fetcher。
 - [ ] 新增/变更 Pages Function 不得引入超出其职责的 KV、环境变量与外部抓取面
       （与 §5.1 权限面登记一并复核）。
+- [ ] **（F8-36，2026-11-23 新增）Reflect / Proxy 元编程人工检查项**：KV 写守卫
+      扫描器（tests/helpers/kv-guard-scan.mjs）已声明不覆盖元编程写路径——
+      `Reflect.get`/`Reflect.apply` 抽取写方法、Proxy `get`/`set` 陷阱转手等
+      对守卫不可见（红队样本 p8-boundary-reflect.js 固化此边界）。评审
+      `functions/` 与 `shared/` 新增/变更代码时必须人工 grep 并逐处复核
+      `Reflect`、`Proxy` 的出现：凡借其取得、转手或调用 `BOARD_KV` 写能力者
+      一律按未批准写处理，不得以「守卫未报」为由放行。此项为守卫盲区的
+      唯一兜底，缺此复核不得签核。
+- [ ] **（F8-37，2026-11-23 新增）动态代码构造双层禁令**：①守卫层——
+      `functions/` 与 `shared/` 扫描范围内出现 `eval(` 或 `Function(` 构造
+      即被 kv-write-guard 判 offender（字符串内的写调用对守卫不可见，故禁
+      构造本身）；②运行时层——Cloudflare Workers 运行时禁止 `eval` 与
+      `Function` 构造（调用即抛错），为第二层兜底。证据边界：本期未在本地
+      wrangler dev 环境实跑验证运行时抛错（无可用本地 Workers 运行时证据），
+      该层以平台公开口径登记、未实测；若未来运行时口径变化，F8-37 须升级
+      为确认绕过重新定级。评审时对 `eval`/`Function` 出现一律不放行。
 
 ### 5.3 Sec-Fetch-Site 影子模式复核点（F6-94，W2-19 条目）
 
@@ -212,6 +228,12 @@
   fetcher-runbook、季度清单与 deploy.sh 均已改用该入口，禁止再写裸
   `npx wrangler`。deploy.sh 的部署步亦改经该入口（与原内联
   `npx wrangler@<pin>` 等价）。
+- F8-28（2026-11-23 登记）：部署门禁覆盖面——Pages 部署经 deploy.sh 全部门禁，
+  且 wrangler-pinned.sh 对 `pages deploy` 做技术拦截（须 deploy.sh 设置
+  DEPLOY_VIA_DEPLOY_SH=1，直调拒绝）；fetcher 经 wrangler-pinned.sh 单独部署
+  **不经 deploy.sh 测试门禁，为已知豁口**，靠操作纪律兜底（部署前自跑全量
+  测试；入口在 fetcher 部署时打印醒目警告、不硬拦）。汇报部署门禁状态时
+  不得表述为「所有部署路径都过门禁」。
 - F7-47：`ops/headers/_headers.report-only.txt` 已纳入 gen-headers 的
   `--check` 体系并重新生成到现行口径（WA-ON+report-only，与线上同变体、
   仅 CSP 头名为 Report-Only）；`--report-only` 现强制显式 `--variant`

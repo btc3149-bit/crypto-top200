@@ -26,6 +26,19 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# F8-28 部署旁路拦截（Pages 侧硬拦 / fetcher 侧警告）：
+# - `pages deploy` 只能由 scripts/deploy.sh 调用（deploy.sh 会设置 DEPLOY_VIA_DEPLOY_SH=1），
+#   直调即报错——Pages 部署必须先过 deploy.sh 的测试/数据/一致性全部门禁。
+# - fetcher 部署（`deploy -c workers/fetcher/...`）是已知豁口：不经 deploy.sh 测试门禁，
+#   此处只打印醒目警告、不硬拦（保持现行运维路径可用），操作纪律见 docs/fetcher-runbook.md。
+if [ "${1:-}" = "pages" ] && [ "${2:-}" = "deploy" ] && [ "${DEPLOY_VIA_DEPLOY_SH:-0}" != "1" ]; then
+  echo "[wrangler-pinned] 拒绝：pages deploy 不得直调本入口绕过门禁。请改走：bash scripts/deploy.sh [preview|production]（F8-28）" >&2
+  exit 2
+fi
+if [ "${1:-}" = "deploy" ]; then
+  echo "[wrangler-pinned] *** 警告（F8-28 已知豁口）：fetcher 经本入口单独部署，不经 deploy.sh 的测试门禁；部署前请自行确认已跑 ./scripts/run-tests.sh 全绿。***" >&2
+fi
+
 if [ "$#" -eq 0 ]; then
   echo "用法：bash scripts/wrangler-pinned.sh <wrangler 参数...>（版本由 package.json pin 决定，参数原样透传）" >&2
   exit 2

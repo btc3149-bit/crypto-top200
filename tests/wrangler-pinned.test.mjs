@@ -5,7 +5,7 @@
 //          以 WRANGLER_PINNED_TEST_STOP 环境无关的方式验证：不一致桩不得被 exec，
 //          脚本会改走 npx；为避免联网，本用例只断言桩未被调用且退出非 0 或输出提示）。
 import { spawnSync } from "node:child_process";
-import { mkdtempSync, writeFileSync, chmodSync, existsSync, readFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, chmodSync, existsSync, readFileSync, mkdirSync, cpSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -77,6 +77,50 @@ function runWrapper(stub, args, extraEnv = {}) {
   ok(
     after === before && /不一致/.test(r.stderr || "") && r.status === 42 && npxCalled.includes(`wrangler@${pin}`),
     `④ 版本不一致的桩未被执行、改走 npx@pin 且透传参数（status=${r.status}, npx=${JSON.stringify(npxCalled.trim().split("\n"))}）`
+  );
+}
+
+// ⑤ F8-31 本地二进制缺失 → 走 npx@pin 兜底（桩 npx 记录调用，避免真联网）
+{
+  const fakeBin = join(dir, "fakebin5");
+  mkdirSync(fakeBin, { recursive: true });
+  const npxLog = join(dir, "npx5.log");
+  const fakeNpx = join(fakeBin, "npx");
+  writeFileSync(fakeNpx, `#!/usr/bin/env bash\nprintf '%s\\n' "$@" >> "${npxLog}"\necho npx-stub-ok\n`);
+  chmodSync(fakeNpx, 0o755);
+  const r = runWrapper("/nonexistent/wrangler", ["--version"], {
+    PATH: `${fakeBin}:${process.env.PATH}`,
+  });
+  const npxCalled = existsSync(npxLog) ? readFileSync(npxLog, "utf8") : "";
+  ok(
+    r.status === 0 && npxCalled.includes(`wrangler@${pin}`) && npxCalled.includes("--version"),
+    `⑤ F8-31 本地二进制缺失走 npx@pin 兜底（status=${r.status}, npx=${JSON.stringify(npxCalled.trim().split("\n"))}）`
+  );
+}
+// ⑥ F8-31 lockfile 与 pin 不一致 → wrapper 自身拒绝执行（临时副本改 lockfile，不碰仓库）
+{
+  const sandbox = join(dir, "sandbox-lock");
+  mkdirSync(join(sandbox, "scripts"), { recursive: true });
+  cpSync(join(ROOT, "scripts/wrangler-pinned.sh"), join(sandbox, "scripts/wrangler-pinned.sh"));
+  cpSync(join(ROOT, "package.json"), join(sandbox, "package.json"));
+  const lock = JSON.parse(readFileSync(join(ROOT, "package-lock.json"), "utf8"));
+  lock.packages["node_modules/wrangler"].version = "0.0.0-mismatch";
+  writeFileSync(join(sandbox, "package-lock.json"), JSON.stringify(lock));
+  const fakeBin = join(dir, "fakebin6");
+  mkdirSync(fakeBin, { recursive: true });
+  const npxLog = join(dir, "npx6.log");
+  const fakeNpx = join(fakeBin, "npx");
+  writeFileSync(fakeNpx, `#!/usr/bin/env bash\nprintf '%s\\n' "$@" >> "${npxLog}"\nexit 42\n`);
+  chmodSync(fakeNpx, 0o755);
+  const r = spawnSync("bash", ["scripts/wrangler-pinned.sh", "--version"], {
+    cwd: sandbox,
+    encoding: "utf8",
+    timeout: 60000,
+    env: { ...process.env, PATH: `${fakeBin}:${process.env.PATH}` },
+  });
+  ok(
+    r.status === 1 && /不一致/.test(r.stderr || "") && !existsSync(npxLog),
+    `⑥ F8-31 lockfile 与 pin 不一致时 wrapper 拒绝执行且未调用 npx（status=${r.status}）`
   );
 }
 

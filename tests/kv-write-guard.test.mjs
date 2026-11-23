@@ -26,7 +26,9 @@ async function test(name, fn) {
   }
 }
 
-const root = new URL("../functions/", import.meta.url);
+// F8-35：扫描范围 = functions/ + shared/（Functions 实际 import 仓库根 shared/，
+// 写调用藏进 shared/*.js 由 board.js 引用同样属写面）。
+const repoRoot = new URL("..", import.meta.url).pathname;
 function walk(dir) {
   const out = [];
   for (const name of readdirSync(dir)) {
@@ -36,11 +38,11 @@ function walk(dir) {
   }
   return out;
 }
-const files = walk(root.pathname);
-assert.ok(files.length > 0, "functions/ 应至少有一个文件");
-const rel = (f) => f.slice(f.indexOf("functions/"));
+const files = [...walk(join(repoRoot, "functions")), ...walk(join(repoRoot, "shared"))];
+assert.ok(files.length > 0, "functions/ 与 shared/ 应至少有一个文件");
+const rel = (f) => f.slice(repoRoot.length);
 
-await test("① F7-03 现行 functions/ 全仓扫描：仅 board.js addLegacyCredits 的批准 put 1 处，其余零写", () => {
+await test("① F7-03+F8-35 现行 functions/+shared/ 全仓扫描：仅 board.js addLegacyCredits 的批准 put 1 处，其余零写", () => {
   let totalAllowed = 0;
   const allOffenders = [];
   for (const f of files) {
@@ -86,6 +88,40 @@ await test("④ F7-03 正向 fixture approved-shape：以其他文件路径扫�
 await test("⑤ F7-03 正向 fixture non-kv-put：caches.default 派生 cache.put 不被误拦", () => {
   const r = scanKvWrites(readFileSync(join(fixtureDir, "non-kv-put.js"), "utf-8"), "functions/api/board.js");
   assert.deepEqual(r.offenders, []);
+});
+
+// ---------- 第八期红队语料（F8-03/F8-33/F8-34/F8-37 + 原已拦类别回归） ----------
+const P8_NEGATIVE = [
+  "p8-optional-direct.js", "p8-optional-method.js", "p8-optional-delete.js",
+  "p8-optional-computed.js", "p8-optional-extract.js",
+  "p8-nested-destruct.js", "p8-forof-destruct.js", "p8-param-destruct.js",
+  "p8-unicode-method.js", "p8-unicode-binding.js", "p8-unicode-string-key.js",
+  "p8-template-key.js", "p8-param-pass.js", "p8-return-pass.js",
+  "p8-container-array.js", "p8-container-object.js", "p8-proxy.js",
+  "p8-bind.js", "p8-call.js", "p8-obfuscate-comment.js",
+  "p8-eval.js", "p8-function-ctor.js",
+];
+for (const name of P8_NEGATIVE) {
+  await test(`⑥ F8 红队语料 ${name}：被守卫拦下`, () => {
+    const r = scanKvWrites(readFileSync(join(fixtureDir, name), "utf-8"), "functions/api/evil.js");
+    assert.equal(r.allowed, 0, `${name} 不得产生批准写`);
+    assert.ok(r.offenders.length >= 1, `${name} 应至少被拦 1 处，实际 offenders=${JSON.stringify(r.offenders)}`);
+  });
+}
+
+await test("⑦ F8-36 已登记边界 p8-boundary-reflect.js：守卫放行（边界口径固化，靠 baseline §5.2 人工评审兜底）", () => {
+  const r = scanKvWrites(readFileSync(join(fixtureDir, "p8-boundary-reflect.js"), "utf-8"), "functions/api/evil.js");
+  assert.deepEqual(r.offenders, [], "Reflect 抽取属已声明边界；若此断言变红，说明边界口径已变化，须同步更新 baseline 登记");
+});
+
+await test("⑧ F8-35 shared/ 单独扫描：零 offender、零批准写（批准例外仍仅 functions/api/board.js 一处）", () => {
+  const sharedFiles = files.filter((f) => rel(f).startsWith("shared/"));
+  assert.ok(sharedFiles.length > 0, "shared/ 应至少有一个文件");
+  for (const f of sharedFiles) {
+    const r = scanKvWrites(readFileSync(f, "utf-8"), rel(f));
+    assert.deepEqual(r.offenders, [], `${rel(f)} 不得有未批准写`);
+    assert.equal(r.allowed, 0, `${rel(f)} 不得有批准写`);
+  }
 });
 
 const failed = results.filter(([, s]) => s === "FAIL");
