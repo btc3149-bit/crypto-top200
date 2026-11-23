@@ -249,10 +249,11 @@ function buildContext(opts = {}) {
   const documentStub = guardStub({
     title: "t",
     activeElement: null, // F6-82/F6-58：桩不建模焦点，恒 null（patchInPlace 的焦点跳过分支在桩下不触发）
+    _listeners: {}, // F8-07：记录 document 级监听器供 ㉒ 派发 Escape（此前为空转、keydown 链不可测）
     getElementById: get,
     querySelector: () => theadEl,
     querySelectorAll: () => [],
-    addEventListener() {},
+    addEventListener(type, fn) { (this._listeners[type] || (this._listeners[type] = [])).push(fn); },
   }, "document");
   const fetchImpl = async (url) => {
     const u = String(url);
@@ -861,6 +862,47 @@ await test("㉑ F8-06 状态横幅 aria-live 节流：同状态连续 render 不
   assert.ok(writes >= 1, "状态变化时横幅应被写入更新");
   assert.ok(cur.includes("实时行情"), "live 后横幅应为实时文案，实际：" + cur);
   boardLive = false;
+});
+
+await test("㉒ F8-07 Escape 关闭详情：含 ' 的畸形 id 不得抛 SyntaxError 且能关闭、正常 id 行为不变", async () => {
+  boardLive = false;
+  const c9 = buildContext();
+  const inPage9 = (expr) => vm.runInContext(expr, c9.ctx);
+  await settle();
+  // 注入畸形 id 币（评审验证方法：本地副本把某 id 改为 a'b）并置展开态
+  inPage9("COINS.push({ ...COINS[0], coingeckoId: \"a'b\" }); expandedIds.add(\"a'b\"); expandedIds.add('bitcoin');");
+  const mkBtn = (id) => ({
+    dataset: { exp: id }, textContent: "▾", _focused: false, _attrs: {},
+    setAttribute(k, v) { this._attrs[k] = String(v); },
+    removeAttribute(k) { delete this._attrs[k]; },
+    closest: () => null,
+    focus() { this._focused = true; },
+  });
+  const badBtn = mkBtn("a'b"), btcBtn = mkBtn("bitcoin");
+  c9.ctx.__badBtn = badBtn; c9.ctx.__btcBtn = btcBtn;
+  // 以浏览器语义替换桩 querySelector：单引号字符串须闭合且其后紧跟 ]，否则 SyntaxError；
+  // 反斜杠转义按 CSS 字符串规则还原。未转义拼接 "[data-exp='a'b']" 在此必抛（复现口径）。
+  const doc = vm.runInContext("document", c9.ctx);
+  doc.querySelector = (sel) => {
+    const m = /^\[data-exp='((?:\\.|[^'\\])*)'\]$/.exec(sel);
+    if (!m) { const e = new Error("'" + sel + "' is not a valid selector"); e.name = "SyntaxError"; throw e; }
+    const id = m[1].replace(/\\(.)/g, "$1");
+    return id === "a'b" ? badBtn : id === "bitcoin" ? btcBtn : null;
+  };
+  const handlers = Array.from(vm.runInContext("document._listeners.keydown || []", c9.ctx));
+  assert.ok(handlers.length >= 1, "应捕获到 document keydown 监听器");
+  const dispatch = (target) => { for (const h of handlers) h({ key: "Escape", target }); };
+  const detailTarget = (id) => ({ closest: (sel) => (sel === ".detail-row" ? { id: "d-" + id } : null) });
+  // 畸形 id：在详情行按 Escape —— 不得抛错、应关闭并把焦点还给展开按钮
+  dispatch(detailTarget("a'b"));
+  assert.equal(inPage9("expandedIds.has(\"a'b\")"), false, "畸形 id 的详情应被 Escape 关闭");
+  assert.equal(badBtn._focused, true, "关闭后焦点应回到该币的展开按钮");
+  assert.equal(badBtn._attrs["aria-expanded"], "false", "展开按钮 aria-expanded 应同步为 false");
+  // 正常 id 回归：在详情行按 Escape 行为不变
+  dispatch(detailTarget("bitcoin"));
+  assert.equal(inPage9("expandedIds.has('bitcoin')"), false, "正常 id 的详情应被 Escape 关闭");
+  assert.equal(btcBtn._focused, true, "正常 id 关闭后焦点应回到展开按钮");
+  delete c9.ctx.__badBtn; delete c9.ctx.__btcBtn;
 });
 
 const failed = results.filter(([, s]) => s !== "PASS");
