@@ -78,7 +78,7 @@
       "runner": "node"
     },
     {
-      "path": "tests/probe_http_status_test.mjs",
+      "path": "tests/probe-http-status.test.mjs",
       "runner": "node"
     },
     {

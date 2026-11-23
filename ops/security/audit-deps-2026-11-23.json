@@ -1,0 +1,8 @@
+{
+  "tool": "scripts/audit-deps.mjs (OSV api.osv.dev/v1/querybatch + /v1/vulns)",
+  "auditedAt": "2026-11-23T05:11:12.417Z",
+  "lockfile": "package-lock.json",
+  "packageCount": 91,
+  "vulnerabilityCount": 0,
+  "findings": []
+}

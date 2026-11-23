@@ -183,10 +183,11 @@ _code, _rec, _log = run_full(mk_health(last="2026-11-15T09:00:00Z"))
 check("⑨ F7-07 lastRunAt 恰 3h 边界 → 有效、verdict=OK / 退出 0",
       (_code, (_rec or {}).get("verdict")), (0, "OK"))
 
-# ⑩ lastRunAt 在未来 +1h → 现行实现单侧校验不拦（F7-27 未来时间戳盲区，本例锁定现状、待脚本组双侧化后改期望）
+# ⑩ lastRunAt 在未来 +1h → F7-27 双侧判定（容差 300s）：未来超容差 → INVALID + 退出 3
+# （第七期集成时按脚本组 F7-27 修复翻转期望，原为锁定旧单侧校验现状）
 _code, _rec, _log = run_full(mk_health(last="2026-11-15T13:00:00Z"))
-check("⑩ F7-07 lastRunAt 未来 +1h → 现状仍判 OK（F7-27 盲区锁定，见 P7_NOTES_GUARD）",
-      (_code, (_rec or {}).get("verdict")), (0, "OK"))
+check("⑩ F7-07/F7-27 lastRunAt 未来 +1h → verdict=INVALID / 退出 3",
+      (_code, (_log or {}).get("verdict")), (3, "INVALID"))
 
 # ⑪ lastRunAt 不可解析 / 缺失 → INVALID + 退出 3
 _code, _rec, _log = run_full(mk_health(last="not-a-date"))
@@ -213,13 +214,13 @@ check("⑬ F7-07 legacyMeasured 计数键缺失 → available=false / credits=nu
       (_code, _lm.get("available"), _lm.get("credits"), (_rec or {}).get("verdict")),
       (0, False, None, "OK"))
 
-# ⑭ legacyMeasured：计数键跨月（month=2026-10）→ available=false；
-#    注意：现行实现 credits 仍带上月值 42（F7-25 缺陷，本例锁定现状并已报协调人，待脚本组修复后改期望为 None）
+# ⑭ legacyMeasured：计数键跨月（month=2026-10）→ available=false 且 credits/month/updatedAt 全置空
+# （F7-25 已由脚本组修复，第七期集成时翻转期望，原为锁定旧缺陷现状）
 _code, _rec, _log = run_full(mk_health(), legacy={"month": "2026-10", "credits": 42, "updatedAt": "2026-10-31T00:00:00.000Z"})
 _lm = (_rec or {}).get("legacyMeasured", {})
-check("⑭ F7-07 legacyMeasured 跨月 → available=false（credits 现状仍为上月 42，F7-25 已报协调人）",
+check("⑭ F7-07/F7-25 legacyMeasured 跨月 → available=false / credits=None / month=None",
       (_lm.get("available"), _lm.get("credits"), _lm.get("month")),
-      (False, 42, "2026-10"))
+      (False, None, None))
 
 # ⑮ legacyMeasured 读入层畸形过滤：read_legacy_credits 本体对非 dict / credits 非数 / 缺 month 一律 None
 # （qc 的 read_legacy_credits 已被上文用例 monkeypatch，故另载一份全新模块实例取原函数）

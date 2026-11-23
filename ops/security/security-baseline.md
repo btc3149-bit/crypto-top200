@@ -181,15 +181,17 @@
 
 ### 5.5 依赖漏洞审计记录（F7-46，第七期 2026-11-23）
 
-- **当期结论：未审计（不是「0 漏洞」）。** 第六期「npm audit 0 漏洞」在本期
-  无当期证据续证，禁止再沿用引用。
+- **当期结论：已审计，0 漏洞（OSV 口径，2026-11-23）。** 协调人在集成阶段
+  以 `scripts/audit-deps.mjs` 经 OSV 公共 API 实跑完成：package-lock.json
+  枚举 91 个包、漏洞 **0 条**、退出码 0（运行时间 2026-11-23T05:10:50Z）。
+  此结论为本期当期证据，不沿用第六期数字。
 - 已尝试路径（2026-11-23，本沙箱环境）：
   1. `npm audit`：注册表端点返回 **403 Forbidden、类别 `policy_denied`**
      （POST /-/npm/v1/security/audits/quick 被环境注册表策略拒绝），与第六、七期
      评审实测一致，非包本身的问题；
   2. `osv-scanner`：本机未安装（`which osv-scanner` 无结果）；
-  3. OSV 公共 API（api.osv.dev）：本轮外呼未获完成确认（直连请求未返回、
-     审批超时），**未取得任何 OSV 查询结果**，不得据此下结论。
+  3. OSV 公共 API（api.osv.dev）：安全治理组首轮外呼因审批超时未完成；
+     协调人集成阶段重试获批并实跑成功（见当期结论）。
 - 仓库依赖面（事实登记，非审计结论）：package.json 仅 devDependency
   `wrangler 4.159.0`、无运行时依赖、无 CDN 库；package-lock.json 共 91 个包
   （含 wrangler 的传递依赖与各平台可选二进制包）。

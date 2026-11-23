@@ -7,7 +7,7 @@
 ## 当前形态：G3 终局（2026-11-19 起，现行）
 
 - **Cron 已启用**：`wrangler.toml` 已注册 `[triggers] crons=["*/10 * * * *"]`，`BOARD_TARGET_KEY="current"` 直写生产键，**无** `BOARD_FETCH_DISABLED`（未设置 = 启用抓取）。
-- fetcher 侧 `COINGECKO_API_KEY`：**已注入**（`wrangler secret put`，值经保险箱流程，不入仓库/聊天）。与 Pages Secret 是两处独立注入。
+- fetcher 侧 `COINGECKO_API_KEY`：**已注入**（经锁版入口 `bash scripts/wrangler-pinned.sh secret put COINGECKO_API_KEY -c workers/fetcher/wrangler.toml`，值经保险箱流程，不入仓库/聊天；F7-45：一切人工 wrangler 操作走该入口，禁止裸 `npx wrangler`）。与 Pages Secret 是两处独立注入。
 - `MANUAL_RUN_TOKEN`：已注入（值不在任何文件/日志中）。调用：`POST https://crypto-top200-fetcher.<account-subdomain>.workers.dev/run`，头 `x-manual-token: <值>`；其余路径/方法一律 404。
 - Paprika 备源：`PAPRIKA_ENABLED="false"` **保持关闭**。启用门禁（第七期 F7-02）为四项计数（mapped / identityValid / activeUsable / tickerHit）均 ≥94%（188/200），2026-11-23 实测 tickerHit=179 未达标——不得以改小门禁或只数映射条数的方式放行。
 - 事故处置要点：紧急停抓置 `BOARD_FETCH_DISABLED="1"` 后重新部署；**不要**把 `BOARD_TARGET_KEY` 改回 `"shadow"`——那会冻结生产行情更新（影子键无人消费）。
