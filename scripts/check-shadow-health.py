@@ -26,6 +26,21 @@ NAMESPACE_ID = "ad1b72702c5c4f229999bea5b118d1bc"  # BOARD_KV（与 wrangler.tom
 HEALTH_KEY = "v1:meta:health"
 MAX_SUCCESS_AGE_SEC = 25 * 60
 MAX_CONSEC_FAILURES = 2
+FUTURE_TOLERANCE_SEC = 300  # F7-27：未来时间戳容差（秒），超出即判异常（双侧判定）
+
+
+def judge(age_sec, consec):
+    """新鲜度判定（纯函数，供单测/fixture）：age 过大、未来超容差、连续失败
+    超限任一 → problems 非空。旧实现只查 age>上限单侧，lastSuccessAt 在
+    未来时 age 为负直接 OK（F7-27 盲区）。"""
+    problems = []
+    if age_sec > MAX_SUCCESS_AGE_SEC:
+        problems.append(f"lastSuccessAt 距今 {age_sec / 60:.1f} 分钟 > {MAX_SUCCESS_AGE_SEC // 60} 分钟")
+    elif age_sec < -FUTURE_TOLERANCE_SEC:
+        problems.append(f"lastSuccessAt 在未来 {-age_sec / 60:.1f} 分钟，超过未来容差 {FUTURE_TOLERANCE_SEC} 秒（时钟漂移/异常时间戳，F7-27）")
+    if consec > MAX_CONSEC_FAILURES:
+        problems.append(f"consecutiveFailures={consec} > {MAX_CONSEC_FAILURES}")
+    return problems
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 
@@ -96,11 +111,7 @@ def main():
         print(f"shadow-health: ERROR health 解析失败：{e}")
         return 2
 
-    problems = []
-    if age > MAX_SUCCESS_AGE_SEC:
-        problems.append(f"lastSuccessAt 距今 {age / 60:.1f} 分钟 > {MAX_SUCCESS_AGE_SEC // 60} 分钟")
-    if consec > MAX_CONSEC_FAILURES:
-        problems.append(f"consecutiveFailures={consec} > {MAX_CONSEC_FAILURES}")
+    problems = judge(age, consec)
     summary = (
         f"lastRunAt={health.get('lastRunAt')} lastSuccessAt={health.get('lastSuccessAt')} "
         f"consecutiveFailures={consec} status={health.get('status')} "

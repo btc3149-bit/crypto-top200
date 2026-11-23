@@ -384,10 +384,45 @@ FIELDS23 = ["table", "estRank", "rankNow", "rankNote", "name", "symbol", "coinge
 # 新数据对旧解码端也只是多一列，向后兼容；切换方式同 W3-22 一次性切换先例。
 FIELDS24 = FIELDS23 + ["paprikaId"]
 
-def load_paprika_map():
-    """从事实源 coins-list.js 解析 {coingeckoId: paprikaId}（文件为单行 JSON 数组）。"""
-    txt = (ROOT / "workers/fetcher/src/coins-list.js").read_text(encoding="utf-8")
-    arr = json.loads(txt.split("export const COINS = ", 1)[1].split(";\n", 1)[0])
+def extract_js_array(txt, marker="export const COINS ="):
+    """F7-17：从 JS 源码中提取 marker 后的数组字面量（括号匹配，字符串感知）。
+
+    旧实现以字符串切分取「单行 JSON」（split(";\n")），对排版强耦合：
+    分号后无换行、等号后换行等形态都会抛错使 build 全停。新实现从 marker
+    后第一个 '[' 起做深度计数（跳过字符串与转义），匹配到对应 ']' 后
+    json.loads，与排版（单行/多行/分号位置）无关；提取不到抛 ValueError。
+    """
+    idx = txt.find(marker)
+    if idx < 0:
+        raise ValueError(f"未找到标记 {marker!r}")
+    start = txt.find("[", idx)
+    if start < 0:
+        raise ValueError(f"标记 {marker!r} 后未找到数组起始 '['")
+    depth, in_str, esc = 0, False, False
+    for i in range(start, len(txt)):
+        ch = txt[i]
+        if in_str:
+            if esc:
+                esc = False
+            elif ch == "\\":
+                esc = True
+            elif ch == '"':
+                in_str = False
+            continue
+        if ch == '"':
+            in_str = True
+        elif ch == "[":
+            depth += 1
+        elif ch == "]":
+            depth -= 1
+            if depth == 0:
+                return json.loads(txt[start:i + 1])
+    raise ValueError("数组括号未闭合（coins-list.js 疑似截断）")
+
+def load_paprika_map(path=None):
+    """从事实源 coins-list.js 解析 {coingeckoId: paprikaId}（排版无关，F7-17）。"""
+    p = Path(path) if path else (ROOT / "workers/fetcher/src/coins-list.js")
+    arr = extract_js_array(p.read_text(encoding="utf-8"))
     return {c["id"]: c.get("paprikaId") for c in arr}
 
 PAPRIKA_MAP = load_paprika_map()
@@ -502,12 +537,55 @@ def emit(doc):
     return hashlib.sha256(text.encode("utf-8")).hexdigest(), text
 
 
+def _stage_and_land(pairs):
+    """F7-24：多文件落盘事务化。pairs = [(内容来源 Path, 目标 Path)]。
+
+    步骤：① 把每个产物先拷贝/写入到「目标同目录」的暂存文件（同盘，保证
+    os.replace 原子）；② 为每个已存在的目标留同目录备份；③ 依次 os.replace
+    落盘——任一步抛错时，用备份回滚已替换的目标后原样抛出，不留下
+    源/产物不一致的中间态；④ 成功后清理暂存与备份。
+    """
+    import os, shutil, tempfile
+    staged, backups = [], []
+    try:
+        for src, target in pairs:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            fd, stage_name = tempfile.mkstemp(prefix=".land-", dir=str(target.parent))
+            staged.append((Path(stage_name), target))
+            with os.fdopen(fd, "wb") as f:
+                f.write(Path(src).read_bytes())
+            if target.exists():
+                fd2, bak_name = tempfile.mkstemp(prefix=".bak-", dir=str(target.parent))
+                os.close(fd2)
+                shutil.copyfile(target, bak_name)
+                backups.append((Path(bak_name), target))
+        landed = []
+        try:
+            for stage_path, target in staged:
+                os.replace(stage_path, target)
+                landed.append(target)
+        except Exception:
+            bak_map = {t: b for b, t in backups}
+            for target in landed:
+                if target in bak_map:
+                    os.replace(bak_map[target], target)
+                elif target.exists():
+                    target.unlink()
+            raise
+    finally:
+        for p, _ in staged:
+            p.unlink(missing_ok=True)
+        for p, _ in backups:
+            p.unlink(missing_ok=True)
+
 def emit_and_render(doc):
     """F6-69：全部产物（coins.json 两份 + DO_NOT_EDIT + index.html 快照）先渲染到
     临时位置，全部成功后才一并落盘；任一步失败抛 GateFail/SnapshotError，
     现行产物逐字节不变。F6-70：临时 coins 先过 check_meta、落盘后再对落盘
-    文件复跑 check_meta，通过才返回哈希。"""
-    import os, shutil, tempfile
+    文件复跑 check_meta，通过才返回哈希。F7-24：落盘段本身经 _stage_and_land
+    事务化（全部目标同盘暂存 + 备份回滚），不再有 write_text 非原子写与
+    「已 replace 源文件后后续写失败」的源/产物不一致窗口。"""
+    import shutil, tempfile
     h, text = emit(doc)
     BUILD_DIR.mkdir(exist_ok=True)
     tmp = Path(tempfile.mkdtemp(prefix="emit-", dir=str(BUILD_DIR)))
@@ -522,11 +600,13 @@ def emit_and_render(doc):
         tmp_note = tmp / "DO_NOT_EDIT.md"
         tmp_note.write_text(
             "构建产物，勿手改。源在 `data/coins.json`，由 `scripts/build.py` 生成（`python3 scripts/build.py --emit` 只校验+拷贝）。\n", encoding="utf-8")
-        # 全部成功 → 一并落盘（同盘 os.replace 原子替换）
-        os.replace(tmp_coins, ROOT / "data/coins.json")
-        (ROOT / "public/data/coins.json").write_text(text, encoding="utf-8")
-        os.replace(tmp_note, ROOT / "public/data/DO_NOT_EDIT.md")
-        os.replace(tmp_html, ROOT / "public/index.html")
+        # 全部成功 → 事务化一并落盘（F7-24：任一步失败回滚已替换目标）
+        _stage_and_land([
+            (tmp_coins, ROOT / "data/coins.json"),
+            (tmp_coins, ROOT / "public/data/coins.json"),
+            (tmp_note, ROOT / "public/data/DO_NOT_EDIT.md"),
+            (tmp_html, ROOT / "public/index.html"),
+        ])
     finally:
         import shutil as _sh
         _sh.rmtree(tmp, ignore_errors=True)

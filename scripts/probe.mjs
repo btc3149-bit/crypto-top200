@@ -10,13 +10,21 @@
 // 仅以可得的 staleAgeSec 等 v1 字段做降级判读，输出中明确标注 v1-compat。
 const base = (process.argv[2] || "https://top200.oppcal.com").replace(/\/$/, "");
 
-let body;
+let body, httpStatus = null;
 try {
   const res = await fetch(`${base}/api/board`);
-  body = await res.json();
-  if (!res.ok && !body) throw new Error(`http ${res.status}`);
+  httpStatus = res.status;
+  body = await res.json().catch(() => null);
+  // F7-21：先判 HTTP 状态——非 2xx 一律 FAIL（不可判读），错误体不得参与
+  // 后续规则判读（旧实现 body 恒真值使非 200 永不抛错，503 的 v1 形态
+  // 错误体曾被判 PASS/exit 0，实测复现见 P7_NOTES_SCRIPTS.md）。
+  if (!res.ok) {
+    console.log(JSON.stringify({ base, httpStatus, verdict: "FAIL", reason: `http_status_${res.status}：非 2xx 应答，错误体不判读` }, null, 2));
+    process.exit(1);
+  }
+  if (body === null) throw new Error("响应体非 JSON");
 } catch (e) {
-  console.log(JSON.stringify({ base, verdict: "FAIL", reason: `fetch_failed: ${e.message}` }, null, 2));
+  console.log(JSON.stringify({ base, httpStatus, verdict: "FAIL", reason: `fetch_failed: ${e.message}` }, null, 2));
   process.exit(1);
 }
 
@@ -49,6 +57,7 @@ const verdict = missingFields.length > 0 || hits.length >= 2 ? "FAIL" : "PASS";
 
 const out = {
   base,
+  httpStatus,
   at: new Date().toISOString(),
   contract: isV2 ? "v2" : "v1-compat（缺 freshness/fetch 字段，R1/R3 不可判读，仅 R2 可判）",
   mode: body.mode ?? null,
