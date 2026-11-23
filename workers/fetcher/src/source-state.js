@@ -2,6 +2,11 @@
 // 状态存 KV v1:config:source-state；activeProvider 决定本 run 抓谁。
 // PAPRIKA_ENABLED=false 时强制 coinpaprika 无效（见 resolveProvider 的告警分支）。
 import { SOURCE_SWITCH } from "../../../shared/board-schema.js";
+import { paprikaGateThreshold, evaluatePaprikaGate } from "../../../shared/paprika-identity.js";
+
+// F8-21：门禁阈值与判定单一事实源在 shared/paprika-identity.js，本文件仅转出
+// 保持既有 import 路径兼容（index.js 与测试仍从 source-state 引用）。
+export { paprikaGateThreshold, evaluatePaprikaGate };
 
 export function emptySourceState(nowMs) {
   return {
@@ -34,23 +39,7 @@ export const PAPRIKA_MIN_MAPPED = 197;
 // F7-02 启用门禁（纯函数，可单测）：stats 为 shared/paprika-identity.js
 // countPaprikaGateStats 的四项计数（或等价结构）。任一计数低于
 // ceil(COVERAGE_RATIO × total) 即不放行——非空数不得冒充身份有效/活跃/命中数。
-export function paprikaGateThreshold(total) {
-  return Math.ceil(0.94 * total);
-}
-export function evaluatePaprikaGate(stats, total) {
-  const n = typeof total === "number" ? total : stats && stats.total;
-  const threshold = paprikaGateThreshold(n || 0);
-  const counts = {
-    mapped: (stats && stats.mapped) || 0,
-    identityValid: (stats && stats.identityValid) || 0,
-    activeUsable: (stats && stats.activeUsable) || 0,
-    tickerHit: (stats && stats.tickerHit) || 0,
-  };
-  const failures = Object.entries(counts)
-    .filter(([, v]) => v < threshold)
-    .map(([k, v]) => `${k} ${v}/${n} < ${threshold} required (94% publish gate, F7-02)`);
-  return { ok: failures.length === 0, threshold, total: n, counts, failures };
-}
+// F8-21 起实现已收敛到 shared/paprika-identity.js（见文件头转出），本段仅留口径说明。
 
 // 决定本 run 的 provider。返回 {provider, probeCg, warnings[]}
 // probeCg=true 表示 Paprika 态下本 run 顺带探一次 CG markets（不写 blob，只记账）。

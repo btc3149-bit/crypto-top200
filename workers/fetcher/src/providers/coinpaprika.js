@@ -5,6 +5,7 @@
 // Function 与前端永不直连 Paprika（W2-03 §1）。
 import { normalizePaprikaTickers, normalizePaprikaGlobal } from "../../../../shared/board-schema.js";
 import { countPaprikaGateStats } from "../../../../shared/paprika-identity.js";
+import { PAPRIKA_IDENTITY_REGISTRY } from "../paprika-registry.js";
 import { UpstreamError, UPSTREAM_TIMEOUT_MS } from "./coingecko.js";
 
 const UA =
@@ -82,17 +83,24 @@ export async function fetchMarkets(coins) {
 // 路径零额外调用、零风险）。拉 /v1/coins 目录 + /v1/tickers（limit=5000，与主抓
 // 同口径），按 shared/paprika-identity.js 统一口径产出四项门禁计数
 // {total, mapped, identityValid, activeUsable, tickerHit, failures}。
-// 注意：运行时 COINS 只有 {id, paprikaId}，身份判定为目录 symbol/前缀一致性
-// （via=symbol-prefix）；全名身份复核由落库脚本 verify-paprika-identity.mjs 强制。
-export async function fetchGateStats(coins) {
+// F8-01：运行时 COINS 只有 {id, paprikaId}，身份判定以身份登记册
+// （paprika-registry.js，verify-paprika-identity.mjs 经全名复核生成）中经复核的
+// CG 侧 name/symbol 与实时目录做全名比对，不再走 symbol-prefix 自洽校验。
+// F8-17：onAttempt 在每次 Paprika 调用发出时回调（而非成功后补记），供主流程
+// 按实际发生记账——中途失败（如目录成功、tickers 500）已发生的调用不漏记。
+export async function fetchGateStats(coins, onAttempt) {
+  const call = (url, stage) => {
+    if (typeof onAttempt === "function") onAttempt();
+    return fetchJson(url, stage);
+  };
   const [directory, tickers] = await Promise.all([
-    fetchJson("https://api.coinpaprika.com/v1/coins", "coins"),
-    fetchJson("https://api.coinpaprika.com/v1/tickers?quotes=USD&limit=5000", "markets"),
+    call("https://api.coinpaprika.com/v1/coins", "coins"),
+    call("https://api.coinpaprika.com/v1/tickers?quotes=USD&limit=5000", "markets"),
   ]);
   if (!Array.isArray(directory) || !Array.isArray(tickers)) {
     throw new UpstreamError("coinpaprika gate preflight payload invalid", { errorType: "parse_error", stage: "gate" });
   }
-  return countPaprikaGateStats(coins, directory, tickers);
+  return countPaprikaGateStats(coins, directory, tickers, { registry: PAPRIKA_IDENTITY_REGISTRY });
 }
 
 export async function fetchGlobal() {

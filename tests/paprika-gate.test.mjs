@@ -2,11 +2,18 @@
 // 覆盖：Paprika 身份判定（symbol+规范化 name/别名，价差不作证据）、四项门禁计数
 // 分开统计与 94% 对齐、normalizePaprikaTickers/CG 字段清洗对齐、主流程 candidate
 // preflight（门禁不过同 run 强制 CG 且 health 落 paprikaGate 分项计数）。
-// 运行：node tests/paprika-gate.test.mjs（待协调人登记进 scripts/run-tests.sh）
+// 运行：node tests/paprika-gate.test.mjs（已登记于 tests/suites-manifest.json，
+// 由 scripts/run-tests.sh 在部署门禁中全量执行；F8-29 修正过期注释）
+// 第八期追加：F8-01 登记册身份回归、F8-02 市值合理性、F8-16 畸形 id 计数、
+// F8-18 重复 paprikaId 去重、F8-15 paprikaGate 未测态、F8-17 preflight 失败记账。
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { KV_KEYS, normalizePaprikaTickers, normalizeCgMarkets, validateBlob, buildBlob } from "../shared/board-schema.js";
-import { paprikaIdentityMatch, countPaprikaGateStats, normalizePaprikaName } from "../shared/paprika-identity.js";
+import { paprikaIdentityMatch, countPaprikaGateStats, normalizePaprikaName, diffPaprikaRegistry } from "../shared/paprika-identity.js";
 import { evaluatePaprikaGate, paprikaGateThreshold } from "../workers/fetcher/src/source-state.js";
+import { PAPRIKA_IDENTITY_REGISTRY } from "../workers/fetcher/src/paprika-registry.js";
+import { COINS as FETCHER_COINS } from "../workers/fetcher/src/coins-list.js";
+import { decodeCoins } from "../scripts/decode-coins.mjs";
 import fetcher, { runFetch } from "../workers/fetcher/src/index.js";
 
 const originalFetch = globalThis.fetch;
@@ -171,7 +178,8 @@ function installMock({ paprikaTickersMissing = [] } = {}) {
   // 身份判定（运行时 symbol-prefix 形态）只需目录 symbol 与 paprikaId 前缀一致
   for (const d of dir) d.symbol = d.id.split("-")[0].toUpperCase();
   const ticks = RUN_COINS.filter((c) => !paprikaTickersMissing.includes(c.id)).map((c, i) => ({
-    id: c.paprikaId, rank: i + 1, quotes: { USD: { price: 100 + i, market_cap: 10000, volume_24h: 500, percent_change_24h: 1 } },
+    // market_cap 须与登记册 CG 快照市值量级相符（F8-02 合理性校验），取足够大值
+    id: c.paprikaId, rank: i + 1, quotes: { USD: { price: 100 + i, market_cap: 2e12, volume_24h: 500, percent_change_24h: 1 } },
   }));
   globalThis.fetch = async (url) => {
     const u = String(url);
@@ -229,6 +237,93 @@ await test("F7-02 主流程: PAPRIKA_ENABLED=false（生产现状）→ 零 Papr
   assert.equal(counts.paprikaTickers, 0);
   const health = JSON.parse(kv.store.get(KV_KEYS.health));
   assert.equal(health.paprikaGate, null);
+});
+
+// ---------- 第八期批 0：F8-01/F8-02/F8-16/F8-18 ----------
+await test("F8-01: F7-01 三个旧错配值以运行时形态（只有 {id, paprikaId}）+ 登记册喂入 → identityValid 必须拦下（不得全过）", async () => {
+  const dir = [
+    { id: "pump-pumpbtc", name: "PumpBTC", symbol: "PUMP", is_active: true, rank: 1418 },
+    { id: "sky-skycoin", name: "Skycoin", symbol: "SKY", is_active: true, rank: 1378 },
+    { id: "skr-saakuru-labs", name: "Saakuru", symbol: "SKR", is_active: true, rank: 831 },
+  ];
+  const ticks = dir.map((d) => ({ id: d.id, quotes: { USD: { price: 1, market_cap: 1e9 } } }));
+  const runtimeCoins = [
+    { id: "pump-fun", paprikaId: "pump-pumpbtc" },
+    { id: "sky", paprikaId: "sky-skycoin" },
+    { id: "seeker", paprikaId: "skr-saakuru-labs" },
+  ];
+  const s = countPaprikaGateStats(runtimeCoins, dir, ticks, { registry: PAPRIKA_IDENTITY_REGISTRY });
+  assert.equal(s.mapped, 3);
+  assert.equal(s.identityValid, 0, "旧错配值不得再以自洽校验通过身份门禁");
+  assert.equal(s.tickerHit, 0);
+  assert.ok(s.failures.every((f) => f.stage === "identity" && f.reason === "registry_missing"));
+  // 对照：不传登记册的旧退化口径会 3/3 全过——证明登记册是拦截来源
+  const legacy = countPaprikaGateStats(runtimeCoins, dir, ticks);
+  assert.equal(legacy.identityValid, 3, "无登记册旧口径自洽全过（F8-01 证据形态）");
+});
+
+await test("F8-01: 登记册与币表一致性强制校验——coins-list + data/coins.json 与登记册逐条对齐，篡改映射必红", async () => {
+  const dataCoins = decodeCoins(JSON.parse(readFileSync(new URL("../data/coins.json", import.meta.url), "utf-8"))).map((c) => ({
+    id: c.coingeckoId, name: c.name, symbol: c.symbol, snapshotMcapUsd: c.snapshotMcapUsd, paprikaId: c.paprikaId,
+  }));
+  assert.deepEqual(diffPaprikaRegistry(dataCoins, PAPRIKA_IDENTITY_REGISTRY), []);
+  const listCoins = FETCHER_COINS.map((c) => {
+    const d = dataCoins.find((x) => x.id === c.id);
+    return { id: c.id, name: d.name, symbol: d.symbol, snapshotMcapUsd: d.snapshotMcapUsd, paprikaId: c.paprikaId };
+  });
+  assert.deepEqual(diffPaprikaRegistry(listCoins, PAPRIKA_IDENTITY_REGISTRY), []);
+  const tampered = listCoins.map((c) => (c.id === "bitcoin" ? { ...c, paprikaId: "btc-bitcoin-token" } : c));
+  assert.ok(diffPaprikaRegistry(tampered, PAPRIKA_IDENTITY_REGISTRY).length > 0, "映射变更未同步登记册必须被检出");
+});
+
+await test("F8-02: 市值合理性校验拦下原三条 -token 次级条目、放行主条目；htx 走已登记例外且留痕", async () => {
+  const dir = [
+    { id: "atom-cosmos-token", name: "Cosmos Token", symbol: "ATOM", is_active: true, rank: 1107 },
+    { id: "atom-cosmos", name: "Cosmos", symbol: "ATOM", is_active: true, rank: 108 },
+    { id: "ltc-litecoin-token", name: "Litecoin Token", symbol: "LTC", is_active: true, rank: 424 },
+    { id: "zec-zcash-token", name: "Zcash Token", symbol: "ZEC", is_active: true, rank: 235 },
+    { id: "htx-htx", name: "HTX", symbol: "HTX", is_active: true, rank: 1273 },
+  ];
+  const ticks = [
+    { id: "atom-cosmos-token", quotes: { USD: { price: 1.19, market_cap: 2631746 } } },
+    { id: "atom-cosmos", quotes: { USD: { price: 1.19, market_cap: 465072701 } } },
+    { id: "ltc-litecoin-token", quotes: { USD: { price: 40.6, market_cap: 30183558 } } },
+    { id: "zec-zcash-token", quotes: { USD: { price: 793, market_cap: 94838502 } } },
+    { id: "htx-htx", quotes: { USD: { price: 1.46e-6, market_cap: 1381990 } } },
+  ];
+  const coins = [
+    { id: "cosmos", name: "Cosmos Hub", symbol: "ATOM", paprikaId: "atom-cosmos-token", snapshotMcapUsd: 739000000 },
+    { id: "litecoin", name: "Litecoin", symbol: "LTC", paprikaId: "ltc-litecoin-token", snapshotMcapUsd: 3990000000 },
+    { id: "zcash", name: "Zcash", symbol: "ZEC", paprikaId: "zec-zcash-token", snapshotMcapUsd: 19900000000 },
+    { id: "htx-dao", name: "HTX DAO", symbol: "HTX", paprikaId: "htx-htx", snapshotMcapUsd: 1370000000 },
+  ];
+  const s = countPaprikaGateStats(coins, dir, ticks);
+  assert.equal(s.identityValid, 4, "-token 条目身份（同名规范化）本身通过，拦截须来自合理性校验");
+  assert.equal(s.tickerHit, 1, "仅 htx 经登记例外计入，其余三条 -token 须被合理性拦下");
+  assert.equal(s.failures.filter((f) => f.stage === "plausibility").length, 3);
+  assert.deepEqual(s.plausibilityExceptions.map((x) => x.paprikaId), ["htx-htx"]);
+  const main = countPaprikaGateStats(
+    [{ id: "cosmos", name: "Cosmos Hub", symbol: "ATOM", paprikaId: "atom-cosmos", snapshotMcapUsd: 739000000 }],
+    dir, ticks
+  );
+  assert.equal(main.tickerHit, 1, "主条目 atom-cosmos 市值量级正常应放行");
+});
+
+await test("F8-16/F8-18: 畸形 paprikaId 不计 mapped；重复 paprikaId 只计一次", async () => {
+  const dir = [{ id: "btc-bitcoin", name: "Bitcoin", symbol: "BTC", is_active: true, rank: 1 }];
+  const ticks = [{ id: "btc-bitcoin", quotes: { USD: { price: 100, market_cap: 1e12 } } }];
+  const s = countPaprikaGateStats(
+    [
+      { id: "bitcoin", paprikaId: "btc-bitcoin" },
+      { id: "bitcoin-clone", paprikaId: "btc-bitcoin" },
+      { id: "bad", paprikaId: "not in directory!!" },
+    ],
+    dir, ticks
+  );
+  assert.equal(s.mapped, 1, "畸形串与重复 id 均不得计入 mapped");
+  assert.equal(s.tickerHit, 1, "重复 paprikaId 不得双计 tickerHit");
+  assert.ok(s.failures.some((f) => f.stage === "mapped" && f.reason === "paprika_id_malformed"));
+  assert.ok(s.failures.some((f) => f.stage === "duplicate" && f.reason === "duplicate_paprika_id"));
 });
 
 globalThis.fetch = originalFetch;
