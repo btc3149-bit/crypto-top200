@@ -8,8 +8,6 @@
 
 > ⚠️ 本站不构成投资建议。预估是历史周期情景推演，不是预测。页面顶部已内置风险提示，请勿删除。
 
-> 现状注记（2026-11-10）：线上当前仍是首次拖放部署的版本，处于快照模式故障态（`/api/board` 未生效，原因见下方「已废弃」一节）。按本文新法（Wrangler 直推）完成第一次重新部署后，实时行情恢复，届时删去本注记。
-
 ## 硬红线（任何改动不得触碰）
 
 - **不删风险提示**：页首风险条与页脚免责声明必须保留（预估倍数排名 ≠ 推荐排名）。
@@ -49,7 +47,7 @@ npm run deploy:preview   # 部署到 preview 分支，脚本会自动对预览�
 npm run deploy           # 部署到生产（main 分支），脚本会自动对 https://top200.oppcal.com 跑冒烟
 ```
 
-`scripts/deploy.sh` 内部流程：工具链预检（W4-17：Node 主版本须在 `package.json` engines 范围 22–24、`.nvmrc` 定版 24；`package-lock.json` 的 wrangler 版本须与 `package.json` 的 pin 一致，不一致即中止）→ 数据门禁（只验不改：两份 coins.json 哈希一致 + `scripts/check_meta.py` 复验 meta v2 + fetcher 副本 dataHash 与 `coins-list.js` 名单一致性（W4-10），不一致即中止，同步是 build.py 的职责；紧急绕过用 `DEPLOY_SKIP_META_CHECK=1` 单次生效并须在 CHANGELOG 注明）→ 用 `package.json` 锁定的 wrangler 版本执行 `wrangler pages deploy public --project-name crypto-top200`（preview 加 `--branch preview`，production 加 `--branch main`）→ 对对应地址执行 `scripts/smoke.sh`；生产部署冒烟通过后自动复跑 `scripts/probe.sh` 全量断言（W4-17：未全过只告警不改判，结果留痕 `ops/probe-log.jsonl`）。冒烟失败时脚本非零退出并提示「部署已上线但冒烟失败，需人工处理/回滚」。
+`scripts/deploy.sh` 内部流程（现行口径，F7-55 于 2026-11-23 按 deploy.sh 实现重写）：**测试门禁（最前置，F6-01）**：先跑全量测试（`npm test`），未全绿即中止 → **脏工作区门禁（F6-01）**：工作区有未提交改动默认中止 → **模式门禁（F6-06）**：production 的 `wrangler.toml` `[vars]` 中 `BOARD_READ_MODE` 必须为 `kv` → 工具链预检（W4-17：Node 主版本须在 `package.json` engines 范围 22–24、`.nvmrc` 定版 24；`package-lock.json` 的 wrangler 版本须与 `package.json` 的 pin 一致，不一致即中止）→ 数据门禁（只验不改：两份 coins.json 哈希一致 + `scripts/check_meta.py` 复验 meta v2 + fetcher 副本 dataHash 与 `coins-list.js` 名单一致性（W4-10），不一致即中止，同步是 build.py 的职责）→ **安全头门禁（W2-18）**：`node ops/headers/gen-headers.mjs --check --variant=on` 校验 `public/_headers` 与当前 `index.html` 的生成结果一致，不一致即中止（先重新生成、禁止手改 `_headers`）→ 用 `package.json` 锁定的 wrangler 版本执行 `wrangler pages deploy public --project-name crypto-top200`（preview 加 `--branch preview`，production 加 `--branch main`）→ 对对应地址执行 `scripts/smoke.sh`，其后还有部署后安全头冒烟段（smoke-headers，F6-27：线上子集 S1/S2/S4/S6，结果落 deploy-log，非零时以非零码收尾）；生产部署冒烟通过后自动复跑 `scripts/probe.sh` 全量断言（W4-17：未全过只告警不改判，结果留痕 `ops/probe-log.jsonl`）。冒烟失败时脚本非零退出并提示「部署已上线但冒烟失败，需人工处理/回滚」。**绕过留痕口径（F6-01/F6-26，现行）**：任一 `DEPLOY_SKIP_*` / `DEPLOY_ALLOW_*` 绕过都必须同时给出 `DEPLOY_SKIP_REASON`（无理由一律拒绝），且自动追加记录到 `ops/deploy-log.jsonl`；旧口径「`DEPLOY_SKIP_META_CHECK=1` 单次生效并须在 CHANGELOG 注明」已废止。
 
 **preview 的定位（W4-17 定版，回应 F4-19）**：preview 按 §20.3 定版不注入 CoinGecko key（全账号仅 1 把，此决策不变），其 `/api/board` 必然呈 stale/503——preview 只用于**静态与 UI 冒烟**（首页、隐私页、静态注入渲染、响应头），**不验行情新鲜度、冒烟结论不可迁移到生产数据面**。生产保障由 deploy.sh 的部署前门禁（工具链/数据/名单/安全头）+ 部署后 smoke 与 probe 全量断言承接。fetcher 无 preview 形态，其变更只走影子链与 G1→G2→G3 门禁验证。
 

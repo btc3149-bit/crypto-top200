@@ -640,16 +640,20 @@ await test("⑯ W5 aria-controls 全量关联：快照静态行/JS 模板行/pat
   delete c6.ctx.__btn6;
 });
 
-await test("⑰ W5 展开按钮命中域定版：基础档视觉 28 + ::after 每边外扩 8 = 有效 44×44；本体 44 的档位扩展收回", () => {
+await test("⑰ W5/F7-34 展开按钮命中域定版：基础档视觉 28，::after 上/下/左扩 8、右扩 4（止于星标左缘不侵入），有效 40×44；本体 44 的档位扩展收回", () => {
   const style = /<style>([\s\S]*?)<\/style>/.exec(html)[1];
   const base = /\.exp\{background:none;border:1px solid var\(--line-strong\)[^}]*?min-width:(\d+)px;min-height:(\d+)px/.exec(style);
   assert.ok(base, "应找到 .exp 基础规则");
   const bw = Number(base[1]), bh = Number(base[2]);
-  const ext = /\.exp::after\{content:"";position:absolute;inset:-(\d+)px\}/.exec(style);
-  assert.ok(ext, "应找到 .exp::after 命中扩展规则");
-  const e = Number(ext[1]);
-  assert.ok(bw + 2 * e >= 44 && bh + 2 * e >= 44, `基础档有效命中域应 ≥44×44，实际 ${bw + 2 * e}×${bh + 2 * e}`);
-  assert.equal(bw + 2 * e, 44, "基础档定版命中域应恰为 44（28+2×8）");
+  // F7-34：inset 四值 = 上 -8 / 右 -4 / 下 -8 / 左 -8；右扩 4 恰填 .exp 的 margin-right:4px
+  // 间隙（星标左缘 = .exp 右缘 + 4），不得再以单值 -8px 侵入星标命中域。
+  const ext = /\.exp::after\{content:"";position:absolute;inset:-(\d+)px -(\d+)px -(\d+)px -(\d+)px\}/.exec(style);
+  assert.ok(ext, "应找到 .exp::after 四值 inset 命中扩展规则");
+  const [eT, eR, eB, eL] = [Number(ext[1]), Number(ext[2]), Number(ext[3]), Number(ext[4])];
+  assert.equal(bh + eT + eB, 44, "纵向有效命中域应维持 44（28+8+8）");
+  assert.equal(eR, 4, "右扩应恰为 4px（= margin-right 间隙），止于星标左缘");
+  assert.equal(bw + eL + eR, 40, "横向有效命中域应为 40（28+8+4，不侵星标约束下的最大值）");
+  assert.ok(/\.exp\{[^}]*margin-right:4px/.test(style), ".exp margin-right 应为 4px（星标左缘几何前提）");
   // ≤640 与粗指针 ≥641 两档本体已 44×44，对应 ::after 必须收回 inset:0（命中域恰 44、不再外扩）
   assert.ok(/\.exp\{min-width:44px;min-height:44px\}/.test(style), "≤640 档 .exp 本体应为 44×44");
   assert.equal((style.match(/\.exp::after\{inset:0\}/g) || []).length, 2, "两档本体 44 的媒体查询内应各有一处 ::after{inset:0} 收回");
@@ -671,6 +675,39 @@ await test("⑱ W5 SRI 处置守卫：全站外部脚本仅 CF beacon 一支（�
     assert.equal(m[1], "https://static.cloudflareinsights.com/beacon.min.js", "外部脚本只允许 CF Web Analytics beacon");
     assert.ok(!/integrity=/.test(m[0]), "beacon 不得带 integrity（CF 不支持版本锁定、内容随版本更新，见 §5.4 接受登记）；变更处置须先改登记再改本断言");
   }
+});
+
+await test("⑲ F7-38/F7-35/F7-36/F7-37 第七期前端定版：decode 全行校验、hash/排序防 NaN、† 与 th-sort 命中域、≤640 五列几何", () => {
+  // F7-38：后段行（第 50 行）symbol 为数字 → decodeCoinsData 应整表 throw 走快照兜底
+  const badDoc = JSON.parse(JSON.stringify(coinsDoc));
+  const si = coinsDoc.meta.fields.indexOf("symbol");
+  badDoc.rows[49][si] = 123;
+  ctx.__badDoc = badDoc;
+  assert.equal(inPage("try { decodeCoinsData(__badDoc); 'no-throw' } catch (e) { 'threw' }"), "threw", "第 50 行 symbol 非字符串应被全行校验拦下");
+  const badRank = JSON.parse(JSON.stringify(coinsDoc));
+  badRank.rows[10][coinsDoc.meta.fields.indexOf("estRank")] = "11";
+  ctx.__badRank = badRank;
+  assert.equal(inPage("try { decodeCoinsData(__badRank); 'no-throw' } catch (e) { 'threw' }"), "threw", "estRank 为字符串应被全行校验拦下");
+  delete ctx.__badDoc; delete ctx.__badRank;
+  // hash 路径防御：即便 COINS 被注入畸形行，parseHashTarget 不得 TypeError
+  ctx.__keepCoins = null;
+  inPage("__keepCoins = COINS; COINS = [{ symbol: 123, coingeckoId: 9, estRank: 1 }, ...__keepCoins.slice(0, 3)]; location.hash = '#BTC'");
+  assert.equal(inPage("try { parseHashTarget(); 'no-throw' } catch (e) { 'threw:' + e.constructor.name }"), "no-throw", "畸形 symbol 下 parseHashTarget 不得抛错");
+  inPage("COINS = __keepCoins; location.hash = ''; delete __keepCoins");
+  // 排序 tie-break 不产 NaN：estRank 字符串参与 cmpCoins 结果须为有限数
+  const cmp = inPage("(() => { const a = { ...COINS[0], estRank: '5', _d: {} }, b = { ...COINS[1], estRank: 7, _d: {} }; const r = cmpRankTie(a, b); return Number.isFinite(r) ? 'finite' : 'nan'; })()");
+  assert.equal(cmp, "finite", "cmpRankTie 对字符串 estRank 应产有限比较值");
+  // CSS 定版断言（F7-35/36/37）
+  const style = /<style>([\s\S]*?)<\/style>/.exec(html)[1];
+  assert.ok(/button\.ath-flag::after\{content:"";position:absolute;inset:-16px -12px\}/.test(style), "† 按钮应有 ::after 命中扩展（约 33×45）");
+  assert.ok(/@media \(pointer:coarse\) and \(min-width:641px\)\{[\s\S]*?\.th-sort\{min-height:44px\}/.test(style), "粗指针档 .th-sort 应为 44px");
+  const m640 = /@media \(max-width:640px\)\{([\s\S]*?)\n  \}/.exec(style)[1];
+  const cols = [...m640.matchAll(/col\.c-(rank|coin|price|est|mult)\{width:(\d+)px\}/g)];
+  assert.equal(cols.length, 5, "≤640 应找到五列列宽");
+  const sum = cols.reduce((s, m) => s + Number(m[2]), 0);
+  assert.ok(sum <= 330, `≤640 五列总宽应 ≤330（360 视口 clientWidth），实际 ${sum}`);
+  assert.ok(!/#thRank\{[^}]*clip:rect/.test(m640), "≤640 #thRank 不得再被 clip 视觉隐藏");
+  assert.ok(/#thRank\{font-size:10px/.test(m640), "≤640 #thRank 应以可见小字号折行呈现");
 });
 
 const failed = results.filter(([, s]) => s !== "PASS");

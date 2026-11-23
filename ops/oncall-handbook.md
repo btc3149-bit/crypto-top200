@@ -5,7 +5,7 @@
 
 ## 1. 站点结构速览（一句话）
 
-访客打开 Pages 上的静态站（`public/index.html`，200 行榜单静态注入），页面经 Pages Function `functions/api/board.js` 取行情：现行 legacy 形态下 Function 直连 CoinGecko 并缓存 120 秒，新抓取链形态下由独立的 fetcher Worker（`workers/fetcher/`，Cron 每 10 分钟）抓 CoinGecko 写入 KV `BOARD_KV`、Function 只读 KV 组装——两种形态共用同一把 CoinGecko Demo key 与同一份名单数据（源 `data/coins.json`）。
+访客打开 Pages 上的静态站（`public/index.html`，200 行榜单静态注入），页面经 Pages Function `functions/api/board.js` 取行情：**现行形态为 kv（G3，2026-11-19 切换）**——独立的 fetcher Worker（`workers/fetcher/`，Cron 每 10 分钟）抓 CoinGecko 写入 KV `BOARD_KV`、Function 只读 KV 组装（唯一写例外为 W5 批准的 legacy-credits 计数键）；legacy 形态（Function 直连 CoinGecko 并缓存 120 秒）仅为回滚形态、非常态。两种形态共用同一把 CoinGecko Demo key 与同一份名单数据（源 `data/coins.json`）。**【F7-53 修订，2026-11-23：本段原以 legacy 为「现行」起头，与 G3 后事实相反，已按 kv 现行形态重写。】**
 
 补充定位（细节见 `README.md` 的「包里有什么」与 `docs/fetcher-runbook.md` 开头）：
 
@@ -13,8 +13,8 @@
 |---|---|---|
 | Pages + 静态站 | 项目 `crypto-top200`，部署目录 `public/` | `wrangler.toml`、`README.md` |
 | Pages Functions | `/api/board`（行情组装）、`/api/health`（健康判定） | `functions/api/board.js`、`functions/api/health.js` |
-| fetcher Worker | 项目 `crypto-top200-fetcher`，唯一抓取方（G1 影子期写 shadow 键） | `workers/fetcher/README.md`、`docs/fetcher-runbook.md` |
-| KV | 命名空间 `BOARD_KV`，键：current / shadow / health / sourceState | `shared/board-schema.js`（`KV_KEYS`） |
+| fetcher Worker | 项目 `crypto-top200-fetcher`，唯一抓取方（现行 kv 形态写 current 键；shadow 为 G1 影子期历史键） | `workers/fetcher/README.md`、`docs/fetcher-runbook.md` |
+| KV | 命名空间 `BOARD_KV`，键共 7 个：current / shadow / currentPrev / shadowPrev / health / sourceState / legacyCredits | `shared/board-schema.js`（`KV_KEYS`） |
 | CoinGecko | 唯一行情源，Demo 档 10,000 credits/月，全账号 1 把 key | `ops/security/key-ledger.md` |
 
 ## 2. 健康入口清单（先看哪个、看什么）
@@ -30,6 +30,7 @@
 | healthchecks HC1（定时全量探针） | 每小时跑 `scripts/probe.sh` 全量断言（含新鲜度时间差）是否报到且成功 | period 1h / grace 15 分钟内有 success ping；缺席 = 调度挂了，`/fail` ping = 断言真失败 | `ops/probe-config.md` 的「healthchecks.io 检查（HC1–HC3）」表与「落地状态」 |
 | healthchecks HC2（部署后检查） | 每次部署后冒烟结果是否报到（事件型，不看缺席） | 部署冒烟通过后有 success 记录；冒烟失败对应 fail | 同上；ping 客户端为 `scripts/hc_ping.sh`，接线在 `scripts/deploy.sh` 尾部 |
 | healthchecks HC3（2026-11-21 复核守夜） | 一次性复核任务当天是否报到（cron `0 9 21 11 *`、Asia/Shanghai、grace 6 小时） | 2026-11-21 复核完成并留痕后有 success ping；到期未报到即告警 | 同上；复核清单见 `ops/checklists.md` 的「④ 选定复核点」与 `ops/reviews/2026-11-21-review.md` |
+| healthchecks HC4（fetcher 抓取链新鲜度，W4-03） | 每小时只读检查 fetcher health 键（`v1:meta:health` 的 lastSuccessAt / consecutiveFailures）是否报到且成功 | period 1h / grace 20 分钟内有 success ping；lastSuccessAt ≤25 分钟且 consecutiveFailures ≤2 为正常；缺席或 `/fail` = 抓取链假死/断档 | `ops/probe-config.md` 的「healthchecks.io 检查（HC1–HC4）」表 HC4 行；处置正文见 `docs/fetcher-runbook.md`（开头故障判读与「故障处置」各节）。**【F7-53 补登，2026-11-23：本手册此前全文无 HC4 入口，现补齐；HC4 监控的即现行生产数据链（G3 后 fetcher 写 current 供线上读），异常按生产数据链故障处置，不是影子链旁路问题。】** |
 | 本地探针（人工） | 与外部探针同组断言 + 结果留痕 | `bash scripts/probe.sh https://top200.oppcal.com` 全量 pass，结果追加 `ops/probe-log.jsonl` | `README.md` 的「冒烟与探针」；`scripts/probe.mjs` 为 fetcher 侧故障判读 |
 
 告警投递口径（只设 1 个邮箱、两家同口径、恢复通知必看）见 `ops/probe-config.md` 的「告警收敛（两家平台同口径）」；收到告警后的动作顺序见 `ops/checklists.md` 的「③ 告警转达」。
@@ -72,7 +73,7 @@
 | fetcher 手动补抓 token | fetcher Worker Secret `MANUAL_RUN_TOKEN` | 调用方式见 `workers/fetcher/README.md`；轮换口径见 PHASE4_REVIEW.md 的 F4-26 |
 | UptimeRobot Main API Key | 安全保险箱自定义连接 `custom.uptimerobot` | 监控经 API 维护；监控 ID 清单见 `ops/probe-config.md` |
 | healthchecks.io 完整访问 API key | 安全保险箱自定义连接 `custom.healthchecks` | 检查清单见 `ops/probe-config.md` |
-| healthchecks ping URL（HC1–HC3） | 不落盘：运行时经 API 现查现用；HC2 的部署环境路径为环境变量 `HEALTHCHECKS_DEPLOY_PING_URL`（见 `scripts/hc_ping.sh`） | 等同密钥：永不写入仓库、日志或聊天；未设置时 HC2 记 `skipped-no-url` 降级运行 |
+| healthchecks ping URL（HC1–HC4） | 不落盘：运行时经 API 现查现用；HC2 的部署环境路径为环境变量 `HEALTHCHECKS_DEPLOY_PING_URL`（见 `scripts/hc_ping.sh`） | 等同密钥：永不写入仓库、日志或聊天；未设置时 HC2 记 `skipped-no-url` 降级运行 |
 | 告警邮箱 | 两家平台告警联系人与本地探针环境变量 `PROBE_ALERT_EMAIL`（地址本体不入本页） | 口径见 `ops/probe-config.md` 的「告警收敛」 |
 
 ## 6. 升级给站长的条件（出现任一即停手汇总，先报站长再行动）

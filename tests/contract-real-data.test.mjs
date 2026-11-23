@@ -2,9 +2,11 @@
 //
 // 【两个「契约」概念的区分（F6-79，第六期补注）】本仓有两份同名异物的契约，勿混：
 //   (1) 静态产物契约——本文件守护的对象：public/data/coins.json 的产物形态
-//       （meta.fields == FIELDS23、rows 紧凑编码、dataHash 口径 A）。FIELDS23 的
-//       定义源在 scripts/build.py，产物侧由 meta.fields 承载；本文件以本地硬编码
-//       副本与产物逐字对账（漂移先在此红）。它不 import shared/board-schema.js。
+//       （meta.fields == FIELDS24、rows 紧凑编码、dataHash 口径 A；F7-56 修订：
+//       W5 Paprika 落库后现行字段表为 FIELDS24 = FIELDS23 + paprikaId，本文件头
+//       原写 FIELDS23 已过时）。FIELDS24 的定义源在 scripts/build.py，产物侧由
+//       meta.fields 承载；本文件以本地硬编码副本与产物逐字对账（漂移先在此红）。
+//       它不 import shared/board-schema.js。
 //   (2) KV blob 契约——不在本文件范围：fetcher 写入 BOARD_KV 的 blob 结构
 //       （SCHEMA_VERSION、validateBlob、coverage/rows 字段级形态），定义与守护在
 //       shared/board-schema.js 及其套件 tests/board-fetcher.test.mjs、
@@ -27,8 +29,8 @@
 //     --rows 模式只运行 rows 段，亦应全绿。
 //   - fixture 加载即解码：realDoc 为按 meta.fields 解码后的规范对象形态
 //     （解码实现独立于被测代码），rawDoc/coinsText 保留原始产物供 ② 与
-//     rows 段喂真实形态；① 另断言产物 meta.fields 与 FIELDS23 逐字一致，
-//     字段表漂移会先在这里红。
+//     rows 段喂真实形态；① 另断言产物 meta.fields 与 FIELDS24 逐字一致
+//     （F7-56 修订，原写 FIELDS23），字段表漂移会先在这里红。
 //   - dataHash 口径 A（ops/w322-assessment.md 第四节）：dataHash = 解码后规范
 //     对象数组的 sha256（check_meta.data_hash 口径：json.dumps(sort_keys,
 //     separators=(",",":"), ensure_ascii=False)）。④ 以「保留数字字面量解析
@@ -55,7 +57,8 @@ const FIELDS23 = [
 const FIELDS24 = [...FIELDS23, "paprikaId"];
 // 真实数据中合法可为 null 的字段（只断言键存在，不断言非空）：
 // rankNow 6、rankNote 193、snapshotMcapUsd 1、athPrice 36、athDate 35、
-// impliedMcapLoUsd/HiUsd 各 1（2026-11-13 基线实测分布）。
+// impliedMcapLoUsd/HiUsd 各 1、paprikaId 4（F7-56 于 2026-11-23 按现行
+// public/data/coins.json 重新对账的实测分布；原注释为 2026-11-13 基线、未含 paprikaId）。
 const NULLABLE = new Set([
   "rankNow", "rankNote", "snapshotMcapUsd", "snapshotMcapRaw", "athPrice",
   "athDate", "impliedMcapLoUsd", "impliedMcapHiUsd", "paprikaId",

@@ -19,9 +19,12 @@ id = "ad1b72702c5c4f229999bea5b118d1bc"
 [vars]
 BOARD_READ_MODE = "kv"
 
-# BOARD_READ_MODE（Pages 环境变量，缺省 legacy）：legacy | dual | kv（W2-01 灰度 G2/G3 由协调者切换）。
+# BOARD_READ_MODE（Pages 环境变量）：legacy | dual | kv。现行口径为 fail-closed
+# （F7-51 修订，2026-11-23）：变量缺失/未识别时 board.js 不按 legacy 尝试，
+# 而是回退快照 v2 应答（snapshot），不得按「缺省 legacy」理解或操作。
 
 # COINGECKO_API_KEY 为必填 Secret（Pages 控制台/wrangler secret put 注入，不写在本文件）。
 # 实测（2026-11）：未带 key 的匿名调用已被 CoinGecko 上游拦截，代码不得回退匿名模式；
 # 未配置时 Function 应明确报错（数据源未配置），不得静默降级。轮换剧本见二期设计 W2-20。
-# 注：legacy 模式现行代码在 key 缺失时仍按匿名尝试——该口径差异已登记，留待 G4 下线旧路径时一并收口（见施工报告偏差项）。
+# 注（F7-51 修订，2026-11-23）：legacy 模式现行代码在 key 缺失时为 fail-closed——
+# 直接抛配置错误、禁止匿名尝试（F6-03 已推翻旧「仍按匿名尝试」口径），不得按旧注操作。

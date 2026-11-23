@@ -57,8 +57,8 @@
 
 ### 3.3 未决残项（明确标注）
 
-- 未通过的 1 项究竟是 CSP 项本身，仍待逐项明细确认：本轮 API 取不到明细（见 §1「未取得项」）。下一步：人工在浏览器打开 §1 的 `details_url`，把未通过项名称回填本节；若该项不是 CSP 而是其他项（如与 `zone-config-registry.md` 的 ACAO 配置相关的 CORS 项），本结论须修订并在复测记录表注明。
-- Zone 侧 `Access-Control-Allow-Origin: *` 的出现时点无任何变更记录（不在 git 内），无法用时间线排除其对分数的贡献——这正是 F4-31「影子配置打破唯一事实源」的具体危害。其处置见 `zone-config-registry.md`，与本调查并行，不阻塞基线定版。
+- **【F7-50 修订，2026-11-23：未过项口径已统一定版】** 本节原写「未通过的 1 项究竟是 CSP 项本身，仍待逐项明细确认」，与 §5.4 的定版结论自相矛盾，现统一以 §5.4 口径为准：**Observatory 135 / A+ 的唯一未过项即 SRI（−5）**，已于 2026-11-23 W5 正式接受现状并销项（证据与再评估条件见 §5.4）。本节原「待确认」表述为 §5.4 定版前的历史状态，保留备查、不得再按未决引用；§3.2 的 −10 分 CSP WA-ON 归因与本项 −5 分 SRI 为两个不同扣分项，勿混。
+- Zone 侧 `Access-Control-Allow-Origin: *` 的出现时点无任何变更记录（不在 git 内），无法用时间线排除其对分数的贡献——这正是 F4-31「影子配置打破唯一事实源」的具体危害。其处置见 `zone-config-registry.md`，与本调查并行，不阻塞基线定版。（注：该 ACAO 已于 2026-11-13 W4-20 收编为仓库显式单一来源且复测分数不变，见 §4 复测记录，实验证明其非未过项来源。）
 
 ---
 
@@ -99,20 +99,28 @@
 ### 5.1 已知权限面：Pages 侧 BOARD_KV 绑定为平台读写权限（F6-92）
 
 - 事实：Cloudflare KV 绑定不区分读写。根 `wrangler.toml` 的 `BOARD_KV` 绑定
-  （注释自述「只读」）在平台层实为**读写权限**：Pages 任一 Function 均可对同一
+  在平台层实为**读写权限**：Pages 任一 Function 均可对同一
   命名空间执行 `put`/`delete`（含 `v1:board:current`、`v1:meta:health` 等键）。
-  「只读」目前仅靠代码自律——`functions/` 现有 board.js / health.js 均只 `get`。
+  「只读」靠代码自律与守卫测试把关。**【F7-49 修订，2026-11-23】现行代码并非
+  全量只 `get`：W5 经站长批准的唯一写例外已落地——`functions/api/board.js`
+  仅可对计数键 `v1:meta:legacy-credits`（`KV_KEYS.legacyCredits`）执行 `put`
+  （legacy/dual 形态真实回源时 +2 credits 的实测计量，kv 形态不触发），
+  health.js 仍只 `get`；除该例外外 `functions/` 不得出现任何 `BOARD_KV.put`，
+  `BOARD_KV.delete` 全面禁止。根 `wrangler.toml` 注释与本节口径一致。**
 - 定性：已知权限面登记，**非现行漏洞**；风险在未来新增 Function 或既有代码
   引入缺陷时，写权限无平台层兜底，爆炸半径含生产 blob 与健康键。
-- 硬性检查项（并入代码评审清单，见 §5.2）：`functions/` 下不得出现
-  `BOARD_KV.put` / `BOARD_KV.delete`，由契约测试
-  `tests/kv-write-guard.test.mjs`（grep 型守护，第六期他人在建）持续把关；
+- 硬性检查项（并入代码评审清单，见 §5.2）：`functions/` 下除上述 W5 唯一
+  批准例外（board.js 对 `legacyCredits` 键的 `put`，逐点核准）外不得出现
+  `BOARD_KV.put`，且不得出现 `BOARD_KV.delete`，由契约测试
+  `tests/kv-write-guard.test.mjs`（grep 型守护，逐点核准调用点与键名）持续把关；
   评审时人工复核与该测试缺一不可。
 
 ### 5.2 代码评审硬性检查项清单（节选，F6-92 新增首项）
 
-- [ ] **（F6-92）`functions/` 不得出现 `BOARD_KV.put` / `BOARD_KV.delete`**；
-      新增 Function 时逐一复核其 KV 用法，写方只能是 workers/fetcher。
+- [ ] **（F6-92，F7-49 修订）`functions/` 的 KV 写面只允许 W5 唯一批准例外
+      （board.js 对 `v1:meta:legacy-credits` 的 `put`），其余 `BOARD_KV.put`
+      与一切 `BOARD_KV.delete` 均不得出现**；
+      新增 Function 时逐一复核其 KV 用法，除该例外外的写方只能是 workers/fetcher。
 - [ ] 新增/变更 Pages Function 不得引入超出其职责的 KV、环境变量与外部抓取面
       （与 §5.1 权限面登记一并复核）。
 

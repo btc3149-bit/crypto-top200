@@ -17,11 +17,11 @@ G3 已切 kv 只读，legacy 回源路径退出服务，kv 模式下 legacy=0，
   used=9500 → 击穿 500/192≈2.60 天（≤3）→ CRITICAL（2）
   health 缺 creditsUsedEst → 核账证据不足 → 退出 3（口径无关，恒定）
 
-已知状态（2026-11-23 本批实跑）：quota-check.py 本体正由批 0 按 F6-07
-改 G3 口径、尚未合并到本分支，当前脚本仍以 legacy 576 规划口径判级，
-故 OK/WATCH 两例在本分支实跑为 WARNING（不符新口径期望）——这是预期内
-的「待批 0 合并后转绿」，不得为迁就旧口径而改用例。WARNING/CRITICAL/
-证据不足三例在新旧口径下结论恰一致、当前即绿。详见 P6_NOTES.md F6-16。
+已知状态（F7-56 修订，2026-11-23）：批 0 的 F6-07 G3 口径改版早已合并，
+quota-check.py 现按 kv 口径判级（legacy=0、向前日耗只认 fetcher 192/天），
+本套件 6/6 全绿（实跑可复核）。本段原写「脚本仍以 legacy 576 规划口径判级、
+OK/WATCH 两例待批 0 合并后转绿」为合并前的预期红状态记录，已过时，勿再
+按预期红引用；历史沿革见 P6_NOTES.md F6-16。
 
 运行：python3 tests/quota_check_test.py（全过退出 0）
 """
