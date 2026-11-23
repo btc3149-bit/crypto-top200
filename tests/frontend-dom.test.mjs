@@ -249,10 +249,11 @@ function buildContext(opts = {}) {
   const documentStub = guardStub({
     title: "t",
     activeElement: null, // F6-82/F6-58：桩不建模焦点，恒 null（patchInPlace 的焦点跳过分支在桩下不触发）
+    _listeners: {}, // F8-07：记录 document 级监听器供 ㉒ 派发 Escape（此前为空转、keydown 链不可测）
     getElementById: get,
     querySelector: () => theadEl,
     querySelectorAll: () => [],
-    addEventListener() {},
+    addEventListener(type, fn) { (this._listeners[type] || (this._listeners[type] = [])).push(fn); },
   }, "document");
   const fetchImpl = async (url) => {
     const u = String(url);
@@ -774,6 +775,150 @@ await test("⑲ F7-38/F7-35/F7-36/F7-37 第七期前端定版：decode 全行校
   assert.ok(sum <= 330, `≤640 五列总宽应 ≤330（360 视口 clientWidth），实际 ${sum}`);
   assert.ok(!/#thRank\{[^}]*clip:rect/.test(m640), "≤640 #thRank 不得再被 clip 视觉隐藏");
   assert.ok(/#thRank\{font-size:10px/.test(m640), "≤640 #thRank 应以可见小字号折行呈现");
+});
+
+await test("⑳ F8-05 ≤640 手机档排序按钮 44px：CSSOM 级联计算（360/390/640 须 44、桌面细指针仍 36、五列总宽不变）", () => {
+  // 与 ⑰ 同口径的级联计算（媒体条件求值 + 同特异性后写覆盖），非文本正则：
+  // 把 44px 规则写回基础规则之前的媒体块（W5 级联教训形态）会使计算结果变红。
+  const css = /<style>([\s\S]*?)<\/style>/.exec(html)[1].replace(/\/\*[\s\S]*?\*\//g, "");
+  const rules = [];
+  (function parse(text, media) {
+    let i = 0;
+    while (i < text.length) {
+      const open = text.indexOf("{", i);
+      if (open < 0) break;
+      const prelude = text.slice(i, open).trim();
+      let depth = 1, j = open + 1;
+      while (j < text.length && depth > 0) { if (text[j] === "{") depth++; else if (text[j] === "}") depth--; j++; }
+      const body = text.slice(open + 1, j - 1);
+      if (prelude.startsWith("@media")) parse(body, [...media, prelude.slice(6).trim()]);
+      else if (prelude && !prelude.startsWith("@")) {
+        const decls = {};
+        for (const d of body.split(";")) {
+          const k = d.indexOf(":");
+          if (k > 0) decls[d.slice(0, k).trim()] = d.slice(k + 1).trim();
+        }
+        for (const sel of prelude.split(",")) rules.push({ selector: sel.trim(), decls, media });
+      }
+      i = j;
+    }
+  })(css, []);
+  const mediaOk = (conds, sc) => conds.every((cond) =>
+    cond.split(/\s+and\s+/).every((part) => {
+      const m = /\(\s*([a-z-]+)\s*:\s*([^)]+)\)/.exec(part.trim());
+      if (!m) return false;
+      const [, feat, val] = m;
+      if (feat === "max-width") return sc.width <= parseFloat(val);
+      if (feat === "min-width") return sc.width >= parseFloat(val);
+      if (feat === "pointer") return val === "coarse" ? sc.coarse : !sc.coarse;
+      return false;
+    }));
+  const computed = (selector, sc) => {
+    const out = {};
+    for (const r of rules) if (r.selector === selector && mediaOk(r.media, sc)) Object.assign(out, r.decls);
+    return out;
+  };
+  const px = (v) => { const m = /^(-?\d+(?:\.\d+)?)(?:px)?$/.exec(String(v ?? "").trim()); return m ? Number(m[1]) : null; };
+  // 任务口径：360px 视口下 sortBtn 计算高度须为 44px
+  for (const w of [360, 390, 640]) {
+    assert.equal(px(computed(".th-sort", { width: w, coarse: true })["min-height"]), 44, `${w}px 触控档：.th-sort 计算 min-height 应为 44`);
+    assert.equal(px(computed(".th-sort", { width: w, coarse: false })["min-height"]), 44, `${w}px 细指针档：.th-sort 计算 min-height 应为 44（本档口径不分指针类型，与本档其余控件一致）`);
+  }
+  // 非回归：桌面细指针基础档仍 36（F7-36 定版不动）、粗指针 ≥641 仍 44
+  assert.equal(px(computed(".th-sort", { width: 1280, coarse: false })["min-height"]), 36, "桌面细指针：.th-sort 应仍为基础档 36");
+  assert.equal(px(computed(".th-sort", { width: 1024, coarse: true })["min-height"]), 44, "粗指针 ≥641：.th-sort 应仍为 44（F7-36）");
+  // 布局回归核查：≤640 五列总宽与列宽逐项不变（F7-37 定版 326px）、本档其余控件仍 44
+  const m640 = /@media \(max-width:640px\)\{([\s\S]*?)\n  \}/.exec(/<style>([\s\S]*?)<\/style>/.exec(html)[1])[1];
+  const cols = [...m640.matchAll(/col\.c-(rank|coin|price|est|mult)\{width:(\d+)px\}/g)];
+  assert.deepEqual(cols.map((m) => [m[1], Number(m[2])]), [["rank", 34], ["coin", 98], ["price", 64], ["est", 62], ["mult", 68]], "≤640 五列列宽应逐项不变");
+  assert.equal(cols.reduce((s, m) => s + Number(m[2]), 0), 326, "≤640 五列总宽应仍为 326px（不横溢）");
+  assert.equal(px(computed(".toolbar button", { width: 360, coarse: true })["min-height"]), 44, "≤640 工具栏按钮应仍为 44（对照组未被扰动）");
+});
+
+await test("㉑ F8-06 状态横幅 aria-live 节流：同状态连续 render 不得重写横幅 textContent、状态变化时仍更新", async () => {
+  boardLive = false; // 快照态：横幅文案恒定，适合作「值不变」计数
+  const c8 = buildContext();
+  const inPage8 = (expr) => vm.runInContext(expr, c8.ctx);
+  await settle();
+  const banner = c8.registry.get("statusBanner");
+  // 计数桩：以 accessor 拦截 textContent 写入（桩无 MutationObserver，此为等价计数口径，
+  // 与评审「MutationObserver 计数横幅 mutations」的验证方法同义）
+  let writes = 0;
+  let cur = banner.textContent;
+  Object.defineProperty(banner, "textContent", {
+    configurable: true,
+    get() { return cur; },
+    set(v) { writes++; cur = String(v); },
+  });
+  const before = cur;
+  assert.ok(before.includes("快照"), "前置：横幅应为快照文案，实际：" + before);
+  inPage8("render(); render(); render();");
+  assert.equal(writes, 0, `同状态连续 render 3 次，横幅 textContent 额外写入应为 0 次，实际 ${writes} 次（aria-live 会重复播报）`);
+  assert.equal(cur, before, "横幅文案不应变化");
+  // 状态变化时仍须更新：切 live 后横幅应变为实时文案且恰有写入
+  boardLive = true;
+  await inPage8("loadBoard()");
+  await settle();
+  assert.ok(writes >= 1, "状态变化时横幅应被写入更新");
+  assert.ok(cur.includes("实时行情"), "live 后横幅应为实时文案，实际：" + cur);
+  boardLive = false;
+});
+
+await test("㉒ F8-07 Escape 关闭详情：含 ' 的畸形 id 不得抛 SyntaxError 且能关闭、正常 id 行为不变", async () => {
+  boardLive = false;
+  const c9 = buildContext();
+  const inPage9 = (expr) => vm.runInContext(expr, c9.ctx);
+  await settle();
+  // 注入畸形 id 币（评审验证方法：本地副本把某 id 改为 a'b）并置展开态
+  inPage9("COINS.push({ ...COINS[0], coingeckoId: \"a'b\" }); expandedIds.add(\"a'b\"); expandedIds.add('bitcoin');");
+  const mkBtn = (id) => ({
+    dataset: { exp: id }, textContent: "▾", _focused: false, _attrs: {},
+    setAttribute(k, v) { this._attrs[k] = String(v); },
+    removeAttribute(k) { delete this._attrs[k]; },
+    closest: () => null,
+    focus() { this._focused = true; },
+  });
+  const badBtn = mkBtn("a'b"), btcBtn = mkBtn("bitcoin");
+  c9.ctx.__badBtn = badBtn; c9.ctx.__btcBtn = btcBtn;
+  // 以浏览器语义替换桩 querySelector：单引号字符串须闭合且其后紧跟 ]，否则 SyntaxError；
+  // 反斜杠转义按 CSS 字符串规则还原。未转义拼接 "[data-exp='a'b']" 在此必抛（复现口径）。
+  const doc = vm.runInContext("document", c9.ctx);
+  doc.querySelector = (sel) => {
+    const m = /^\[data-exp='((?:\\.|[^'\\])*)'\]$/.exec(sel);
+    if (!m) { const e = new Error("'" + sel + "' is not a valid selector"); e.name = "SyntaxError"; throw e; }
+    const id = m[1].replace(/\\(.)/g, "$1");
+    return id === "a'b" ? badBtn : id === "bitcoin" ? btcBtn : null;
+  };
+  const handlers = Array.from(vm.runInContext("document._listeners.keydown || []", c9.ctx));
+  assert.ok(handlers.length >= 1, "应捕获到 document keydown 监听器");
+  const dispatch = (target) => { for (const h of handlers) h({ key: "Escape", target }); };
+  const detailTarget = (id) => ({ closest: (sel) => (sel === ".detail-row" ? { id: "d-" + id } : null) });
+  // 畸形 id：在详情行按 Escape —— 不得抛错、应关闭并把焦点还给展开按钮
+  dispatch(detailTarget("a'b"));
+  assert.equal(inPage9("expandedIds.has(\"a'b\")"), false, "畸形 id 的详情应被 Escape 关闭");
+  assert.equal(badBtn._focused, true, "关闭后焦点应回到该币的展开按钮");
+  assert.equal(badBtn._attrs["aria-expanded"], "false", "展开按钮 aria-expanded 应同步为 false");
+  // 正常 id 回归：在详情行按 Escape 行为不变
+  dispatch(detailTarget("bitcoin"));
+  assert.equal(inPage9("expandedIds.has('bitcoin')"), false, "正常 id 的详情应被 Escape 关闭");
+  assert.equal(btcBtn._focused, true, "正常 id 关闭后焦点应回到展开按钮");
+  delete c9.ctx.__badBtn; delete c9.ctx.__btcBtn;
+});
+
+await test("㉓ F8-08 隐私页地标：<main id=mainWrap> + 跳过链接与首页同口径、旧 div.wrap 不残留", () => {
+  const priv = readFileSync(new URL("../public/privacy/index.html", import.meta.url), "utf-8");
+  // 首页口径基准
+  assert.ok(/<a class="skip-link" href="#mainWrap">跳到主内容<\/a>/.test(html), "首页应有跳过链接（对照基准）");
+  assert.ok(/<main class="wrap" id="mainWrap">/.test(html), "首页应有 main#mainWrap（对照基准）");
+  // 隐私页同口径
+  assert.equal((priv.match(/<main\b/g) || []).length, 1, "隐私页应恰有 1 个 <main>");
+  assert.ok(/<main class="wrap" id="mainWrap">/.test(priv), "隐私页正文容器应为 <main class=\"wrap\" id=\"mainWrap\">（.wrap 样式不变、视觉不变）");
+  assert.ok(/<\/main>/.test(priv), "隐私页 </main> 应闭合");
+  assert.ok(!/<div class="wrap">/.test(priv), "旧 <div class=\"wrap\"> 不得残留");
+  const skipIdx = priv.indexOf('<a class="skip-link" href="#mainWrap">跳到主内容</a>');
+  assert.ok(skipIdx >= 0, "隐私页应有与首页同文案/同锚点的跳过链接");
+  assert.ok(skipIdx < priv.indexOf("<main"), "跳过链接应在 <main> 之前（body 首元素）");
+  assert.ok(/\.skip-link\{position:absolute;left:-9999px/.test(priv) && /\.skip-link:focus\{left:0\}/.test(priv), "隐私页应有 .skip-link 隐藏/聚焦显形样式（与首页同口径）");
 });
 
 const failed = results.filter(([, s]) => s !== "PASS");
