@@ -75,4 +75,31 @@ for name, counter in [
         and m["updatedAt"] is None and m["reason"], (name, m)
 ok("③b legacyMeasured 跨月/陈旧/畸形/无键：credits/month/updatedAt 全置空、available=False 带 reason")
 
+# ---------- ④ F8-23：check-shadow-health wrangler pin 回退 WARN + 锁版入口 ----------
+import io, json, tempfile  # noqa: E402
+from contextlib import redirect_stderr  # noqa: E402
+from pathlib import Path as _Path  # noqa: E402
+
+def _shadow_prefix(repo_root):
+    _orig = shadow.REPO_ROOT
+    shadow.REPO_ROOT = str(repo_root)
+    _err = io.StringIO()
+    try:
+        with redirect_stderr(_err):
+            prefix = shadow.wrangler_cmd_prefix()
+    finally:
+        shadow.REPO_ROOT = _orig
+    return prefix, _err.getvalue()
+
+_prefix, _warn = _shadow_prefix(tempfile.mkdtemp())  # 无 package.json → 回退分支
+assert _prefix == ["npx", "wrangler@4.159.0"] and "WARN" in _warn and "回退写死值 4.159.0" in _warn, (_prefix, _warn)
+_prefix, _warn = _shadow_prefix(ROOT)  # 真实仓库 → 锁版入口、无 WARN
+assert _prefix == ["bash", str(ROOT / "scripts" / "wrangler-pinned.sh")] and _warn == "", (_prefix, _warn)
+_md = _Path(tempfile.mkdtemp())
+(_md / "package.json").write_text(json.dumps({"devDependencies": {"wrangler": "4.159.0"}}), encoding="utf-8")
+(_md / "package-lock.json").write_text(json.dumps({"packages": {"node_modules/wrangler": {"version": "9.9.9"}}}), encoding="utf-8")
+_prefix, _warn = _shadow_prefix(_md)
+assert _prefix[0] == "bash" and "不一致" in _warn, (_prefix, _warn)
+ok("④ F8-23 check-shadow：回退写死值必 WARN（stderr）、正常走 wrangler-pinned.sh 锁版入口、pin 与 lockfile 不一致 WARN")
+
 print(f"\nALL {len(PASS)} CHECKS PASSED")
