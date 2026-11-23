@@ -57,7 +57,7 @@ npm run deploy           # 部署到生产（main 分支），脚本会自动对
 
 ```bash
 npm run smoke                              # 对生产地址
-bash scripts/smoke.sh https://preview.crypto-top200.pages.dev
+bash scripts/smoke.sh https://preview.crypto-top200.pages.dev preview   # preview 只跑静态/UI 子集、不验 /api/board（F7-04）
 ```
 
 ## 已废弃：控制台拖放部署（不要再用）

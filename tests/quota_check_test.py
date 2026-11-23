@@ -125,6 +125,122 @@ check("⑥ W5 legacyMeasured 实测计数并列呈现（available/credits=42，�
       (True, 42, "OK"))
 qc.read_legacy_credits = lambda: None
 
+# ---------- F7-07：F6-24 陈旧判级 / 非 kv 分支 / legacyMeasured available=false ----------
+_orig_board_mode = qc.read_board_mode
+_orig_read_legacy = qc.read_legacy_credits
+
+
+def mk_health(used=1000, month="2026-11", last="2026-11-15T11:50:00Z", drop_last=False):
+    h = {
+        "quota": {"month": month, "quotaMode": "normal", "creditsUsedEst": used},
+        "lastUpstreamStatus": 200,
+        "consecutiveFailures": 0,
+        "lastRunId": "run-test",
+    }
+    if not drop_last:
+        h["lastRunAt"] = last
+    return h
+
+
+def run_full(health, legacy=None, mode="kv"):
+    """驱动 main()：返回 (退出码, stdout 记录或 None, log 末行记录或 None)。"""
+    qc.read_health = lambda: health
+    qc.read_legacy_credits = lambda: legacy
+    qc.read_board_mode = lambda health=None: mode
+    buf = io.StringIO()
+    with redirect_stdout(buf):
+        code = qc.main()
+    out = buf.getvalue().strip()
+    rec = None
+    if out.startswith("{"):
+        try:
+            rec = json.loads(out)
+        except Exception:
+            rec = None
+    log_rec = None
+    try:
+        lines = Path(qc.LOG_PATH).read_text(encoding="utf-8").strip().splitlines()
+        if lines:
+            log_rec = json.loads(lines[-1])
+    except Exception:
+        log_rec = None
+    return code, rec, log_rec
+
+
+# ⑦ 月份不符（health.month=2026-10 ≠ 当前 2026-11）→ INVALID + 退出 3，不产出正常判级
+_code, _rec, _log = run_full(mk_health(month="2026-10"))
+check("⑦ F7-07 health.month 与当前月不一致 → verdict=INVALID / 退出 3（F6-24）",
+      (_code, _rec, (_log or {}).get("verdict"), (_log or {}).get("staleHealth")),
+      (3, None, "INVALID", True))
+
+# ⑧ lastRunAt 陈旧（距今 3h+1s）→ INVALID + 退出 3
+_code, _rec, _log = run_full(mk_health(last="2026-11-15T08:59:59Z"))
+check("⑧ F7-07 lastRunAt 距今 >3h → verdict=INVALID / 退出 3（F6-24）",
+      (_code, (_log or {}).get("verdict")), (3, "INVALID"))
+
+# ⑨ lastRunAt 恰 3h 边界（不 >3h）→ 仍有效，正常判级 OK / 退出 0
+_code, _rec, _log = run_full(mk_health(last="2026-11-15T09:00:00Z"))
+check("⑨ F7-07 lastRunAt 恰 3h 边界 → 有效、verdict=OK / 退出 0",
+      (_code, (_rec or {}).get("verdict")), (0, "OK"))
+
+# ⑩ lastRunAt 在未来 +1h → 现行实现单侧校验不拦（F7-27 未来时间戳盲区，本例锁定现状、待脚本组双侧化后改期望）
+_code, _rec, _log = run_full(mk_health(last="2026-11-15T13:00:00Z"))
+check("⑩ F7-07 lastRunAt 未来 +1h → 现状仍判 OK（F7-27 盲区锁定，见 P7_NOTES_GUARD）",
+      (_code, (_rec or {}).get("verdict")), (0, "OK"))
+
+# ⑪ lastRunAt 不可解析 / 缺失 → INVALID + 退出 3
+_code, _rec, _log = run_full(mk_health(last="not-a-date"))
+check("⑪a F7-07 lastRunAt 不可解析 → verdict=INVALID / 退出 3",
+      (_code, (_log or {}).get("verdict")), (3, "INVALID"))
+_code, _rec, _log = run_full(mk_health(drop_last=True))
+check("⑪b F7-07 lastRunAt 缺失 → verdict=INVALID / 退出 3",
+      (_code, (_log or {}).get("verdict")), (3, "INVALID"))
+
+# ⑫ 非 kv 分支：legacy 模式规划口径取 576/天 → used=1000 投影 12904 ≥8500 → WARNING / 退出 1
+_code, _rec, _log = run_full(mk_health(), mode="legacy")
+check("⑫a F7-07 非 kv（legacy）分支：规划口径 576/天 → WARNING / 退出 1、planningScenario=planning_probe_paired",
+      (_code, (_rec or {}).get("verdict"), (_rec or {}).get("planningScenario")),
+      (1, "WARNING", "planning_probe_paired"))
+# ⑫b 模式未知（None）同样走非 kv 规划口径（fail-safe 取保守口径）
+_code, _rec, _log = run_full(mk_health(), mode=None)
+check("⑫b F7-07 boardMode=None（未知）→ 非 kv 规划口径 → WARNING / 退出 1",
+      (_code, (_rec or {}).get("verdict")), (1, "WARNING"))
+
+# ⑬ legacyMeasured：计数键缺失（read 返回 None）→ available=false、credits=null，判级不受影响
+_code, _rec, _log = run_full(mk_health(), legacy=None)
+_lm = (_rec or {}).get("legacyMeasured", {})
+check("⑬ F7-07 legacyMeasured 计数键缺失 → available=false / credits=null / verdict=OK",
+      (_code, _lm.get("available"), _lm.get("credits"), (_rec or {}).get("verdict")),
+      (0, False, None, "OK"))
+
+# ⑭ legacyMeasured：计数键跨月（month=2026-10）→ available=false；
+#    注意：现行实现 credits 仍带上月值 42（F7-25 缺陷，本例锁定现状并已报协调人，待脚本组修复后改期望为 None）
+_code, _rec, _log = run_full(mk_health(), legacy={"month": "2026-10", "credits": 42, "updatedAt": "2026-10-31T00:00:00.000Z"})
+_lm = (_rec or {}).get("legacyMeasured", {})
+check("⑭ F7-07 legacyMeasured 跨月 → available=false（credits 现状仍为上月 42，F7-25 已报协调人）",
+      (_lm.get("available"), _lm.get("credits"), _lm.get("month")),
+      (False, 42, "2026-10"))
+
+# ⑮ legacyMeasured 读入层畸形过滤：read_legacy_credits 本体对非 dict / credits 非数 / 缺 month 一律 None
+# （qc 的 read_legacy_credits 已被上文用例 monkeypatch，故另载一份全新模块实例取原函数）
+qc.read_board_mode = _orig_board_mode
+_spec2 = importlib.util.spec_from_file_location("quota_check_pristine", ROOT / "scripts" / "quota-check.py")
+qc2 = importlib.util.module_from_spec(_spec2)
+_spec2.loader.exec_module(qc2)
+_shapes = [
+    ("字符串", "junk"),
+    ("credits 为字符串", {"month": "2026-11", "credits": "42"}),
+    ("缺 credits", {"month": "2026-11"}),
+    ("缺 month", {"credits": 42}),
+    ("列表", [1, 2]),
+]
+for _label, _shape in _shapes:
+    qc2.read_kv_key = lambda key, quiet=False, _s=_shape: _s
+    check(f"⑮ F7-07 read_legacy_credits 畸形（{_label}）→ None", qc2.read_legacy_credits(), None)
+qc2.read_kv_key = lambda key, quiet=False: {"month": "2026-11", "credits": 42, "updatedAt": "2026-11-15T11:00:00.000Z"}
+check("⑮ F7-07 read_legacy_credits 合法形态 → 原样返回",
+      (qc2.read_legacy_credits() or {}).get("credits"), 42)
+
 print(f"\nquota_check: {len(PASS)} PASS / {len(FAIL)} FAIL")
 if FAIL:
     print("未过用例（批 0 的 F6-07 新口径合并后应转绿，见文件头与 P6_NOTES F6-16）：")

@@ -208,13 +208,23 @@ npx "wrangler@${WRANGLER_VERSION}" pages deploy public --project-name crypto-top
 
 # (d) 部署后冒烟：失败则非零退出，部署虽已上线但必须人工处理/回滚
 # W2-13/HC2：冒烟结果同步 ping healthchecks（HEALTHCHECKS_DEPLOY_PING_URL 未设置时 hc_ping.sh 打印 skipped-no-url 并以 0 退出，不阻断部署）。
-echo "[deploy] 部署完成，开始冒烟：$BASE_URL"
-if ! bash scripts/smoke.sh "$BASE_URL"; then
-  bash scripts/hc_ping.sh fail || true
-  echo "部署已上线但冒烟失败，需人工处理/回滚" >&2
-  exit 1
+# F7-04：preview 只跑 smoke.sh 的静态/UI 子集（preview 模式），且 HC2 是生产部署
+# 健康检查——preview 无论冒烟成败均不发 HC2 success/fail ping，避免误报污染告警。
+echo "[deploy] 部署完成，开始冒烟：$BASE_URL（模式=$ENV_NAME）"
+if [ "$ENV_NAME" = "preview" ]; then
+  if ! bash scripts/smoke.sh "$BASE_URL" preview; then
+    echo "[deploy] preview 静态/UI 冒烟失败（不发送 HC2 fail；preview 结论不可迁移到生产数据面）" >&2
+    exit 1
+  fi
+  echo "[deploy] preview 冒烟通过（未发送 HC2 ping：HC2 仅记生产部署）"
+else
+  if ! bash scripts/smoke.sh "$BASE_URL" production; then
+    bash scripts/hc_ping.sh fail || true
+    echo "部署已上线但冒烟失败，需人工处理/回滚" >&2
+    exit 1
+  fi
+  bash scripts/hc_ping.sh success || true
 fi
-bash scripts/hc_ping.sh success || true
 
 # (d2) F6-27 部署后安全头冒烟（线上子集 S1/S2/S4/S6）：结果落 deploy-log；
 # 非零时部署末尾以醒目信息 + 非零退出码收尾（部署已发生，不假装未部署）。

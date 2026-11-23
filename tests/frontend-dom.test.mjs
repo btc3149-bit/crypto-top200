@@ -640,24 +640,94 @@ await test("⑯ W5 aria-controls 全量关联：快照静态行/JS 模板行/pat
   delete c6.ctx.__btn6;
 });
 
-await test("⑰ W5 展开按钮命中域定版：基础档视觉 28 + ::after 每边外扩 8 = 有效 44×44；本体 44 的档位扩展收回", () => {
-  const style = /<style>([\s\S]*?)<\/style>/.exec(html)[1];
-  const base = /\.exp\{background:none;border:1px solid var\(--line-strong\)[^}]*?min-width:(\d+)px;min-height:(\d+)px/.exec(style);
-  assert.ok(base, "应找到 .exp 基础规则");
-  const bw = Number(base[1]), bh = Number(base[2]);
-  const ext = /\.exp::after\{content:"";position:absolute;inset:-(\d+)px\}/.exec(style);
-  assert.ok(ext, "应找到 .exp::after 命中扩展规则");
-  const e = Number(ext[1]);
-  assert.ok(bw + 2 * e >= 44 && bh + 2 * e >= 44, `基础档有效命中域应 ≥44×44，实际 ${bw + 2 * e}×${bh + 2 * e}`);
-  assert.equal(bw + 2 * e, 44, "基础档定版命中域应恰为 44（28+2×8）");
-  // ≤640 与粗指针 ≥641 两档本体已 44×44，对应 ::after 必须收回 inset:0（命中域恰 44、不再外扩）
-  assert.ok(/\.exp\{min-width:44px;min-height:44px\}/.test(style), "≤640 档 .exp 本体应为 44×44");
-  assert.equal((style.match(/\.exp::after\{inset:0\}/g) || []).length, 2, "两档本体 44 的媒体查询内应各有一处 ::after{inset:0} 收回");
-  // 级联顺序回归（W5 实测教训）：≤640 档 44px 规则必须位于基础 .exp 规则之后，
-  // 否则同特异性被基础 28px 覆盖而失效（修复前 computed min-width 实测恒 28px）
-  const baseIdx = style.indexOf(".exp{background:none");
-  const lateIdx = style.indexOf("@media (max-width:640px){.exp{min-width:44px");
-  assert.ok(baseIdx >= 0 && lateIdx > baseIdx, "≤640 档 .exp 44px 规则必须在基础 .exp 规则之后（级联顺序）");
+await test("⑰ F7-31 命中域行为断言：CSSOM 级联计算（.exp position:relative、::after 几何、粗指针级联、桌面不侵星标）", () => {
+  // F7-31：旧版仅对 <style> 文本做正则；本版把样式表解析为有序规则表，按
+  // 「媒体条件求值 + 同特异性后写覆盖」的级联语义计算各场景下 .exp/.exp::after/
+  // .star 的有效声明，再断言几何——删 position:relative、改错级联顺序、改错
+  // 媒体档位都会使计算结果变红（文本正则时代这些改动均可假绿）。
+  const css = /<style>([\s\S]*?)<\/style>/.exec(html)[1].replace(/\/\*[\s\S]*?\*\//g, "");
+  const rules = []; // {selector, decls:{}, media:[cond,...]}，按源码顺序
+  (function parse(text, media) {
+    let i = 0;
+    while (i < text.length) {
+      const open = text.indexOf("{", i);
+      if (open < 0) break;
+      const prelude = text.slice(i, open).trim();
+      let depth = 1, j = open + 1;
+      while (j < text.length && depth > 0) { if (text[j] === "{") depth++; else if (text[j] === "}") depth--; j++; }
+      const body = text.slice(open + 1, j - 1);
+      if (prelude.startsWith("@media")) parse(body, [...media, prelude.slice(6).trim()]);
+      else if (prelude && !prelude.startsWith("@")) {
+        const decls = {};
+        for (const d of body.split(";")) {
+          const k = d.indexOf(":");
+          if (k > 0) decls[d.slice(0, k).trim()] = d.slice(k + 1).trim();
+        }
+        for (const sel of prelude.split(",")) rules.push({ selector: sel.trim(), decls, media });
+      }
+      i = j;
+    }
+  })(css, []);
+  const mediaOk = (conds, sc) => conds.every((cond) =>
+    cond.split(/\s+and\s+/).every((part) => {
+      const m = /\(\s*([a-z-]+)\s*:\s*([^)]+)\)/.exec(part.trim());
+      if (!m) return false;
+      const [, feat, val] = m;
+      if (feat === "max-width") return sc.width <= parseFloat(val);
+      if (feat === "min-width") return sc.width >= parseFloat(val);
+      if (feat === "pointer") return val === "coarse" ? sc.coarse : !sc.coarse;
+      return false;
+    }));
+  const computed = (selector, sc) => {
+    const out = {};
+    for (const r of rules) if (r.selector === selector && mediaOk(r.media, sc)) Object.assign(out, r.decls);
+    return out;
+  };
+  const px = (v) => { const m = /^(-?\d+(?:\.\d+)?)px$/.exec(String(v ?? "").trim()); return m ? Number(m[1]) : null; };
+  // inset 简写 → {top,right,bottom,left}（px 数值；负值表示外扩量取其相反数在调用处处理）
+  const insetOf = (v) => {
+    const parts = String(v ?? "").trim().split(/\s+/).map(px);
+    if (parts.some((x) => x === null)) return null;
+    const [a, b = a, c = a, d = b] = parts;
+    return { top: a, right: b, bottom: c, left: d };
+  };
+
+  // 场景 A：桌面细指针 1280
+  const desk = { width: 1280, coarse: false };
+  const expD = computed(".exp", desk);
+  assert.equal(expD.position, "relative", "桌面：.exp 必须 position:relative（::after 绝对定位锚点，删之命中域错位）");
+  assert.equal(px(expD["min-width"]), 28, "桌面：.exp 视觉宽定版 28");
+  assert.equal(px(expD["min-height"]), 28, "桌面：.exp 视觉高定版 28");
+  const afterD = computed(".exp::after", desk);
+  assert.equal(afterD.position, "absolute", "桌面：.exp::after 必须 position:absolute");
+  assert.ok("content" in afterD, "桌面：.exp::after 必须有 content 才生成盒");
+  const insD = insetOf(afterD.inset);
+  assert.ok(insD, "桌面：.exp::after inset 应为可解析的 px 简写");
+  const vHit = px(expD["min-height"]) - insD.top - insD.bottom; // inset 为负=外扩
+  assert.ok(vHit >= 44, `桌面：纵向有效命中域应 ≥44，实际 ${vHit}（28 + 上下外扩）`);
+  // 星标不侵入定版（F7-34×F7-31，与前端组定版口径一致）：.exp 右侧外扩不得越过
+  // margin-right 间隙进入 .star 盒（star 左缘 = exp 右缘 + margin-right）。
+  const marginRight = px(expD["margin-right"]) ?? 0;
+  const starD = computed(".star", desk);
+  assert.equal(px(starD["min-width"]), 32, "桌面：.star 有效宽定版 32（≥641 档规则须在级联中胜出）");
+  const intrusion = Math.max(0, -insD.right - marginRight);
+  assert.equal(intrusion, 0, `桌面：::after 右侧外扩 ${-insD.right}px 越过 margin 间隙 ${marginRight}px、侵入星标 ${intrusion}px（定版：横向不得侵入 star，纵向可外扩）`);
+
+  // 场景 B：粗指针 ≥641（平板/触控笔记本）：级联后本体 44 且 ::after 收回 inset:0
+  const coarse = { width: 1024, coarse: true };
+  const expC = computed(".exp", coarse);
+  assert.equal(px(expC["min-width"]), 44, "粗指针档：.exp 本体应经级联为 44（媒体规则须位于基础规则之后且条件命中）");
+  assert.equal(px(expC["min-height"]), 44, "粗指针档：.exp 本体高应为 44");
+  assert.equal(expC.position, "relative", "粗指针档：.exp 仍须 position:relative");
+  const insC = insetOf(computed(".exp::after", coarse).inset);
+  assert.deepEqual(insC, { top: 0, right: 0, bottom: 0, left: 0 }, "粗指针档：本体已 44，::after 应收回 inset:0（命中域恰 44）");
+
+  // 场景 C：≤640 移动档：本体 44、::after 收回（级联顺序回归——W5 实测教训的计算版）
+  const mob = { width: 390, coarse: true };
+  const expM = computed(".exp", mob);
+  assert.equal(px(expM["min-width"]), 44, "≤640 档：.exp 本体应经级联为 44（旧 bug 为媒体规则写在基础规则之前被覆盖）");
+  const insM = insetOf(computed(".exp::after", mob).inset);
+  assert.deepEqual(insM, { top: 0, right: 0, bottom: 0, left: 0 }, "≤640 档：::after 应收回 inset:0");
 });
 
 await test("⑱ W5 SRI 处置守卫：全站外部脚本仅 CF beacon 一支（两页各一）且无 integrity——处置登记见 security-baseline §5.4", () => {
