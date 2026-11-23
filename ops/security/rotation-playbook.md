@@ -23,7 +23,8 @@
 经保险箱更新后，由部署通道执行（命令中的值不出现在聊天/日志/脚本文件里）：
 
 ```bash
-npx wrangler pages secret put COINGECKO_API_KEY --project-name crypto-top200
+bash scripts/wrangler-pinned.sh pages secret put COINGECKO_API_KEY --project-name crypto-top200
+# F7-45：wrangler 一律走锁版入口 scripts/wrangler-pinned.sh（版本从 package.json pin 读取），禁止裸 npx wrangler——密钥注入是高权操作，不得在未锁版的临时环境执行
 # 交互式粘贴新 key 值；禁止用 echo/参数明文传值（会进 shell 历史与进程列表）
 ```
 

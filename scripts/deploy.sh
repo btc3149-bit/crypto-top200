@@ -168,9 +168,18 @@ if ! node ops/headers/gen-headers.mjs --check --variant=on; then  # WA-ON：2026
 fi
 echo "[deploy] W2-18 _headers --check 通过"
 
+# (b2b) F7-47 安全头一致性门禁（report-only 产物）：ops/headers/_headers.report-only.txt 必须与
+# 当前全站 HTML 的现行生成结果一致（WA-ON+report-only，与线上变体同口径，仅 CSP 头名不同）。
+# 不一致即中止部署——先运行 node ops/headers/gen-headers.mjs --report-only --variant=on 重新生成，禁止手改。
+if ! node ops/headers/gen-headers.mjs --check --report-only --variant=on; then
+  echo "[deploy] 错误：ops/headers/_headers.report-only.txt 与当前全站 HTML 不一致，请先运行 node ops/headers/gen-headers.mjs --report-only --variant=on 重新生成后再部署。" >&2
+  exit 1
+fi
+echo "[deploy] F7-47 _headers.report-only.txt --check 通过"
+
 # (b3) W2-01 fetcher 数据一致性门禁：workers/fetcher/coins.json 的 meta.dataHash 必须与 data/coins.json 一致
 # （只比 dataHash 不比字节：meta.generatedAt 允许不同）。不一致即中止——同步动作：cp data/coins.json workers/fetcher/coins.json，
-# 按 docs/fetcher-runbook.md 重生成 src/coins-list.js，并单独部署 fetcher（npx wrangler deploy -c workers/fetcher/wrangler.toml，不与 Pages 连推）。
+# 按 docs/fetcher-runbook.md 重生成 src/coins-list.js，并单独部署 fetcher（bash scripts/wrangler-pinned.sh deploy -c workers/fetcher/wrangler.toml，锁版入口 F7-45，不与 Pages 连推）。
 if ! python3 -c "import json,sys; a=json.load(open('data/coins.json'))['meta']['dataHash']; b=json.load(open('workers/fetcher/coins.json'))['meta']['dataHash']; sys.exit(0 if a==b else 1)"; then
   echo "[deploy] 错误：workers/fetcher/coins.json 与 data/coins.json 的 dataHash 不一致，请先同步 fetcher 数据副本并重生成 coins-list.js（见 docs/fetcher-runbook.md）。" >&2
   exit 1
@@ -202,9 +211,11 @@ fi
 echo "[deploy] W4-10 coins-list.js 名单门禁通过（200 个 id 与 data/coins.json 一致）"
 
 # (c) 用 package.json 锁定的 wrangler 版本部署（防 CLI 大版本漂移）
+# F7-45 起统一走锁版入口 scripts/wrangler-pinned.sh（内部从 package.json 读 pin 并校验 lockfile，
+# 与此前本节内联的 npx wrangler@<pin> 等价，版本来源仍只有 package.json 一处）。
 WRANGLER_VERSION="$(python3 -c "import json; print(json.load(open('package.json'))['devDependencies']['wrangler'])")"
-echo "[deploy] 使用 wrangler@${WRANGLER_VERSION} 部署到项目 crypto-top200（branch=$BRANCH）"
-npx "wrangler@${WRANGLER_VERSION}" pages deploy public --project-name crypto-top200 --branch "$BRANCH"
+echo "[deploy] 使用 wrangler@${WRANGLER_VERSION}（经 scripts/wrangler-pinned.sh）部署到项目 crypto-top200（branch=$BRANCH）"
+bash scripts/wrangler-pinned.sh pages deploy public --project-name crypto-top200 --branch "$BRANCH"
 
 # (d) 部署后冒烟：失败则非零退出，部署虽已上线但必须人工处理/回滚
 # W2-13/HC2：冒烟结果同步 ping healthchecks（HEALTHCHECKS_DEPLOY_PING_URL 未设置时 hc_ping.sh 打印 skipped-no-url 并以 0 退出，不阻断部署）。

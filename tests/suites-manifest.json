@@ -64,6 +64,30 @@
     {
       "path": "tests/quota_check_test.py",
       "runner": "python3"
+    },
+    {
+      "path": "tests/paprika-gate.test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/wrangler-pinned.test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/audit-deps.test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/probe_http_status_test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/build_paprika_map_test.py",
+      "runner": "python3"
+    },
+    {
+      "path": "tests/time_tolerance_test.py",
+      "runner": "python3"
     }
   ]
 }
