@@ -5,7 +5,7 @@
 - 429：按 Retry-After 跳过 K 个 run（health.skipRunsRemaining），跳过不计连续失败。
 - 故障判读：scripts/probe.mjs（consecutiveFailures≥3 / staleAgeSec>1800 / 组合规则）。
 - 回滚（W4-12 定版口径，2026-11-13 演练实测修正）：模式回滚的真实路径 = 在 `wrangler.toml` 的 `[vars]` 注入 `BOARD_READ_MODE`（如改回 `legacy`）后跑 `scripts/deploy.sh` 重新部署（应急 ≤24h）；**经 API 改 Pages 项目级 env 不会被 Wrangler 直推部署携带、单独用 `scripts/rollback.sh` 的 mode 子命令不作数**（只改 API 配置层、不改变线上行为）。部署回滚（回上一个部署）是另一条路径，见 README「回滚方法」。fetcher 侧关 Cron 即停抓。
-- Paprika 备源状态（F6-10）：**当前不可用：映射未落库（0/200）、启用门禁未达，禁止置 PAPRIKA_ENABLED=true**。启用前须先完成映射落库（≥197 非空）并通过 verify-paprika-coverage 连测达标。
+- Paprika 备源状态（F8-20 修订，2026-11-23 实测）：**当前保持关闭（PAPRIKA_ENABLED=false），禁止置 true**。映射已落库：mapped=196/200（4 空：hash-2、celium、genius-3、nxm）。启用门禁为四项计数均 ≥188（94%，单一事实源 shared/paprika-identity.js，F8-21）：2026-11-23 以仓库脚本对当日真实目录（62,744 条）/tickers（前 2,000 条）复跑得 mapped=196、identityValid=196、activeUsable=195（yzy 已下线）、tickerHit=179——tickerHit 差 9 条未达门禁（缺失均为 rank 2268–6728 的目录内活跃条目、不在免费 tickers 前 2000），故保持关闭。运行时身份以身份登记册为准（workers/fetcher/src/paprika-registry.js，由 scripts/verify-paprika-identity.mjs --write-registry 生成；映射变更后必须重生成并提交，否则 paprika-gate 套件红）。verify-paprika-coverage 只做覆盖单项核验、非启用判定（F8-21），不得以其结论单独决定启用。
 - wrangler 锁版（F7-45）：fetcher 的部署与 Secret 注入等一切人工 wrangler 操作一律走统一锁版入口 `bash scripts/wrangler-pinned.sh …`（版本从仓库根 package.json 的 pin 读取并校验 lockfile），禁止裸 `npx wrangler` / 裸 `wrangler`。例：部署 fetcher = `bash scripts/wrangler-pinned.sh deploy -c workers/fetcher/wrangler.toml`；注入 fetcher 侧 key = `bash scripts/wrangler-pinned.sh secret put COINGECKO_API_KEY -c workers/fetcher/wrangler.toml`。`workers/fetcher/README.md` 内的旧命令形态以本条为准（该文件由数据组重写时同步替换）。
 
 ## 故障处置（W4-26 补齐，2026-11-13）
