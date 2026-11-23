@@ -29,6 +29,7 @@ import {
   validateBlob,
   freshnessFor,
   globalForContract,
+  normalizeCgMarkets,
   toMs,
   FETCH_INTERVAL_SEC,
   KV_KEYS,
@@ -431,25 +432,33 @@ async function fetchUpstreamInternal(env, ids) {
     throw new UpstreamError("coingecko markets payload invalid", { errorType: "parse_error" });
   }
 
+  // F8-11：legacy/dual 路径与 fetcher 两源共用同一套字段清洗——直接复用
+  // shared/board-schema.js 的 normalizeCgMarkets（fetcher CG 路径在用口径：
+  // price/mcapUsd/volume24h 走 sanitizeMarketNumber 非负上限、change24h 走
+  // sanitizeSignedNumber、rank 走 sanitizeRank；字符串价、负市值、字符串
+  // rank 等形变值一律置 null 并计入 invalidFields），不得另造第二套口径。
+  // 该函数同时只保留期望列表内的行（列表外 id 不进入 rows），故由此构建的
+  // coins/coverage 与 F8-12 的 count===returned 不变量同源（见 F8-12）。
+  const normalized = normalizeCgMarkets(markets, ids);
+  if (normalized.invalidFields && normalized.invalidFields.total > 0) {
+    try {
+      console.warn(JSON.stringify({ level: "warn", event: "legacy_upstream_invalid_fields", invalidFields: normalized.invalidFields }));
+    } catch (_) {}
+  }
   const coins = {};
-  for (const m of markets) {
-    if (!m || !m.id) continue;
-    coins[m.id] = {
-      price: m.current_price,
-      mcapUsd: m.market_cap,
-      rank: m.market_cap_rank,
-      change24h:
-        m.price_change_percentage_24h_in_currency != null
-          ? m.price_change_percentage_24h_in_currency
-          : m.price_change_percentage_24h,
-      volume24h: m.total_volume ?? null,
+  for (const r of normalized.rows) {
+    coins[r.id] = {
+      price: r.price,
+      mcapUsd: r.mcapUsd,
+      rank: r.rank,
+      change24h: r.change24h,
+      volume24h: r.volume24h ?? null,
     };
   }
 
-  const expected = ids.length;
-  const returnedIds = new Set(Object.keys(coins));
-  const missingIds = ids.filter((id) => !returnedIds.has(id));
-  const returned = ids.filter((id) => returnedIds.has(id)).length;
+  const expected = normalized.coverage.expected;
+  const returned = normalized.coverage.returned;
+  const missingIds = normalized.coverage.missingIds;
   // 若上游返回了列表外 id，returned 以期望列表内命中数计；coverage 仍以期望为分母。
   const coverage = { expected, returned, missingIds };
 
