@@ -142,6 +142,28 @@ await test("v2 global 解耦②: global asOf 7h 前 → global=null 且整表级
   assert.equal(body.count, 4);
 });
 
+await test("F8-13: fetchedAt 新鲜但 global.asOf=+7h（未来超 6h）→ global=null，不得 stale:false 放行", async () => {
+  const mod = await freshBoard();
+  Date.now = () => T0 + 600 * 1000; // 整表 age 600s → L0 新鲜
+  const blob = makeBlob({ fetchedAtMs: T0, globalAsOfMs: T0 + 600 * 1000 + 7 * 3600 * 1000 });
+  const res = await mod.onRequestGet(ctx(kvEnv(blob)));
+  const body = await res.json();
+  assert.equal(body.freshness.level, "L0");
+  assert.equal(body.global, null, "global.asOf 在未来 7h 须置 null（与超龄 >6h 同口径）");
+  assert.equal(body.count, 4);
+});
+
+await test("F8-13b: global.asOf 在未来 2h（超 60s 容差、未超 6h）→ global 保留但 stale=true", async () => {
+  const mod = await freshBoard();
+  Date.now = () => T0 + 600 * 1000;
+  const blob = makeBlob({ fetchedAtMs: T0, globalAsOfMs: T0 + 600 * 1000 + 2 * 3600 * 1000 });
+  const res = await mod.onRequestGet(ctx(kvEnv(blob)));
+  const body = await res.json();
+  assert.equal(body.freshness.level, "L0");
+  assert.ok(body.global, "未来 2h 未超置 null 线，global 应保留");
+  assert.equal(body.global.stale, true, "未来戳超 clockSkew 容差须判 stale，不得 stale:false");
+});
+
 await test("v2 无 blob（KV 空）→ L3 snapshot、coins 空、无 5xx；F6-39: staleAgeSec=null、expected=真实 ids 数", async () => {
   const mod = await freshBoard();
   Date.now = () => T0;
@@ -340,6 +362,28 @@ await test("F7-13: blob coverage.missingIds 非数组（190/200 行）→ assemb
   assert.equal(body.coverage.returned, 190);
   assert.equal(body.coverage.expected - body.coverage.returned, body.coverage.missingIds.length, "coverage 必须守恒");
   assert.deepEqual(body.coverage, { expected: 190, returned: 190, missingIds: [] });
+});
+
+await test("F8-09: missingIds 非数组且老化至 L3 → coverage 守恒（returned=0 时 missingIds=全部期望/在场 id，不得为 []）", async () => {
+  const mod = await freshBoard();
+  Date.now = () => T0 + 7 * 3600 * 1000;
+  const missing = Array.from({ length: 10 }, (_, i) => `coin-${190 + i}`);
+  const blob = makeBigBlob(200, { missing });
+  blob.coverage.missingIds = "not-an-array";
+  const res = await mod.onRequestGet(ctx(kvEnv(blob)));
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.freshness.level, "L3");
+  assert.equal(body.mode, "snapshot");
+  assert.equal(body.coverage.returned, 0);
+  assert.equal(body.coverage.expected - body.coverage.returned, body.coverage.missingIds.length, "L3 coverage 必须守恒: expected-returned == missingIds.length");
+  // recomputed expected 退化为在场数 190；被扣下的 190 个在场 id 全部应列为缺失
+  assert.equal(body.coverage.expected, 190);
+  assert.equal(body.coverage.missingIds.length, 190);
+  assert.ok(body.coverage.missingIds.includes("coin-0"));
+  assert.ok(body.coverage.missingIds.includes("coin-189"));
+  assert.deepEqual(body.coins, {});
+  assert.equal(body.count, 0);
 });
 
 await test("F6-04: blob 自报 returned=4 但 rows 仅 3 行 → 读端拒绝假绿（落 snapshot、count=0）", async () => {

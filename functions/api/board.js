@@ -29,6 +29,7 @@ import {
   validateBlob,
   freshnessFor,
   globalForContract,
+  normalizeCgMarkets,
   toMs,
   FETCH_INTERVAL_SEC,
   KV_KEYS,
@@ -113,6 +114,28 @@ class UpstreamError extends Error {
 // 只是落盘延迟），避免回滚形态下未认证流量把每次回源都放大成一次 KV 写。
 export const LEGACY_CREDITS_MIN_WRITE_INTERVAL_MS = 60 * 1000;
 export const LEGACY_CREDITS_SANITY_MAX = 1000000; // 月 credits 合理上限（远超任何真实回源量）
+// F8-10：计数 KV 往返超时——取 3500ms，与本文件既有上游单请求超时
+// UPSTREAM_TIMEOUT_MS（fetchWithTimeout 的 AbortController+Promise.race 口径）
+// 完全对齐：计数只是旁路计量，其可容忍延迟不应超过一次上游请求本身。
+// 超时按「计数失败吞掉」处理（见 addLegacyCredits 外层 catch 与 get 的内层
+// catch），绝不阻塞行情应答；底层 KV promise 迟到拒绝由 guarded.catch 兜住，
+// 不得留下未处理 rejection。
+export const LEGACY_CREDITS_KV_TIMEOUT_MS = UPSTREAM_TIMEOUT_MS;
+function withLegacyKvTimeout(promise) {
+  let timer = null;
+  const guarded = Promise.resolve(promise);
+  guarded.catch(() => {});
+  const timeoutPromise = new Promise((_, reject) => {
+    timer = setTimeout(() => {
+      const err = new Error("legacy credits kv timeout");
+      err.name = "TimeoutError";
+      reject(err);
+    }, LEGACY_CREDITS_KV_TIMEOUT_MS);
+  });
+  return Promise.race([guarded, timeoutPromise]).finally(() => {
+    if (timer) clearTimeout(timer);
+  });
+}
 let legacyCreditsPending = 0;
 let legacyCreditsLastWriteAt = 0;
 let legacyCreditsFlushInFlight = null;
@@ -135,7 +158,7 @@ export async function addLegacyCredits(env, credits) {
       const month = new Date(now).toISOString().slice(0, 7);
       let prev = null;
       try {
-        prev = await env.BOARD_KV.get(KV_KEYS.legacyCredits, { type: "json" });
+        prev = await withLegacyKvTimeout(env.BOARD_KV.get(KV_KEYS.legacyCredits, { type: "json" }));
         if (typeof prev === "string") prev = JSON.parse(prev);
       } catch (_) {
         prev = null;
@@ -153,7 +176,7 @@ export async function addLegacyCredits(env, credits) {
         }
       }
       const next = { month, credits: base + flushAmount, updatedAt: new Date(now).toISOString() };
-      await env.BOARD_KV.put(KV_KEYS.legacyCredits, JSON.stringify(next));
+      await withLegacyKvTimeout(env.BOARD_KV.put(KV_KEYS.legacyCredits, JSON.stringify(next)));
       legacyCreditsPending -= flushAmount;
       legacyCreditsLastWriteAt = now;
       try {
@@ -409,25 +432,33 @@ async function fetchUpstreamInternal(env, ids) {
     throw new UpstreamError("coingecko markets payload invalid", { errorType: "parse_error" });
   }
 
+  // F8-11：legacy/dual 路径与 fetcher 两源共用同一套字段清洗——直接复用
+  // shared/board-schema.js 的 normalizeCgMarkets（fetcher CG 路径在用口径：
+  // price/mcapUsd/volume24h 走 sanitizeMarketNumber 非负上限、change24h 走
+  // sanitizeSignedNumber、rank 走 sanitizeRank；字符串价、负市值、字符串
+  // rank 等形变值一律置 null 并计入 invalidFields），不得另造第二套口径。
+  // 该函数同时只保留期望列表内的行（列表外 id 不进入 rows），故由此构建的
+  // coins/coverage 与 F8-12 的 count===returned 不变量同源（见 F8-12）。
+  const normalized = normalizeCgMarkets(markets, ids);
+  if (normalized.invalidFields && normalized.invalidFields.total > 0) {
+    try {
+      console.warn(JSON.stringify({ level: "warn", event: "legacy_upstream_invalid_fields", invalidFields: normalized.invalidFields }));
+    } catch (_) {}
+  }
   const coins = {};
-  for (const m of markets) {
-    if (!m || !m.id) continue;
-    coins[m.id] = {
-      price: m.current_price,
-      mcapUsd: m.market_cap,
-      rank: m.market_cap_rank,
-      change24h:
-        m.price_change_percentage_24h_in_currency != null
-          ? m.price_change_percentage_24h_in_currency
-          : m.price_change_percentage_24h,
-      volume24h: m.total_volume ?? null,
+  for (const r of normalized.rows) {
+    coins[r.id] = {
+      price: r.price,
+      mcapUsd: r.mcapUsd,
+      rank: r.rank,
+      change24h: r.change24h,
+      volume24h: r.volume24h ?? null,
     };
   }
 
-  const expected = ids.length;
-  const returnedIds = new Set(Object.keys(coins));
-  const missingIds = ids.filter((id) => !returnedIds.has(id));
-  const returned = ids.filter((id) => returnedIds.has(id)).length;
+  const expected = normalized.coverage.expected;
+  const returned = normalized.coverage.returned;
+  const missingIds = normalized.coverage.missingIds;
   // 若上游返回了列表外 id，returned 以期望列表内命中数计；coverage 仍以期望为分母。
   const coverage = { expected, returned, missingIds };
 
@@ -451,7 +482,11 @@ async function fetchUpstreamInternal(env, ids) {
     coverage,
     global,
     coins,
-    count: Object.keys(coins).length,
+    // F8-12：count 在结构上绑定 coverage.returned（不另按字典键数计）——
+    // 列表外 id 已由 normalizeCgMarkets 剔除、不进入 coins，故二者本已相等；
+    // 此处直接取 returned 使 legacy 应答与 v2 侧 health 强制的
+    // count===coverage.returned 不变量同源恒成立，而非靠巧合相等。
+    count: coverage.returned,
     snapshotDate: SNAPSHOT_DATE,
   };
 }
@@ -828,6 +863,14 @@ function assembleV2(blob, servedFrom, health, now) {
     } catch (_) {}
   }
   if (fresh.level === "L3") {
+    // F8-09：missingIds 非数组时 recomputedCoverage 已退化为
+    // {expected:在场数, returned:在场数, missingIds:[]}——L3 把 coins 全部扣下
+    // （returned=0），若仍直取该 [] 会出现 returned:0 却 missingIds:[]、且
+    // expected−returned ≠ missingIds.length 的守恒破裂。此形态下真实缺失不可知，
+    // 但被扣下的全部在场 id 在本应答中确属缺失，故 missingIds = 全部在场 id，
+    // 使 expected−0 == missingIds.length 恒成立。missingIds 为数组的正常形态
+    // 仍按 F6-30 口径只列真缺失（在场 id 不入列）。
+    const l3MissingIds = expectedIds ? recomputedCoverage.missingIds : [...presentIds];
     return {
       contractVersion: 2,
       source: "snapshot",
@@ -837,7 +880,7 @@ function assembleV2(blob, servedFrom, health, now) {
       stale: true,
       staleAgeSec: fresh.staleAgeSec,
       // F6-30：L3 missingIds = 真缺失（自报缺失 ∪ 期望全集−在场集），在场 id 绝不入列。
-      coverage: { expected: recomputedCoverage.expected, returned: 0, missingIds: recomputedCoverage.missingIds },
+      coverage: { expected: recomputedCoverage.expected, returned: 0, missingIds: l3MissingIds },
       global: null,
       coins: {},
       count: 0,

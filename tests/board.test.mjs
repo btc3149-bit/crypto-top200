@@ -447,6 +447,42 @@ await test("⑪ F6-31: HEAD /api/board → 与 GET 同状态、body 置空（不
   assert.equal(resViaOnRequest.status, 200);
 });
 
+await test("⑫ F8-11: legacy 上游形变值（字符串价/负市值/字符串 rank/字符串 change/负量）→ 与 fetcher 同口径置 null、不透传", async () => {
+  const mod = await freshBoard();
+  installFetch({
+    markets: () =>
+      jsonRes([
+        { id: "bitcoin", current_price: "100", market_cap: -5, market_cap_rank: "1", price_change_percentage_24h_in_currency: "1.5", total_volume: -10 },
+        { id: "ethereum", current_price: 101, market_cap: 1000001, market_cap_rank: 2, price_change_percentage_24h_in_currency: 1.5, total_volume: 5001 },
+        { id: "solana", current_price: 102, market_cap: 1000002, market_cap_rank: 3, price_change_percentage_24h_in_currency: 1.5, total_volume: 5002 },
+        { id: "filecoin", current_price: 103, market_cap: 1000003, market_cap_rank: 4, price_change_percentage_24h_in_currency: 1.5, total_volume: 5003 },
+      ]),
+  });
+  const res = await callGet(mod);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.mode, "live");
+  assert.deepEqual(body.coins.bitcoin, { price: null, mcapUsd: null, rank: null, change24h: null, volume24h: null }, "形变值须按 shared 清洗口径全部置 null");
+  assert.equal(body.coins.ethereum.price, 101, "正常值不得被清洗误伤");
+  assert.equal(body.coins.ethereum.rank, 2);
+});
+
+await test("⑬ F8-12: legacy 上游含列表外 id → 剔除该 id、count===coverage.returned 不变量成立", async () => {
+  const mod = await freshBoard();
+  installFetch({
+    markets: () => jsonRes([...marketsPayload(), { id: "not-in-list", current_price: 999, market_cap: 999, market_cap_rank: 999, price_change_percentage_24h_in_currency: 9 }]),
+  });
+  const res = await callGet(mod);
+  assert.equal(res.status, 200);
+  const body = await res.json();
+  assert.equal(body.mode, "live");
+  assert.equal(body.coverage.expected, IDS.length);
+  assert.equal(body.coverage.returned, IDS.length);
+  assert.equal(body.count, body.coverage.returned, "count 必须等于 coverage.returned");
+  assert.equal(Object.keys(body.coins).length, body.coverage.returned);
+  assert.ok(!("not-in-list" in body.coins), "列表外 id 须被剔除、不得进入 coins");
+});
+
 restore();
 const failed = results.filter(([, s]) => s !== "PASS");
 console.log(`\n=== ${results.length - failed.length}/${results.length} passed ===`);

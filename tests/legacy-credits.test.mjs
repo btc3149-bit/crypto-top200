@@ -115,6 +115,8 @@ try {
   }
   // ---------- F7-10/F7-30：计数时机关键口径（按已发出计、与成败无关） ----------
   // 6) markets 失败（HTTP 500 / 网络抛错）→ 主流程回退，但已发出仍 +2
+  // F8-32：两子例合并为单行 PASS 输出（旧实现每子例一行、自报 14 项却 15 行 PASS）；
+  // 子断言仍逐个执行，任一失败照常抛错使整项 FAIL。
   for (const [label, behavior] of [["HTTP 500", "http500"], ["网络抛错", "throw"]]) {
     fetchBehavior.markets = behavior;
     const mod = await freshBoard();
@@ -122,9 +124,9 @@ try {
     const res = await mod.onRequestGet(ctx({ BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "test-key-not-real", BOARD_KV: kv }));
     assert.notEqual((await res.clone().json()).mode, "live", `${label} 时不应为 live`);
     assert.equal(counterOf(kv)?.credits, 2, `${label}：请求已发出应仍计数 +2（与成败无关）`);
-    console.log(`PASS 6 markets 失败（${label}）仍计数 +2`);
   }
   fetchBehavior.markets = "ok";
+  console.log("PASS 6 markets 失败（HTTP 500/网络抛错）仍计数 +2");
   // 7) 熔断短路不计数：首轮 429 触发熔断（该轮已发出计 +2），熔断期内第二轮不再发请求、不得再计
   {
     fetchBehavior.markets = "rate429";
@@ -219,7 +221,32 @@ try {
     assert.equal(counterOf(kv).credits, 2, "HEAD 与 GET 计数口径一致");
     console.log("PASS 14 HEAD legacy 计数 +2（F7-09）");
   }
-  console.log("\n=== 14/14 passed ===");
+  // 15) F8-10: KV put 永不返回 + 上游即时响应 → 请求须在限定时间内返回（计数超时吞掉、不阻塞行情、不留未处理 rejection）
+  {
+    const unhandled = [];
+    const onUnhandled = (e) => unhandled.push(e);
+    process.on("unhandledRejection", onUnhandled);
+    try {
+      const mod = await freshBoard();
+      assert.equal(mod.LEGACY_CREDITS_KV_TIMEOUT_MS, 3500, "计数 KV 超时须与 UPSTREAM_TIMEOUT_MS=3500 对齐");
+      const kv = makeKv();
+      const origPut = kv.put.bind(kv);
+      kv.put = (key, value) => (key === KV_KEYS.legacyCredits ? new Promise(() => {}) : origPut(key, value));
+      const t0 = Date.now();
+      const res = await mod.onRequestGet(ctx({ BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "test-key-not-real", BOARD_KV: kv }));
+      const elapsed = Date.now() - t0;
+      assert.equal(res.status, 200);
+      assert.equal((await res.json()).mode, "live", "put 挂起时行情应答仍须 live 返回");
+      assert.ok(elapsed < 8000, `put 永不返回时请求应在超时后返回（<8000ms），实际 ${elapsed}ms`);
+      assert.ok(elapsed >= 3000, `应在约 3500ms 超时后才返回，实际 ${elapsed}ms（过早说明未真正等待/超时口径异常）`);
+      await new Promise((r) => setTimeout(r, 50));
+      assert.deepEqual(unhandled, [], "计数超时不得留下未处理 rejection");
+    } finally {
+      process.off("unhandledRejection", onUnhandled);
+    }
+    console.log("PASS 15 F8-10 KV put 永不返回 → 3500ms 超时吞掉、行情在限定时间内 live 返回");
+  }
+  console.log("\n=== 15/15 passed ===");
 } finally {
   globalThis.fetch = originalFetch;
 }
