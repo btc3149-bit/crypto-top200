@@ -5,7 +5,13 @@
   - CoinGecko 免费 Demo 档全账号 1 把 key、10,000 credits/月，fetcher 与 legacy
     （/api/board 直连路径）双路共用同一池，不是各 10,000。
   - fetcher 侧可实测：KV v1:meta:health 的 quota.creditsUsedEst（fetcher 自算，自然月累计）。
-  - legacy 侧当前无计量（F4-02），只能按场景估算未命中回源（每次未命中 2 credits）：
+  - legacy 侧实测计量（W5，2026-11-23 激活）：board.js 在 legacy/dual 真正回源时
+    对 KV 计数键 v1:meta:legacy-credits 自增（每轮 markets+global = 2 credits，
+    结构 {month, credits, updatedAt}；用户 2026-11-23 批准突破「Function 只 get」）。
+    本脚本把该实测值读入记录字段 legacyMeasured，与下述建模场景并列呈现；
+    判级仍按 F6-07 的 G3 口径（kv 模式 legacy=0），实测值不回填已用、不改判级。
+    计数键不存在/读不到时 legacyMeasured.available=false（部署前或恒 kv 时预期）。
+  - 建模场景（历史参考，F4-02）：按场景估算未命中回源（每次未命中 2 credits）：
       0    —— 全命中下界（不现实，仅作区间端点）
       576  —— 规划口径：探针成对同 colo 估算（F4-02 定版，M2/M3 每 300s 触达 /api/board）
       1152 —— 压力口径：PHASE5 复审修正的探针绝对最坏（含 M4 内嵌 board 触达）
@@ -41,12 +47,13 @@ import sys
 import urllib.request
 from datetime import datetime, timezone
 
-SCRIPT_VERSION = "2.0-g3"
-METHODOLOGY = "g3-aware: planning=legacy0 when kv"
+SCRIPT_VERSION = "2.1-w5-legacy-measured"
+METHODOLOGY = "g3-aware: planning=legacy0 when kv; legacyMeasured=v1:meta:legacy-credits alongside modelled scenarios"
 # F6-87：账号 ID 改必填环境变量、缺失即 fail-closed（与 TOKEN 同口径，不再有字面量默认值）。
 ACCOUNT_ID = os.environ.get("CLOUDFLARE_ACCOUNT_ID")
 NAMESPACE_ID = "ad1b72702c5c4f229999bea5b118d1bc"  # BOARD_KV（wrangler.toml 公开值）
 HEALTH_KEY = "v1:meta:health"
+LEGACY_CREDITS_KEY = "v1:meta:legacy-credits"  # W5 实测计数键（board.js 唯一可写键）
 MONTHLY_CAP = 10_000
 FETCHER_FORWARD_PER_DAY = 192  # 定版：markets 144/天 + global 48/天（W4-01 修复后）
 LEGACY_SCENARIOS = [
@@ -104,27 +111,29 @@ def read_board_mode(health=None):
     return None
 
 
-def read_health():
+def read_kv_key(key, quiet=False):
     if not os.environ.get("CLOUDFLARE_API_TOKEN"):
-        return fail("未设置 CLOUDFLARE_API_TOKEN（由调用方运行时注入）")
+        return None if quiet else fail("未设置 CLOUDFLARE_API_TOKEN（由调用方运行时注入）")
     if not ACCOUNT_ID:
-        return fail("未设置 CLOUDFLARE_ACCOUNT_ID（F6-87：必填环境变量，缺失即 fail-closed）")
+        return None if quiet else fail("未设置 CLOUDFLARE_ACCOUNT_ID（F6-87：必填环境变量，缺失即 fail-closed）")
     try:
         pin = json.load(open(os.path.join(REPO_ROOT, "package.json")))["devDependencies"]["wrangler"]
     except Exception:
         pin = "4.159.0"
     cmd = [
-        "npx", f"wrangler@{pin}", "kv", "key", "get", HEALTH_KEY,
+        "npx", f"wrangler@{pin}", "kv", "key", "get", key,
         "--namespace-id", NAMESPACE_ID, "--remote",
     ]
     env = dict(os.environ, CLOUDFLARE_ACCOUNT_ID=ACCOUNT_ID)
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=120, env=env, cwd=REPO_ROOT)
     except Exception as e:
-        return fail(f"wrangler 调用异常：{e}")
+        return None if quiet else fail(f"wrangler 调用异常：{e}")
     raw = (out.stdout or "").strip()
     start = raw.find("{")
     if out.returncode != 0 or start < 0:
+        if quiet:
+            return None
         cat = classify_error(out.stderr or raw)
         msg = f"KV 读取失败 rc={out.returncode} category={cat}"
         if os.environ.get("DEBUG"):
@@ -133,7 +142,19 @@ def read_health():
     try:
         return json.loads(raw[start:])
     except Exception as e:
-        return fail(f"health JSON 解析失败：{e}")
+        return None if quiet else fail(f"health JSON 解析失败：{e}")
+
+
+def read_health():
+    return read_kv_key(HEALTH_KEY)
+
+
+def read_legacy_credits():
+    """W5：读实测计数键；不存在/读不到/形态不对一律返回 None（不阻断核账）。"""
+    data = read_kv_key(LEGACY_CREDITS_KEY, quiet=True)
+    if not isinstance(data, dict) or not isinstance(data.get("credits"), (int, float)) or not data.get("month"):
+        return None
+    return data
 
 
 def main():
@@ -203,6 +224,16 @@ def main():
     # 场景（floor_all_hit）；576/1152 两场景保留为历史参考列、不参与判级。
     board_mode = read_board_mode(health)
     planning_key = "floor_all_hit" if board_mode == "kv" else PLANNING_KEY
+    # W5 实测计量（与建模场景并列）：读计数键；当月对齐才标 available。
+    legacy_counter = read_legacy_credits()
+    legacy_measured = {
+        "key": LEGACY_CREDITS_KEY,
+        "available": bool(legacy_counter and legacy_counter.get("month") == month_str),
+        "month": legacy_counter.get("month") if legacy_counter else None,
+        "credits": legacy_counter.get("credits") if legacy_counter else None,
+        "updatedAt": legacy_counter.get("updatedAt") if legacy_counter else None,
+        "note": "实测（board.js 回源计数键）；kv 模式不回源，部署后应恒为 0/无键。与建模 scenarios 并列，判级仍按 G3 口径、不回填已用。",
+    }
     plan = scenarios[planning_key]
     dte = plan["daysToExhaust"]
     if dte is not None and dte <= 3:
@@ -240,6 +271,7 @@ def main():
         "daysRemainingInMonth": round(days_remaining, 2),
         "scenarios": scenarios,
         "planningScenario": planning_key,
+        "legacyMeasured": legacy_measured,
         "planningScenarioFalsifiedByGuardrail": planning_falsified,
         "verdict": verdict,
         "verdictNote": verdict_note,
@@ -249,7 +281,7 @@ def main():
             "upstreamHealthy": upstream_ok,
             "maxLegacyElapsedConsistentWithHealth": MONTHLY_CAP - fetcher_used,
             "impliedMaxAvgLegacyPerDay": round((MONTHLY_CAP - fetcher_used) / days_elapsed, 1),
-            "note": "上游仍 200 ⇒ 真实双路合计尚未撞顶，且 legacy 本月真实已耗 < cap − fetcher 实测（见 maxLegacyElapsedConsistentWithHealth，其日均上界见 impliedMaxAvgLegacyPerDay——弱上界，仅排除「场景速率自月初全额成立」一类与事实矛盾的读法）。场景值是估算区间，不得表述为实测消耗。legacy 侧实测计数（board.js 回源计数键）属待站长复核的约定突破项，未激活前本核账以场景估算代行。",
+            "note": "上游仍 200 ⇒ 真实双路合计尚未撞顶，且 legacy 本月真实已耗 < cap − fetcher 实测（见 maxLegacyElapsedConsistentWithHealth，其日均上界见 impliedMaxAvgLegacyPerDay——弱上界，仅排除「场景速率自月初全额成立」一类与事实矛盾的读法）。场景值是估算区间，不得表述为实测消耗。legacy 侧实测计数（board.js 回源计数键 v1:meta:legacy-credits）已于 2026-11-23 经站长批准激活（W5），其实测值见 legacyMeasured 字段、与本场景估算并列；代码部署前/恒 kv 形态下该字段 available=false 属预期。",
         },
     }
     try:

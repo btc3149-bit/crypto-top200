@@ -11,6 +11,9 @@ export const KV_KEYS = {
   shadowPrev: "v1:board:shadow:prev",
   health: "v1:meta:health",
   sourceState: "v1:config:source-state",
+  // W5 legacy 实测计量（W4-02 计数键，2026-11-23 站长批准激活）：board.js Function
+  // 唯一可写键，只记 legacy/dual 回源 credits（{month, credits, updatedAt}），见 board.js。
+  legacyCredits: "v1:meta:legacy-credits",
 };
 export const COVERAGE_RATIO = 0.94; // 沿用一期门禁
 export const SNAPSHOT_DATE = "2026-11-08";

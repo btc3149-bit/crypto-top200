@@ -19,6 +19,7 @@ SUITES=(
   "node:tests/snapshot-verify.mjs"
   "node:tests/health.test.mjs"
   "node:tests/kv-write-guard.test.mjs"
+  "node:tests/legacy-credits.test.mjs"
   "node:tests/coins-list-contract.test.mjs"
   "node:tests/compare-shadow.test.mjs"
   "python3:tests/test_render_snapshot.py"
