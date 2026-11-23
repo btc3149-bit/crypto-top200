@@ -1167,6 +1167,7 @@ function decodeCoinsData(data) {
   // 双形态解码器（W3-22 补全）：对象形态直通；rows 位置数组形态按 meta.fields
   // 字段序逐项 zip 成具名对象（字段序唯一来源是 meta，禁止前端另立字段表），
   // 值原样透传（null 保持 null、数字不舍入）。全站下游只见规范对象。
+  // W5：FIELDS24 仅在末尾追加 paprikaId 列，本解码器按 meta.fields 动态 zip，天然兼容 FIELDS23 旧数据与 FIELDS24 新数据，无需改逻辑。
   // F6-59：解码后加最小健全性校验——fields 改名/行形变时产出的垃圾对象不得替换
   // 构建快照行，不合即 throw，由 init 的 catch 走既有快照兜底（W2-17）。
   if (data && Array.isArray(data.coins)) {

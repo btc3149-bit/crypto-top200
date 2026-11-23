@@ -476,13 +476,15 @@ await test("8 W5-02 fail-closed: BOARD_TARGET_KEY 误写/空值/缺失 → 拒�
 });
 
 // ---------- 9. W5-01（F5-01）Paprika 真实 COINS 形状契约 ----------
-await test("9a W5-01 契约: 真实 COINS 原样（paprikaId 全 null）喂 fetchMarkets → missingIds 为 200 个真实 id、绝无 undefined", async () => {
+await test("9a W5-01 契约: 真实 COINS 形状 + paprikaId 全 null 喂 fetchMarkets → missingIds 为 200 个真实 id、绝无 undefined", async () => {
   globalThis.fetch = async (url) => {
     const u = String(url);
     if (u.includes("api.coinpaprika.com/v1/tickers")) return jsonRes(PAPRIKA_TICKERS);
     throw new Error("unexpected " + u);
   };
-  const { rows, coverage } = await paprika.fetchMarkets(REAL_COINS);
+  // W5 落库后真实 COINS 已带 196 条映射；本例测的是「全 null 映射」形，故显式置 null（id 集仍用真实 COINS）。
+  const nullCoins = REAL_COINS.map((c) => ({ id: c.id, paprikaId: null }));
+  const { rows, coverage } = await paprika.fetchMarkets(nullCoins);
   assert.equal(coverage.expected, 200);
   assert.equal(coverage.returned, 0);
   assert.equal(rows.length, 0);

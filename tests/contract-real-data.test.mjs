@@ -45,18 +45,20 @@ import { createHash } from "node:crypto";
 const ROWS_MODE = process.argv.includes("--rows");
 
 // FIELDS23：与 scripts/build.py 的 FIELDS23、产物 meta.fields 逐字一致（W3-22 定版值）。
+// FIELDS24（W5 Paprika 落库）：FIELDS23 + "paprikaId"（追加末尾）；与 build.py / meta.fields 逐字一致。
 const FIELDS23 = [
   "table", "estRank", "rankNow", "rankNote", "name", "symbol", "coingeckoId",
   "snapshotPrice", "snapshotMcapUsd", "snapshotMcapRaw", "athPrice", "athDate",
   "athFlag", "estLo", "estHi", "multLo", "multHi", "impliedMcapLoUsd",
   "impliedMcapHiUsd", "impliedMcapRaw", "confidence", "reason", "dataDate",
 ];
+const FIELDS24 = [...FIELDS23, "paprikaId"];
 // 真实数据中合法可为 null 的字段（只断言键存在，不断言非空）：
 // rankNow 6、rankNote 193、snapshotMcapUsd 1、athPrice 36、athDate 35、
 // impliedMcapLoUsd/HiUsd 各 1（2026-11-13 基线实测分布）。
 const NULLABLE = new Set([
   "rankNow", "rankNote", "snapshotMcapUsd", "snapshotMcapRaw", "athPrice",
-  "athDate", "impliedMcapLoUsd", "impliedMcapHiUsd",
+  "athDate", "impliedMcapLoUsd", "impliedMcapHiUsd", "paprikaId",
 ]);
 
 const coinsText = readFileSync(new URL("../public/data/coins.json", import.meta.url), "utf-8");
@@ -187,16 +189,16 @@ function jsonRes(body, { status = 200 } = {}) {
 
 // ================= 默认套件（对象形态，应全绿） =================
 async function runMain() {
-  await test("① fixture 自检：真实产物 200 币、id 唯一、逐币键集合 == FIELDS23、meta.fields 在位", () => {
+  await test("① fixture 自检：真实产物 200 币、id 唯一、逐币键集合 == FIELDS24、meta.fields 在位", () => {
     assert.equal(realDoc.coins.length, 200);
     assert.equal(new Set(EXPECTED_IDS).size, 200, "coingeckoId 应 200 个不重复");
     assert.equal(realDoc.meta.totalCoins, 200);
-    assert.deepEqual(realDoc.meta.fields, FIELDS23, "产物 meta.fields 应与 FIELDS23 逐字一致");
+    assert.deepEqual(realDoc.meta.fields, FIELDS24, "产物 meta.fields 应与 FIELDS24 逐字一致");
     assert.ok(Array.isArray(rawDoc.rows) && rawDoc.rows.length === 200, "产物应为 rows 紧凑形态");
     assert.ok(typeof realDoc.meta.dataHash === "string" && realDoc.meta.dataHash.startsWith("sha256:"));
-    const want = [...FIELDS23].sort().join(",");
+    const want = [...FIELDS24].sort().join(",");
     for (const c of realDoc.coins) {
-      assert.equal(Object.keys(c).sort().join(","), want, `${c.coingeckoId} 键集合与 FIELDS23 不一致`);
+      assert.equal(Object.keys(c).sort().join(","), want, `${c.coingeckoId} 键集合与 FIELDS24 不一致`);
     }
   });
 
@@ -248,8 +250,8 @@ async function runMain() {
       const src = realDoc.coins[i];
       if (!coin || typeof coin !== "object" || Array.isArray(coin)) { problems.push(`#${i} 非对象`); return; }
       if (coin.coingeckoId !== src.coingeckoId) problems.push(`#${i} 顺序错位 ${coin.coingeckoId} != ${src.coingeckoId}`);
-      for (const f of FIELDS23) if (!(f in coin)) problems.push(`#${i} ${src.coingeckoId} 缺键 ${f}`);
-      for (const f of FIELDS23) {
+      for (const f of FIELDS24) if (!(f in coin)) problems.push(`#${i} ${src.coingeckoId} 缺键 ${f}`);
+      for (const f of FIELDS24) {
         if (NULLABLE.has(f)) continue;
         if (coin[f] === null || coin[f] === undefined || coin[f] === "") problems.push(`#${i} ${src.coingeckoId} 非空字段 ${f} 为空`);
       }
@@ -268,13 +270,23 @@ async function runMain() {
   await test("④ dataHash 口径 A：解码后规范对象数组哈希 == meta.dataHash（形态切换不改哈希）", () => {
     assert.equal(dataHashOfCoins(), realDoc.meta.dataHash);
   });
+
+  await test("⑤ W5 Paprika 落库断言：paprikaId 非空 == 196、未映射恰为 4 币、格式合法、无重复", () => {
+    const mapped = realDoc.coins.filter((c) => c.paprikaId);
+    assert.equal(mapped.length, 196, "paprikaId 非空数应为实测落库值 196");
+    assert.equal(new Set(mapped.map((c) => c.paprikaId)).size, 196, "paprikaId 不得重复");
+    for (const c of mapped) assert.match(c.paprikaId, /^[a-z0-9]+-[a-z0-9-]+$/, `${c.coingeckoId} paprikaId 格式非法`);
+    const unmapped = realDoc.coins.filter((c) => !c.paprikaId).map((c) => c.coingeckoId).sort();
+    assert.deepEqual(unmapped, ["celium", "genius-3", "hash-2", "nxm"], "未映射币应恰为提案核定的 4 币");
+    assert.ok(mapped.length < 197, "196 < PAPRIKA_MIN_MAPPED=197：Paprika 保持关闭（本断言防误读为可启用）");
+  });
 }
 
 // ================= rows 紧凑形态段（W3-22 已合入，默认常驻） =================
 function buildRowsDoc(coins) {
   return {
-    meta: { ...realDoc.meta, fields: [...FIELDS23] },
-    rows: coins.map((c) => FIELDS23.map((f) => (c[f] === undefined ? null : c[f]))),
+    meta: { ...realDoc.meta, fields: [...FIELDS24] },
+    rows: coins.map((c) => FIELDS24.map((f) => (c[f] === undefined ? null : c[f]))),
   };
 }
 function assertDecodedEquals(decoded, expectedCoins, label) {
@@ -295,6 +307,16 @@ async function runRows() {
   });
   await test("R2 rows 全量 200：真实产物解码顺序/字段与规范对象逐一全等（口径 A 前提）", () => {
     assertDecodedEquals(decodeCoinsData(rawDoc), realDoc.coins, "rows-full");
+  });
+  await test("R3 向后兼容：FIELDS23 旧形态（无 paprikaId 列）仍可被现行 decodeCoinsData 解码 200 行", () => {
+    const oldDoc = {
+      meta: { ...realDoc.meta, fields: [...FIELDS23] },
+      rows: realDoc.coins.map((c) => FIELDS23.map((f) => (c[f] === undefined ? null : c[f]))),
+    };
+    const decoded = decodeCoinsData(oldDoc);
+    assert.equal(decoded.length, 200);
+    assert.deepEqual(decoded.map((c) => c.coingeckoId), EXPECTED_IDS);
+    assert.ok(!("paprikaId" in decoded[0]), "旧形态解码结果不应凭空多出 paprikaId");
   });
 }
 

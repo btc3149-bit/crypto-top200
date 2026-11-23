@@ -20,7 +20,7 @@ def data_hash(coins):
 
 def decode_coins(doc):
     """W3-22 双形态解码：对象形态（doc["coins"]）直通；rows 紧凑形态按
-    meta.fields 字段序 zip 成规范对象数组。dataHash 口径 A：哈希对象恒为
+    meta.fields 字段序 zip 成规范对象数组（字段序动态读取，FIELDS23 旧数据与 FIELDS24 新数据（含 paprikaId 列）同走此路，向后兼容）。dataHash 口径 A：哈希对象恒为
     解码后的规范对象数组，与线缆编码无关（形态切换前后 dataHash 不变）。"""
     if isinstance(doc, dict):
         coins = doc.get("coins")
