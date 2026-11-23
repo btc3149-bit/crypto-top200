@@ -31,10 +31,14 @@ function makeShadow({ priceFactor = 1, runId = "run-1", nullPriceId = null } = {
     })),
   };
 }
-function makeLive({ price = 100, runId = "run-1", coinCount = N } = {}) {
+function makeLive({ price = 100, runId = "run-1", coinCount = N, nullPriceIds = [], nullMcapIds = [], servedFrom = null } = {}) {
   const coins = {};
   ids.slice(0, coinCount).forEach((id, i) => {
-    coins[id] = { price, mcapUsd: (N - i) * 1000, rank: i + 1, change24h: 0, volume24h: 1000 };
+    coins[id] = {
+      price: nullPriceIds.includes(id) ? null : price,
+      mcapUsd: nullMcapIds.includes(id) ? null : (N - i) * 1000,
+      rank: i + 1, change24h: 0, volume24h: 1000,
+    };
   });
   const live = {
     updatedAt: "2026-11-23T00:00:00.000Z",
@@ -42,20 +46,21 @@ function makeLive({ price = 100, runId = "run-1", coinCount = N } = {}) {
     coins,
   };
   if (runId !== null) live.fetch = { fetchRunId: runId };
+  if (servedFrom) live.freshness = { servedFrom };
   return live;
 }
 const health = { lastRunId: "run-1", lastRunAt: "2026-11-23T00:00:00.000Z", quota: { creditsUsedEst: 2000 } };
 
-function run(shadow, live) {
+function run(shadow, live, { healthOverride = null, extraArgs = [] } = {}) {
   const sp = join(dir, "shadow.json");
   const lp = join(dir, "live.json");
   const hp = join(dir, "health.json");
   writeFileSync(sp, JSON.stringify(shadow));
   writeFileSync(lp, JSON.stringify(live));
-  writeFileSync(hp, JSON.stringify(health));
+  writeFileSync(hp, JSON.stringify(healthOverride ?? health));
   const r = spawnSync(
     process.execPath,
-    ["scripts/compare-shadow.mjs", "--shadow", sp, "--live-file", lp, "--health", hp, "--required-runs", "10"],
+    ["scripts/compare-shadow.mjs", "--shadow", sp, "--live-file", lp, "--health", hp, "--required-runs", "10", ...extraArgs],
     { cwd: new URL("..", import.meta.url).pathname, encoding: "utf-8" }
   );
   assert.ok(r.stdout, "脚本应有 stdout 输出");
@@ -116,6 +121,71 @@ await test("⑥ fail：shadow 一行 price=null 触字段门禁 → verdict=fail
   const { report, status } = run(makeShadow({ nullPriceId: "coin-007" }), makeLive());
   assert.equal(report.verdict, "fail");
   assert.deepEqual(report.fieldGate.shadowNullPriceIds, ["coin-007"]);
+  assert.equal(status, 1);
+});
+
+// ---------- F7-06：F6-08/F6-20/F6-21 三条 verdict 上限（删任一逻辑本组即变红） ----------
+await test("⑦ F7-06 same-source（servedFrom=kv 且同 run）：数值全过亦上限 conditional、mode=same-source 退出 2", () => {
+  const { report, status } = run(makeShadow(), makeLive({ servedFrom: "kv" }));
+  assert.equal(report.mode, "same-source");
+  assert.equal(report.verdict, "conditional");
+  assert.ok(report.verdictCaps.some((s) => s.includes("same-source")), report.verdictCaps.join(";"));
+  assert.equal(status, 2);
+});
+
+await test("⑧ F7-06 same-source（--shadow-key current 显式声明）：independent 形态亦上限 conditional 退出 2", () => {
+  const { report, status } = run(makeShadow(), makeLive(), { extraArgs: ["--shadow-key", "current"] });
+  assert.equal(report.mode, "same-source");
+  assert.equal(report.verdict, "conditional");
+  assert.ok(report.verdictCaps.some((s) => s.includes("same-source")), report.verdictCaps.join(";"));
+  assert.equal(status, 2);
+});
+
+await test("⑨ F7-06 runGate 未达标（credits 仅够 2 run < 要求 10）：上限 conditional、runGate.met=false 退出 2", () => {
+  const h = { lastRunId: "run-1", lastRunAt: "2026-11-23T00:00:00.000Z", quota: { creditsUsedEst: 4 } };
+  const { report, status } = run(makeShadow(), makeLive(), { healthOverride: h });
+  assert.equal(report.runGate.met, false);
+  assert.equal(report.runGate.countedRuns, 2);
+  assert.equal(report.verdict, "conditional");
+  assert.ok(report.verdictCaps.some((s) => s.includes("runGate")), report.verdictCaps.join(";"));
+  assert.equal(status, 2);
+});
+
+await test("⑩ F7-06 runGate 无证据（health 无 quota）：countedRuns=null、met=null → 上限 conditional 退出 2", () => {
+  const h = { lastRunId: "run-1", lastRunAt: "2026-11-23T00:00:00.000Z" };
+  const { report, status } = run(makeShadow(), makeLive(), { healthOverride: h });
+  assert.equal(report.runGate.countedRuns, null);
+  assert.equal(report.runGate.met, null);
+  assert.equal(report.verdict, "conditional");
+  assert.ok(report.verdictCaps.some((s) => s.includes("runGate")), report.verdictCaps.join(";"));
+  assert.equal(status, 2);
+});
+
+await test("⑪ F7-06 live null 恰 1 个（price）：不 fail、上限 conditional、liveFieldOk=true 退出 2", () => {
+  const { report, status } = run(makeShadow(), makeLive({ nullPriceIds: ["coin-007"] }));
+  assert.equal(report.fieldGate.liveNullPriceCount, 1);
+  assert.equal(report.checks.liveFieldOk, true);
+  assert.equal(report.verdict, "conditional");
+  assert.ok(report.verdictCaps.some((s) => s.includes("live 侧 null 1–2")), report.verdictCaps.join(";"));
+  assert.equal(status, 2);
+});
+
+await test("⑫ F7-06 live null 恰 2 个（mcap）：不 fail、上限 conditional 退出 2", () => {
+  // 用尾部币：头部币 mcap 置 null 会连带 top20SameSet 判 fail，与本例要隔离的上限逻辑无关
+  const { report, status } = run(makeShadow(), makeLive({ nullMcapIds: ["coin-199", "coin-200"] }));
+  assert.equal(report.fieldGate.liveNullMcapCount, 2);
+  assert.equal(report.checks.liveFieldOk, true);
+  assert.equal(report.verdict, "conditional");
+  assert.ok(report.verdictCaps.some((s) => s.includes("live 侧 null 1–2")), report.verdictCaps.join(";"));
+  assert.equal(status, 2);
+});
+
+await test("⑬ F7-06 live null 3 个（>2）：verdict=fail、liveFieldOk=false 退出 1", () => {
+  const { report, status } = run(makeShadow(), makeLive({ nullPriceIds: ["coin-007", "coin-008", "coin-009"] }));
+  assert.equal(report.fieldGate.liveNullPriceCount, 3);
+  assert.equal(report.checks.liveFieldOk, false);
+  assert.equal(report.verdict, "fail");
+  assert.ok(report.failReasons.some((s) => s.includes("live 字段门禁")), report.failReasons.join(";"));
   assert.equal(status, 1);
 });
 

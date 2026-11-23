@@ -15,6 +15,20 @@ export const KV_KEYS = {
   // 唯一可写键，只记 legacy/dual 回源 credits（{month, credits, updatedAt}），见 board.js。
   legacyCredits: "v1:meta:legacy-credits",
 };
+// F7-29（第七期批 1 定版接口）：paprikaId 字段级校验——合法值仅 null（未映射）
+// 或非空字符串且匹配 Paprika id 形态（小写字母/数字/连字符、至少一段连字符）。
+// 数字/对象/空串均为畸形：解码层（前端 zip / board getIds）按定版只透传/只取
+// coingeckoId 列、不做此校验；身份与计数口径一律经本接口判定，禁止再以 truthy
+// 计数（数字/对象等真值畸形会被 truthy 误计入 mapped 数，与 F7-02 同源）。
+export function isValidPaprikaId(v) {
+  if (v === null) return true; // 未映射是合法状态
+  return typeof v === "string" && /^[a-z0-9]+-[a-z0-9-]+$/.test(v);
+}
+export function countValidPaprikaMappings(coins) {
+  if (!Array.isArray(coins)) return 0;
+  return coins.filter((c) => c && typeof c.paprikaId === "string" && c.paprikaId !== "" && isValidPaprikaId(c.paprikaId)).length;
+}
+
 export const COVERAGE_RATIO = 0.94; // 沿用一期门禁
 export const SNAPSHOT_DATE = "2026-11-08";
 

@@ -36,11 +36,18 @@ function makeKv({ failLegacyPut = false } = {}) {
     },
   };
 }
+// F7-30：fetch 行为开关（markets 失败形态），默认全成功与旧用例一致
+const fetchBehavior = { markets: "ok" }; // ok | http500 | throw | rate429
 function installFetch() {
   globalThis.fetch = async (url) => {
     const u = String(url);
     if (u.includes("/data/coins.json")) return jsonRes({ coins: IDS.map((id) => ({ coingeckoId: id })) });
-    if (u.includes("/coins/markets")) return jsonRes(IDS.map((id, i) => ({ id, current_price: 100 + i, market_cap: 1000000 + i, market_cap_rank: i + 1, price_change_percentage_24h_in_currency: 1.5 })));
+    if (u.includes("/coins/markets")) {
+      if (fetchBehavior.markets === "http500") return jsonRes({ error: "boom" }, { status: 500 });
+      if (fetchBehavior.markets === "throw") throw new Error("network down (test)");
+      if (fetchBehavior.markets === "rate429") return jsonRes({ error: "rate" }, { status: 429, headers: { "retry-after": "120" } });
+      return jsonRes(IDS.map((id, i) => ({ id, current_price: 100 + i, market_cap: 1000000 + i, market_cap_rank: i + 1, price_change_percentage_24h_in_currency: 1.5 })));
+    }
     if (u.includes("/global")) return jsonRes({ data: { total_market_cap: { usd: 999 }, market_cap_percentage: { btc: 55 }, market_cap_change_percentage_24h_usd: 1 } });
     throw new Error("unexpected fetch: " + u);
   };
@@ -106,7 +113,72 @@ try {
     assert.equal((await res.json()).mode, "live");
     console.log("PASS 5 计数写失败不影响主流程");
   }
-  console.log("\n=== 5/5 passed ===");
+  // ---------- F7-30：计数时机关键口径（按已发出计、与成败无关） ----------
+  // 6) markets 失败（HTTP 500 / 网络抛错）→ 主流程回退，但已发出仍 +2
+  for (const [label, behavior] of [["HTTP 500", "http500"], ["网络抛错", "throw"]]) {
+    fetchBehavior.markets = behavior;
+    const mod = await freshBoard();
+    const kv = makeKv();
+    const res = await mod.onRequestGet(ctx({ BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "test-key-not-real", BOARD_KV: kv }));
+    assert.notEqual((await res.clone().json()).mode, "live", `${label} 时不应为 live`);
+    assert.equal(counterOf(kv)?.credits, 2, `${label}：请求已发出应仍计数 +2（与成败无关）`);
+    console.log(`PASS 6 markets 失败（${label}）仍计数 +2`);
+  }
+  fetchBehavior.markets = "ok";
+  // 7) 熔断短路不计数：首轮 429 触发熔断（该轮已发出计 +2），熔断期内第二轮不再发请求、不得再计
+  {
+    fetchBehavior.markets = "rate429";
+    const mod = await freshBoard();
+    const kv = makeKv();
+    const env = { BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "test-key-not-real", BOARD_KV: kv };
+    const r1 = await mod.onRequestGet(ctx(env));
+    assert.equal(r1.status, 503, "429 且无缓存应 503 upstream_unavailable");
+    assert.equal(counterOf(kv)?.credits, 2, "触发熔断的一轮已发出，应计 +2");
+    const r2 = await mod.onRequestGet(ctx(env));
+    assert.equal(r2.status, 503, "熔断期内应直接 503 短路");
+    assert.equal(counterOf(kv)?.credits, 2, "熔断短路未发请求，不得计数");
+    console.log("PASS 7 熔断短路不计数（首轮 429 计 +2、期内第二轮仍 2）");
+  }
+  fetchBehavior.markets = "ok";
+  // 8) dual 模式同走 legacy 抓取路径 → 同样计数 +2
+  {
+    const mod = await freshBoard();
+    const kv = makeKv();
+    const res = await mod.onRequestGet(ctx({ BOARD_READ_MODE: "dual", COINGECKO_API_KEY: "test-key-not-real", BOARD_KV: kv }));
+    assert.equal(res.status, 200);
+    assert.equal(counterOf(kv)?.credits, 2, "dual 回源一轮应计数 +2");
+    console.log("PASS 8 dual 模式计数 +2");
+  }
+  // 9) 旧计数键 credits 为字符串 → 回退为 0 基数（不把字符串当数累加、不崩溃）
+  {
+    const mod = await freshBoard();
+    const kv = makeKv();
+    const month = new Date().toISOString().slice(0, 7);
+    kv.store.set(KV_KEYS.legacyCredits, JSON.stringify({ month, credits: "42", updatedAt: "2026-01-01T00:00:00.000Z" }));
+    await (await mod.onRequestGet(ctx({ BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "test-key-not-real", BOARD_KV: kv }))).json();
+    assert.equal(counterOf(kv)?.credits, 2, "credits 为字符串应回退 0 基数后 +2");
+    console.log("PASS 9 旧键 credits 为字符串 → 回退 0 基数");
+  }
+  // 10) 旧计数键 JSON 损坏 → 回退为 0 基数
+  {
+    const mod = await freshBoard();
+    const kv = makeKv();
+    kv.store.set(KV_KEYS.legacyCredits, "{not-json");
+    await (await mod.onRequestGet(ctx({ BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "test-key-not-real", BOARD_KV: kv }))).json();
+    assert.equal(counterOf(kv)?.credits, 2, "JSON 损坏应回退 0 基数后 +2");
+    console.log("PASS 10 旧键 JSON 损坏 → 回退 0 基数");
+  }
+  // 11) 旧计数键为 JSON 字符串形态（get 回字符串）→ board 内二次解析后按其 credits 累加
+  {
+    const mod = await freshBoard();
+    const kv = makeKv();
+    const month = new Date().toISOString().slice(0, 7);
+    kv.store.set(KV_KEYS.legacyCredits, JSON.stringify(JSON.stringify({ month, credits: 40, updatedAt: "2026-01-01T00:00:00.000Z" })));
+    await (await mod.onRequestGet(ctx({ BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "test-key-not-real", BOARD_KV: kv }))).json();
+    assert.equal(counterOf(kv)?.credits, 42, "字符串形态计数应被解析并累加 40+2");
+    console.log("PASS 11 旧键为 JSON 字符串形态 → 解析后累加");
+  }
+  console.log("\n=== 11/11 passed ===");
 } finally {
   globalThis.fetch = originalFetch;
 }

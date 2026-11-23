@@ -41,6 +41,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
+import { isValidPaprikaId, countValidPaprikaMappings } from "../shared/board-schema.js";
 
 const ROWS_MODE = process.argv.includes("--rows");
 
@@ -317,6 +318,64 @@ async function runRows() {
     assert.equal(decoded.length, 200);
     assert.deepEqual(decoded.map((c) => c.coingeckoId), EXPECTED_IDS);
     assert.ok(!("paprikaId" in decoded[0]), "旧形态解码结果不应凭空多出 paprikaId");
+  });
+
+  // ---------- F7-29：FIELDS24 第 24 列异常形态负向用例（定版行为锁定） ----------
+  await test("R4 F7-29 行长异常：rows 行长 23（fields 声明 24）→ 前端解码 throw 走快照兜底；行长 25 同样 throw", () => {
+    const doc23 = buildRowsDoc(realDoc.coins.slice(0, 3));
+    doc23.rows = doc23.rows.map((r) => r.slice(0, 23));
+    assert.throws(() => decodeCoinsData(doc23), /row shape/, "行长 23 应被行形校验拦下");
+    const doc25 = buildRowsDoc(realDoc.coins.slice(0, 3));
+    doc25.rows = doc25.rows.map((r) => [...r, "extra"]);
+    assert.throws(() => decodeCoinsData(doc25), /row shape/, "行长 25 应被行形校验拦下");
+  });
+
+  await test("R5 F7-29 board getIds 对行长 23/25 的定版行为：只按名取 coingeckoId 列，截断/冗余不影响 id 提取（200 id 全量）", async () => {
+    for (const [label, mutate] of [
+      ["行长23", (rows) => rows.map((r) => r.slice(0, 23))],
+      ["行长25", (rows) => rows.map((r) => [...r, "extra"])],
+    ]) {
+      const doc = buildRowsDoc(realDoc.coins);
+      doc.rows = mutate(doc.rows);
+      const mod = await freshBoard();
+      let capturedIds = null;
+      globalThis.fetch = async (url) => {
+        const u = String(url);
+        if (u.includes("/data/coins.json")) return jsonRes(doc);
+        if (u.includes("/coins/markets")) {
+          capturedIds = new URL(u).searchParams.get("ids").split(",");
+          return jsonRes(capturedIds.map((id, i) => ({ id, current_price: 100 + i, market_cap: 1000000 + i, market_cap_rank: i + 1, price_change_percentage_24h_in_currency: 1.5 })));
+        }
+        if (u.includes("/global")) return jsonRes({ data: { total_market_cap: { usd: 123 }, market_cap_percentage: { btc: 55 }, market_cap_change_percentage_24h_usd: 1 } });
+        throw new Error("unexpected fetch: " + u);
+      };
+      const res = await mod.onRequestGet({
+        request: new Request("https://example.com/api/board", { method: "GET" }),
+        env: { BOARD_READ_MODE: "legacy", COINGECKO_API_KEY: "contract-test-key" },
+        waitUntil: () => {},
+      });
+      assert.equal(res.status, 200, label);
+      assert.deepEqual(capturedIds, EXPECTED_IDS, `${label}：getIds 应仍提取完整 200 id（paprikaId 列截断不影响 coingeckoId 列）`);
+    }
+  });
+
+  await test("R6 F7-29 paprikaId 类型异常（数字/对象/空串）：解码原样透传不校验、门禁接口判畸形且不计入 mapped 数", () => {
+    for (const [label, bad] of [["数字", 123], ["对象", { id: "btc-bitcoin" }], ["空串", ""]]) {
+      const coins = realDoc.coins.slice(0, 3).map((c, i) => (i === 0 ? { ...c, paprikaId: bad } : c));
+      const decoded = decodeCoinsData(buildRowsDoc(coins));
+      assert.deepEqual(decoded[0].paprikaId, bad, `${label}：解码层定版为原样透传（不在解码层校验 paprikaId）`);
+      assert.equal(isValidPaprikaId(bad), false, `${label}：isValidPaprikaId 应判畸形`);
+    }
+    assert.equal(isValidPaprikaId(null), true, "null=未映射，是合法状态");
+    assert.equal(isValidPaprikaId("btc-bitcoin"), true);
+    assert.equal(isValidPaprikaId("bitcoin"), false, "无连字符段不符合 Paprika id 形态");
+    // 计数口径：truthy 畸形（数字/对象）不得被计入；与真实数据口径对账恰为 196
+    const mixed = [
+      { paprikaId: "btc-bitcoin" }, { paprikaId: 123 }, { paprikaId: { id: "x-y" } },
+      { paprikaId: "" }, { paprikaId: null },
+    ];
+    assert.equal(countValidPaprikaMappings(mixed), 1, "仅合法非空字符串计入 mapped 数");
+    assert.equal(countValidPaprikaMappings(realDoc.coins), 196, "真实数据合法映射数应与落库口径 196 一致");
   });
 }
 

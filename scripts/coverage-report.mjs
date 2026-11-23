@@ -1,8 +1,8 @@
 // scripts/coverage-report.mjs — W4-27 覆盖率度量（P2 / F4-43）
 // 用 Node 内置 NODE_V8_COVERAGE（V8 精确覆盖，零依赖、0 元）逐个子进程跑全部
-// Node 测试套件（tests/*.test.mjs + tests/snapshot-verify.mjs；
-// Python 两套件 tests/test_render_snapshot.py 与 tests/weekly_check_test.py
-// 不在 V8 口径内，F6-80 起一并实跑并把其计数纳入下方汇总输出），
+// Node 测试套件；Python 套件不在 V8 口径内，F6-80 起一并实跑并把其计数纳入
+// 下方汇总输出。套件集合单一事实源（F7-32）：tests/suites-manifest.json，
+// 与 scripts/run-tests.sh 共用（旧版 Python 清单硬编码曾漏 quota_check_test.py）。
 // 汇总 functions/、workers/fetcher/src/、shared/ 三处源文件的行/函数覆盖率。
 // 若 NODE_V8_COVERAGE 路线无任何产出，自动退到 `node --test
 // --experimental-test-coverage` 并在输出中注明实际方法。
@@ -16,9 +16,10 @@
 //     分母以其全部非空行计并在表中标注「未加载」；函数覆盖记 —。
 //   - 前端 public/index.html 内联脚本不在三处源文件口径内，不计入本表。
 //
-// 用法：node scripts/coverage-report.mjs [--out=<md 路径>] [--strict]
-//   --strict 时任一套件非零退出则本脚本亦非零退出（默认只报告不拦截，
-//   因 frontend-dom 在基线含 F4-07 预期红、contract --rows 模式不在此列）。
+// 用法：node scripts/coverage-report.mjs [--out=<md 路径>] [--report-only]
+//   F7-26 fail-closed：默认任一套件非零退出则本脚本亦非零退出（与 run-tests
+//   口径一致，不再默认吞失败）；确需只报告不拦截时显式传 --report-only。
+//   --strict 为历史开关，现与默认行为等价（保留兼容、接受但无额外作用）。
 import { spawnSync } from "node:child_process";
 import { mkdtempSync, readdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -27,16 +28,15 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const args = process.argv.slice(2);
-const STRICT = args.includes("--strict");
+const REPORT_ONLY = args.includes("--report-only");
+const STRICT = args.includes("--strict"); // 历史兼容：默认已 fail-closed，本开关无额外作用
 const outArg = args.find((a) => a.startsWith("--out="));
 const OUT = outArg ? path.resolve(outArg.slice("--out=".length)) : null;
 
-// ---------- 套件发现 ----------
+// ---------- 套件发现（F7-32：单一事实源 tests/suites-manifest.json） ----------
 const testDir = path.join(ROOT, "tests");
-const suites = readdirSync(testDir)
-  .filter((f) => f.endsWith(".test.mjs") || f === "snapshot-verify.mjs")
-  .sort()
-  .map((f) => path.join(testDir, f));
+const manifest = JSON.parse(readFileSync(path.join(testDir, "suites-manifest.json"), "utf-8"));
+const suites = manifest.suites.filter((s) => s.runner === "node").map((s) => path.join(ROOT, s.path));
 
 // ---------- 目标源文件 ----------
 function walk(dir) {
@@ -170,7 +170,7 @@ if (!rows.some((r) => r.loaded)) {
 }
 
 // ---------- Python 套件（F6-80：纳入汇总，计数从套件自报输出解析） ----------
-const pySuites = ["tests/test_render_snapshot.py", "tests/weekly_check_test.py"];
+const pySuites = manifest.suites.filter((s) => s.runner === "python3").map((s) => s.path);
 const pyResults = [];
 for (const rel of pySuites) {
   const run = spawnSync("python3", [path.join(ROOT, rel)], {
@@ -220,4 +220,5 @@ const report = L.join("\n");
 console.log(report);
 if (OUT) { writeFileSync(OUT, report + "\n", "utf-8"); console.log(`\n已写入 ${OUT}`); }
 const suiteFailed = suiteResults.some((s) => s.exit !== 0) || pyResults.some((s) => s.exit !== 0);
-if (STRICT && suiteFailed) process.exitCode = 1;
+if (suiteFailed && !REPORT_ONLY) process.exitCode = 1; // F7-26：默认 fail-closed，--report-only 才只报告
+if (suiteFailed && REPORT_ONLY) console.log("\n[coverage] 注意：有套件失败，因 --report-only 显式开关本次退出码仍为 0（报告口径，不作门禁判定）");

@@ -1,0 +1,69 @@
+{
+  "comment": "F7-32 测试套件集合单一事实源：run-tests.sh 与 scripts/coverage-report.mjs 共用本清单；tests/ 新增/删除套件文件必须同步改此处，tests/suite-manifest.test.mjs 做双向一致性断言。",
+  "suites": [
+    {
+      "path": "tests/board.test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/board-v2.test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/board-fetcher.test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/fetcher-branches.test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/frontend-dom.test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/contract-real-data.test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/snapshot-verify.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/health.test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/kv-write-guard.test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/legacy-credits.test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/coins-list-contract.test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/compare-shadow.test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/suite-manifest.test.mjs",
+      "runner": "node"
+    },
+    {
+      "path": "tests/test_render_snapshot.py",
+      "runner": "python3"
+    },
+    {
+      "path": "tests/weekly_check_test.py",
+      "runner": "python3"
+    },
+    {
+      "path": "tests/quota_check_test.py",
+      "runner": "python3"
+    }
+  ]
+}
