@@ -86,8 +86,32 @@ let live;
 if (liveFile) {
   live = readJsonFile(liveFile, "live-file");
 } else {
+  let res;
   try {
-    live = await (await fetch(`${liveBase}/api/board`)).json();
+    res = await fetch(`${liveBase}/api/board`);
+  } catch (e) {
+    fatal(`live /api/board 读取失败（${liveBase}）：${e.message}`);
+  }
+  // F8-25：先判 HTTP 状态——非 2xx 即判 fail 并注明状态码，错误体不得当 live
+  // 数据判读（与 F7-21 probe 同口径；旧实现不判状态，503 + 伪造 v2 体实测
+  // 可被判 pass、污染比对口径）。
+  if (!res.ok) {
+    console.log(
+      JSON.stringify(
+        {
+          tool: "compare-shadow",
+          verdict: "fail",
+          liveHttpStatus: res.status,
+          failReasons: [`live /api/board 返回非 2xx：HTTP ${res.status}，错误体不判读（F8-25）`],
+        },
+        null,
+        2
+      )
+    );
+    process.exit(1);
+  }
+  try {
+    live = await res.json();
   } catch (e) {
     fatal(`live /api/board 读取失败（${liveBase}）：${e.message}`);
   }

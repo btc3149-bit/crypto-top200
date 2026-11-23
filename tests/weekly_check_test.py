@@ -190,4 +190,41 @@ with tempfile.TemporaryDirectory() as _td:
     assert not list(target.parent.glob(".weekly-*")), list(target.parent.iterdir())
 ok("F7-23b atomic_write_text：tmp+os.replace 落盘、无临时文件残留、覆盖写一致")
 
+# ---------- F8-26：默认日期 UTC 口径（TZ 边界） ----------
+import os as _os, time as _time  # noqa: E402
+from datetime import datetime as _dt, timezone as _tz  # noqa: E402
+from zoneinfo import ZoneInfo as _ZI  # noqa: E402
+
+# 固定时刻：UTC 2026-11-22（周日）12:00 == Pacific/Auckland 2026-11-23（周一）01:00。
+# 本地口径 date.today() 在 Auckland 下得 2026-11-23 → 标签 2026-W48；
+# UTC 口径应得 2026-11-22 → 标签 2026-W47（与 quota/check-shadow 的 UTC 周一致）。
+_FIXED_INSTANT = _dt(2026, 11, 22, 12, 0, 0, tzinfo=_tz.utc)
+assert _FIXED_INSTANT.astimezone(_ZI("Pacific/Auckland")).date() == date(2026, 11, 23)
+assert _FIXED_INSTANT.date().isocalendar()[1] == 47
+
+class _FixedDateTime(_dt):
+    @classmethod
+    def now(cls, tz=None):
+        return _FIXED_INSTANT if tz is not None else _FIXED_INSTANT.replace(tzinfo=None)
+
+_orig_wc_datetime = wc.datetime
+_orig_tz_env = _os.environ.get("TZ")
+wc.datetime = _FixedDateTime
+try:
+    for _tzname in ("Pacific/Auckland", "UTC", "America/New_York"):
+        _os.environ["TZ"] = _tzname
+        _time.tzset()
+        _d = wc.utc_today()
+        _iso = _d.isocalendar()
+        assert _d == date(2026, 11, 22), (_tzname, _d)  # 任一本地时区下默认日期恒为 UTC 日期
+        assert f"{_iso[0]}-W{_iso[1]:02d}" == "2026-W47", (_tzname, _iso)
+finally:
+    wc.datetime = _orig_wc_datetime
+    if _orig_tz_env is None:
+        _os.environ.pop("TZ", None)
+    else:
+        _os.environ["TZ"] = _orig_tz_env
+    _time.tzset()
+ok("F8-26 utc_today：固定时刻（UTC 周日/Auckland 周一）下 TZ=Auckland/UTC/New_York 默认日期恒 2026-11-22、周标签 2026-W47（旧本地口径在 Auckland 下为 W48）")
+
 print(f"\nALL {len(PASS)} CHECKS PASSED")

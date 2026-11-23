@@ -13,6 +13,15 @@
 # 退出码三档（F6-23 定版）：pass=0、fail=1、warn=4。编排（HC1）须按退出码分流：
 # warn（退出 4）与 fail 一样 ping /fail（附降级注记），不得把 warn 报成 success。
 #
+# F8-24：探针日志（ops/probe-log.jsonl）写失败的处置（与现行消费方语义兼容）：
+# 消费方核查——HC1 cron 按退出码 0/4/1 三分流（见 ops/probe-config.md HC1 行）；
+# deploy.sh 部署后调用只看非零与否、未全过只告警不改判。故定版：日志写失败
+# 不改变 verdict 本身，但 pass 时以 warn 级退出码 4 收尾（HC1 侧按降级 /fail
+# 附注记上报、留痕丢失可见），并在 stderr 明示；fail/warn 时退出码不变
+# （1/4，日志失败另行明示）。绝不把日志失败升级为 fail 级（1）——不得让
+# 本地留痕故障把站点真 pass 误报为站点故障。日志路径可用环境变量
+# PROBE_LOG_FILE 覆盖（测试用；默认 ops/probe-log.jsonl）。
+#
 # 告警邮箱预留：读环境变量 PROBE_ALERT_EMAIL。未设置时结果行标注 "alert": "skipped-no-email"；
 # 设置了也暂不真发邮件，只标注 "alert": "would-email"。
 #
@@ -23,7 +32,7 @@ BASE="${1:-https://top200.oppcal.com}"
 BASE="${BASE%/}"
 cd "$(dirname "$0")/.."
 mkdir -p ops
-LOG_FILE="ops/probe-log.jsonl"
+LOG_FILE="${PROBE_LOG_FILE:-ops/probe-log.jsonl}"
 TMPD="$(mktemp -d)"
 trap 'rm -rf "$TMPD"' EXIT
 
@@ -121,11 +130,21 @@ esac
 done
 echo " verdict: $VERDICT (alert: $ALERT)"
 
-# 追加一行 JSON 结果到 ops/probe-log.jsonl，并把该行打印出来
-python3 -c "import json,sys,datetime; line={'ts': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'base': sys.argv[2], 'checks': {'api_status_content_type': sys.argv[3], 'api_json_keys': sys.argv[4], 'api_no_html': sys.argv[5], 'coverage': sys.argv[6], 'home': sys.argv[7], 'data_json': sys.argv[8], 'freshness': sys.argv[9]}, 'freshnessNote': sys.argv[10], 'verdict': sys.argv[11], 'alert': sys.argv[12]}; open(sys.argv[1],'a',encoding='utf-8').write(json.dumps(line,ensure_ascii=False) + chr(10)); print(json.dumps(line,ensure_ascii=False))" "$LOG_FILE" "$BASE" "$C_API" "$C_KEYS" "$C_NOHTML" "$C_COV" "$C_HOME" "$C_DATA" "$C_FRESH" "$FRESH_NOTE" "$VERDICT" "$ALERT"
+# 追加一行 JSON 结果到 ops/probe-log.jsonl，并把该行打印出来。
+# F8-24：写失败必须被检出（旧实现无任何检查、留痕静默丢失）——处置见文件头：
+# verdict 不变，stderr 明示；pass 时退出码升为 warn 级 4，绝不升 fail 级 1。
+LOG_WRITE_OK=1
+if ! python3 -c "import json,sys,datetime; line={'ts': datetime.datetime.now(datetime.timezone.utc).isoformat(), 'base': sys.argv[2], 'checks': {'api_status_content_type': sys.argv[3], 'api_json_keys': sys.argv[4], 'api_no_html': sys.argv[5], 'coverage': sys.argv[6], 'home': sys.argv[7], 'data_json': sys.argv[8], 'freshness': sys.argv[9]}, 'freshnessNote': sys.argv[10], 'verdict': sys.argv[11], 'alert': sys.argv[12]}; open(sys.argv[1],'a',encoding='utf-8').write(json.dumps(line,ensure_ascii=False) + chr(10)); print(json.dumps(line,ensure_ascii=False))" "$LOG_FILE" "$BASE" "$C_API" "$C_KEYS" "$C_NOHTML" "$C_COV" "$C_HOME" "$C_DATA" "$C_FRESH" "$FRESH_NOTE" "$VERDICT" "$ALERT"; then
+LOG_WRITE_OK=0
+echo "probe: ERROR 探针日志写入失败：$LOG_FILE（verdict=$VERDICT 不变，留痕丢失；F8-24）" >&2
+echo " log_write: fail ($LOG_FILE)"
+fi
 
 case "$VERDICT" in
 fail) exit 1;;
 warn) exit 4;;
-*) exit 0;;
+*) case "$LOG_WRITE_OK" in
+   0) exit 4;;  # F8-24：pass + 日志写失败 → warn 级 4（降级上报），不误报 fail
+   *) exit 0;;
+   esac;;
 esac

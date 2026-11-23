@@ -68,6 +68,39 @@ def sanitized_debug(text):
     return re.sub(r"\b[0-9a-f]{32}\b", "<redacted-hex>", (text or ""))[:300]
 
 
+FALLBACK_WRANGLER_PIN = "4.159.0"  # F8-23：仅 package.json 读不到时的写死回退值（须与 package.json pin 同步）
+
+
+def _lockfile_wrangler_version():
+    try:
+        return json.load(open(os.path.join(REPO_ROOT, "package-lock.json")))["packages"]["node_modules/wrangler"]["version"]
+    except Exception:
+        return None
+
+
+def wrangler_cmd_prefix():
+    """F8-23：wrangler 调用前缀（纯路径决策，供单测）。
+
+    正常路径优先走锁版入口 scripts/wrangler-pinned.sh（F7-45 定版：pin 唯一
+    来源 package.json、lockfile 一致性由入口校验）；pin 与 lockfile 不一致时
+    先 WARN（入口本身也会拒绝执行）。仅当 package.json 读不到时才回退裸
+    `npx wrangler@<写死值>`，且必须 WARN（与 quota-check.py 同口径；F6-28 起
+    本脚本已有 WARN、本次统一改走 stderr 以免混入 stdout 判定行）。
+    """
+    try:
+        pin = json.load(open(os.path.join(REPO_ROOT, "package.json")))["devDependencies"]["wrangler"]
+    except Exception:
+        print(f"shadow-health: WARN 无法从仓库 package.json 读取 wrangler pin，回退写死值 {FALLBACK_WRANGLER_PIN}（绕过锁版入口 scripts/wrangler-pinned.sh）", file=sys.stderr)
+        locked = _lockfile_wrangler_version()
+        if locked is not None and locked != FALLBACK_WRANGLER_PIN:
+            print(f"shadow-health: WARN 回退 pin {FALLBACK_WRANGLER_PIN} 与 package-lock.json 的 wrangler {locked} 不一致，请人工核对", file=sys.stderr)
+        return ["npx", f"wrangler@{FALLBACK_WRANGLER_PIN}"]
+    locked = _lockfile_wrangler_version()
+    if locked is not None and locked != pin:
+        print(f"shadow-health: WARN package.json 的 wrangler pin {pin} 与 package-lock.json {locked} 不一致，锁版入口将拒绝执行，请先对齐", file=sys.stderr)
+    return ["bash", os.path.join(REPO_ROOT, "scripts", "wrangler-pinned.sh")]
+
+
 def main():
     if not os.environ.get("CLOUDFLARE_API_TOKEN"):
         print("shadow-health: ERROR 未设置 CLOUDFLARE_API_TOKEN（由调用方运行时注入）")
@@ -75,14 +108,9 @@ def main():
     if not ACCOUNT_ID:
         print("shadow-health: ERROR 未设置 CLOUDFLARE_ACCOUNT_ID（F6-87：必填环境变量，缺失即 fail-closed）")
         return 2
-    # F6-28：以 REPO_ROOT 拼路径读 pin，与 cwd 无关；回退写死值时打印 WARN。
-    try:
-        pin = json.load(open(os.path.join(REPO_ROOT, "package.json")))["devDependencies"]["wrangler"]
-    except Exception:
-        pin = "4.159.0"
-        print("shadow-health: WARN 无法从仓库 package.json 读取 wrangler pin，回退写死值 4.159.0")
-    cmd = [
-        "npx", f"wrangler@{pin}", "kv", "key", "get", HEALTH_KEY,
+    # F6-28/F8-23：以 REPO_ROOT 拼路径、优先锁版入口（见 wrangler_cmd_prefix）。
+    cmd = wrangler_cmd_prefix() + [
+        "kv", "key", "get", HEALTH_KEY,
         "--namespace-id", NAMESPACE_ID, "--remote",
     ]
     env = dict(os.environ, CLOUDFLARE_ACCOUNT_ID=ACCOUNT_ID)

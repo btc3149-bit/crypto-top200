@@ -71,4 +71,25 @@ for bad in ("export const OTHER = [];", "export const COINS = [{\"id\": 1}"):
         pass
 ok("畸形输入（无标记/括号未闭合）抛 ValueError")
 
+# ---------- F8-19：_stage_and_land 落盘保留目标原权限 ----------
+import os, stat  # noqa: E402
+with tempfile.TemporaryDirectory() as _td:
+    _td = Path(_td)
+    _src = _td / "src.bin"; _src.write_bytes(b"new-content")
+    # 已有目标 0644 → 落盘后仍 0644（旧实现被 mkstemp 的 0600 收紧）
+    _tgt = _td / "out.bin"; _tgt.write_bytes(b"old"); os.chmod(_tgt, 0o644)
+    build._stage_and_land([(_src, _tgt)])
+    assert _tgt.read_bytes() == b"new-content"
+    assert stat.S_IMODE(_tgt.stat().st_mode) == 0o644, oct(_tgt.stat().st_mode)
+    # 已有目标的非默认权限（0640）同样沿用
+    _tgt2 = _td / "out2.bin"; _tgt2.write_bytes(b"old"); os.chmod(_tgt2, 0o640)
+    build._stage_and_land([(_src, _tgt2)])
+    assert stat.S_IMODE(_tgt2.stat().st_mode) == 0o640, oct(_tgt2.stat().st_mode)
+    # 新目标 → 常规新建权限 0666 & ~umask（与 write_text 一致；umask 022 时为 0644）
+    _um = os.umask(0); os.umask(_um)
+    _tgt3 = _td / "new.bin"
+    build._stage_and_land([(_src, _tgt3)])
+    assert stat.S_IMODE(_tgt3.stat().st_mode) == (0o666 & ~_um), oct(_tgt3.stat().st_mode)
+ok("F8-19 _stage_and_land：已有目标保留原权限（0644/0640）、新目标为 0666&~umask")
+
 print(f"\nALL {len(PASS)} CHECKS PASSED")

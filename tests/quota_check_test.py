@@ -242,6 +242,79 @@ qc2.read_kv_key = lambda key, quiet=False: {"month": "2026-11", "credits": 42, "
 check("⑮ F7-07 read_legacy_credits 合法形态 → 原样返回",
       (qc2.read_legacy_credits() or {}).get("credits"), 42)
 
+# ---------- F8-22：INVALID 路径写日志失败不得静默吞 ----------
+from contextlib import redirect_stderr  # noqa: E402
+_orig_log_path = qc.LOG_PATH
+qc.LOG_PATH = "/nonexistent-dir-f8-22/quota-log.jsonl"  # 父目录不存在 → open 必失败（等价只读目录）
+qc.read_health = lambda: mk_health(month="2026-10")  # 陈旧 → INVALID 路径
+qc.read_board_mode = _orig_board_mode
+_out_buf, _err_buf = io.StringIO(), io.StringIO()
+with redirect_stdout(_out_buf), redirect_stderr(_err_buf):
+    _code = qc.main()
+qc.LOG_PATH = _orig_log_path
+check("⑯ F8-22 INVALID 路径写日志失败 → stderr 报错（含「写入」与 LOG_PATH）+ 退出 3（与正常路径同码，不静默吞）",
+      (_code, "写入" in _err_buf.getvalue(), "quota-log.jsonl" in _err_buf.getvalue(),
+       "核账失效" in _out_buf.getvalue()),
+      (3, True, True, True))
+
+# ---------- F8-23：wrangler pin 回退 WARN + 优先锁版入口 ----------
+import os as _os  # noqa: E402
+from types import SimpleNamespace as _NS  # noqa: E402
+# ⑮ 已 monkeypatch qc2.read_kv_key，本节另载全新实例 qc3 取原函数
+_spec3 = importlib.util.spec_from_file_location("quota_check_f823", ROOT / "scripts" / "quota-check.py")
+qc3 = importlib.util.module_from_spec(_spec3)
+_spec3.loader.exec_module(qc3)
+
+
+def _prefix_case(mod, repo_root):
+    """以指定 REPO_ROOT 调 wrangler_cmd_prefix，返回 (prefix, stderr 文本)。"""
+    _orig_root = mod.REPO_ROOT
+    mod.REPO_ROOT = str(repo_root)
+    _err = io.StringIO()
+    try:
+        with redirect_stderr(_err):
+            prefix = mod.wrangler_cmd_prefix()
+    finally:
+        mod.REPO_ROOT = _orig_root
+    return prefix, _err.getvalue()
+
+
+# 回退分支：REPO_ROOT 下无 package.json → 裸 npx@写死值 + stderr WARN（旧实现静默）
+_empty_dir = tempfile.mkdtemp()
+_prefix, _warn = _prefix_case(qc3, _empty_dir)
+check("⑰a F8-23 quota 回退分支：package.json 读不到 → npx wrangler@4.159.0 + WARN（回退/绕过锁版入口）",
+      (_prefix, "WARN" in _warn and "回退写死值 4.159.0" in _warn),
+      (["npx", "wrangler@4.159.0"], True))
+# 正常分支：真实仓库 → 优先锁版入口 wrangler-pinned.sh、无 WARN（pin 与 lockfile 一致）
+_prefix, _warn = _prefix_case(qc3, ROOT)
+check("⑰b F8-23 quota 正常分支：走 scripts/wrangler-pinned.sh 锁版入口、无 WARN",
+      (_prefix, _warn), (["bash", str(ROOT / "scripts" / "wrangler-pinned.sh")], ""))
+# lockfile 不一致分支：pin 与 lockfile 版本不同 → 仍走锁版入口但 WARN
+_mismatch_dir = Path(tempfile.mkdtemp())
+(_mismatch_dir / "package.json").write_text(json.dumps({"devDependencies": {"wrangler": "4.159.0"}}), encoding="utf-8")
+(_mismatch_dir / "package-lock.json").write_text(json.dumps({"packages": {"node_modules/wrangler": {"version": "9.9.9"}}}), encoding="utf-8")
+_prefix, _warn = _prefix_case(qc3, _mismatch_dir)
+check("⑰c F8-23 quota pin 与 lockfile 不一致 → WARN 提示对齐（前缀仍为锁版入口）",
+      (_prefix[0], "不一致" in _warn), ("bash", True))
+# read_kv_key 端到端（回退形态）：命令确由回退前缀组装、结果正常解析
+_orig_sub = qc3.subprocess
+_captured = {}
+class _FakeR:  # noqa: E306
+    returncode = 0; stdout = '{"ok": true}'; stderr = ""
+qc3.subprocess = _NS(run=lambda cmd, **kw: (_captured.update(cmd=cmd), _FakeR())[1])
+qc3.ACCOUNT_ID = "test-account"
+_os.environ["CLOUDFLARE_API_TOKEN"] = "test-token"
+_orig_root2 = qc3.REPO_ROOT
+qc3.REPO_ROOT = _empty_dir
+_err = io.StringIO()
+with redirect_stderr(_err):
+    _res = qc3.read_kv_key("some-key")
+qc3.REPO_ROOT = _orig_root2
+qc3.subprocess = _orig_sub
+check("⑰d F8-23 quota read_kv_key 回退形态：cmd=npx wrangler@4.159.0 kv…、解析成功、stderr 有 WARN",
+      (_res, _captured["cmd"][:2], "WARN" in _err.getvalue()),
+      ({"ok": True}, ["npx", "wrangler@4.159.0"], True))
+
 print(f"\nquota_check: {len(PASS)} PASS / {len(FAIL)} FAIL")
 if FAIL:
     print("未过用例（批 0 的 F6-07 新口径合并后应转绿，见文件头与 P6_NOTES F6-16）：")
