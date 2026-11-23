@@ -88,6 +88,10 @@
     {
       "path": "tests/time_tolerance_test.py",
       "runner": "python3"
+    },
+    {
+      "path": "tests/paprika-verify-scripts.test.mjs",
+      "runner": "node"
     }
   ]
 }
