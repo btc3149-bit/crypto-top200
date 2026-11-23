@@ -11,6 +11,9 @@
   *{box-sizing:border-box}
   html,body{margin:0;padding:0;background:var(--bg);color:var(--txt);font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif}
   .wrap{max-width:860px;margin:0 auto;padding:16px 14px 48px}
+  /* F8-08：跳过链接与首页同口径（平时移出视口、聚焦时显形），不影响视觉 */
+  .skip-link{position:absolute;left:-9999px;top:0;background:var(--card);color:var(--txt);padding:10px 16px;z-index:50;border:1px solid var(--line);border-radius:0 0 8px 0}
+  .skip-link:focus{left:0}
   h1{font-size:22px;margin:6px 0 4px}
   h2{font-size:16px;margin:22px 0 8px;color:var(--txt)}
   p,li{font-size:14px;line-height:1.8;color:#c6cede}
@@ -21,7 +24,8 @@
 </style>
 </head>
 <body>
-<div class="wrap">
+<a class="skip-link" href="#mainWrap">跳到主内容</a>
+<main class="wrap" id="mainWrap">
   <h1>隐私说明</h1>
   <p class="sub">最后更新：2026-11-23 ｜ 适用域名：仅 <strong>top200.oppcal.com</strong></p>
   <p class="sub">当前状态：<strong>网站统计（Web Analytics）已启用</strong>（2026-11-11 经站长签收后启用）。本页如实描述当前实际数据流。</p>
@@ -80,7 +84,7 @@
   <footer>
     <a href="/">返回榜单首页</a> ｜ 本站仅供信息参考，不构成投资建议。加密货币投资可损失全部本金，请独立判断、量力而行。
   </footer>
-</div>
+</main>
 <!-- Cloudflare Web Analytics --><script type='module' src='https://static.cloudflareinsights.com/beacon.min.js' data-cf-beacon='{"token": "5dacd62b1be14a548d01963327abd6f8"}'></script><!-- End Cloudflare Web Analytics -->
 </body>
 </html>

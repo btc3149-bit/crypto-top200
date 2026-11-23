@@ -905,6 +905,22 @@ await test("㉒ F8-07 Escape 关闭详情：含 ' 的畸形 id 不得抛 SyntaxE
   delete c9.ctx.__badBtn; delete c9.ctx.__btcBtn;
 });
 
+await test("㉓ F8-08 隐私页地标：<main id=mainWrap> + 跳过链接与首页同口径、旧 div.wrap 不残留", () => {
+  const priv = readFileSync(new URL("../public/privacy/index.html", import.meta.url), "utf-8");
+  // 首页口径基准
+  assert.ok(/<a class="skip-link" href="#mainWrap">跳到主内容<\/a>/.test(html), "首页应有跳过链接（对照基准）");
+  assert.ok(/<main class="wrap" id="mainWrap">/.test(html), "首页应有 main#mainWrap（对照基准）");
+  // 隐私页同口径
+  assert.equal((priv.match(/<main\b/g) || []).length, 1, "隐私页应恰有 1 个 <main>");
+  assert.ok(/<main class="wrap" id="mainWrap">/.test(priv), "隐私页正文容器应为 <main class=\"wrap\" id=\"mainWrap\">（.wrap 样式不变、视觉不变）");
+  assert.ok(/<\/main>/.test(priv), "隐私页 </main> 应闭合");
+  assert.ok(!/<div class="wrap">/.test(priv), "旧 <div class=\"wrap\"> 不得残留");
+  const skipIdx = priv.indexOf('<a class="skip-link" href="#mainWrap">跳到主内容</a>');
+  assert.ok(skipIdx >= 0, "隐私页应有与首页同文案/同锚点的跳过链接");
+  assert.ok(skipIdx < priv.indexOf("<main"), "跳过链接应在 <main> 之前（body 首元素）");
+  assert.ok(/\.skip-link\{position:absolute;left:-9999px/.test(priv) && /\.skip-link:focus\{left:0\}/.test(priv), "隐私页应有 .skip-link 隐藏/聚焦显形样式（与首页同口径）");
+});
+
 const failed = results.filter(([, s]) => s !== "PASS");
 console.log(`\nfrontend-dom: ${results.length - failed.length}/${results.length} PASS`);
 for (const [name, s] of failed) console.log(`红：${name}（见上方断言信息）`);
