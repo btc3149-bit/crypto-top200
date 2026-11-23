@@ -834,6 +834,35 @@ await test("⑳ F8-05 ≤640 手机档排序按钮 44px：CSSOM 级联计算（3
   assert.equal(px(computed(".toolbar button", { width: 360, coarse: true })["min-height"]), 44, "≤640 工具栏按钮应仍为 44（对照组未被扰动）");
 });
 
+await test("㉑ F8-06 状态横幅 aria-live 节流：同状态连续 render 不得重写横幅 textContent、状态变化时仍更新", async () => {
+  boardLive = false; // 快照态：横幅文案恒定，适合作「值不变」计数
+  const c8 = buildContext();
+  const inPage8 = (expr) => vm.runInContext(expr, c8.ctx);
+  await settle();
+  const banner = c8.registry.get("statusBanner");
+  // 计数桩：以 accessor 拦截 textContent 写入（桩无 MutationObserver，此为等价计数口径，
+  // 与评审「MutationObserver 计数横幅 mutations」的验证方法同义）
+  let writes = 0;
+  let cur = banner.textContent;
+  Object.defineProperty(banner, "textContent", {
+    configurable: true,
+    get() { return cur; },
+    set(v) { writes++; cur = String(v); },
+  });
+  const before = cur;
+  assert.ok(before.includes("快照"), "前置：横幅应为快照文案，实际：" + before);
+  inPage8("render(); render(); render();");
+  assert.equal(writes, 0, `同状态连续 render 3 次，横幅 textContent 额外写入应为 0 次，实际 ${writes} 次（aria-live 会重复播报）`);
+  assert.equal(cur, before, "横幅文案不应变化");
+  // 状态变化时仍须更新：切 live 后横幅应变为实时文案且恰有写入
+  boardLive = true;
+  await inPage8("loadBoard()");
+  await settle();
+  assert.ok(writes >= 1, "状态变化时横幅应被写入更新");
+  assert.ok(cur.includes("实时行情"), "live 后横幅应为实时文案，实际：" + cur);
+  boardLive = false;
+});
+
 const failed = results.filter(([, s]) => s !== "PASS");
 console.log(`\nfrontend-dom: ${results.length - failed.length}/${results.length} PASS`);
 for (const [name, s] of failed) console.log(`红：${name}（见上方断言信息）`);

@@ -724,28 +724,33 @@ function applyBoardState() {
   const mins = staleMins();
   const ageTxt = mins != null ? "约 " + mins + " 分钟前" : null;
   const updTxt = BOARD && BOARD.updatedAt ? fmtTimeStr(BOARD.updatedAt) : "—";
+  // F8-06：横幅带 aria-live=polite，四分支先算文案、统一在分支后仅当文本实际变化时
+  // 才写 textContent——render() 每次输入/筛选都会调 applyBoardState，无条件重写会使
+  // 部分读屏重复播报整段横幅（值不变亦重写已由 frontend-dom ㉑ 计数坐实）。
+  let bannerText = "";
   if (mode === "live") {
     $("thRank").textContent = "实时预估排名"; $("thPrice").textContent = "现价($)"; $("thMcap").textContent = "实时市值"; $("thMult").textContent = "实时倍数";
     $("stMcapK").textContent = "全网总市值（实时）"; $("stTimeK").textContent = "行情更新时间";
     badge.textContent = "实时行情"; badge.className = "badge live";
-    banner.textContent = "实时行情" + (ageTxt ? " · " + ageTxt + "更新" : "") + coverageNote() + (refreshFailNote ? " · 更新失败，显示 " + refreshFailNote + " 数据" : ""); banner.className = "status-banner live";
+    bannerText = "实时行情" + (ageTxt ? " · " + ageTxt + "更新" : "") + coverageNote() + (refreshFailNote ? " · 更新失败，显示 " + refreshFailNote + " 数据" : ""); banner.className = "status-banner live";
   } else if (mode === "stale") {
     $("thRank").textContent = "预估排名（缓存）"; $("thPrice").textContent = "现价（缓存）($)"; $("thMcap").textContent = "市值（缓存）"; $("thMult").textContent = "倍数（缓存）";
     $("stMcapK").textContent = "全网总市值（缓存）"; $("stTimeK").textContent = "行情更新时间";
     badge.textContent = ageTxt ? "缓存行情（" + ageTxt + "）" : "缓存行情"; badge.className = "badge stale";
-    banner.textContent = "缓存行情：数据截至 " + updTxt + (ageTxt ? "，" + ageTxt : "") + "，上游暂不可达" + coverageNote() + (refreshFailNote ? " · 更新失败，显示 " + refreshFailNote + " 数据" : ""); banner.className = "status-banner stale";
+    bannerText = "缓存行情：数据截至 " + updTxt + (ageTxt ? "，" + ageTxt : "") + "，上游暂不可达" + coverageNote() + (refreshFailNote ? " · 更新失败，显示 " + refreshFailNote + " 数据" : ""); banner.className = "status-banner stale";
   } else if (mode === "delayed") {
     // F6-62：L1 延迟（数据龄约 15–30 分钟、抓取链路可能完全正常）给中性文案，不称故障
     $("thRank").textContent = "实时预估排名"; $("thPrice").textContent = "现价($)"; $("thMcap").textContent = "实时市值"; $("thMult").textContent = "实时倍数";
     $("stMcapK").textContent = "全网总市值（实时）"; $("stTimeK").textContent = "行情更新时间";
     badge.textContent = mins != null ? "行情延迟（约 " + mins + " 分钟）" : "行情延迟"; badge.className = "badge stale";
-    banner.textContent = "行情延迟约 " + (mins != null ? mins : "—") + " 分钟 · 数据截至 " + updTxt + coverageNote() + (refreshFailNote ? " · 更新失败，显示 " + refreshFailNote + " 数据" : ""); banner.className = "status-banner stale";
+    bannerText = "行情延迟约 " + (mins != null ? mins : "—") + " 分钟 · 数据截至 " + updTxt + coverageNote() + (refreshFailNote ? " · 更新失败，显示 " + refreshFailNote + " 数据" : ""); banner.className = "status-banner stale";
   } else {
     $("thRank").textContent = "预估排名"; $("thPrice").textContent = "快照价（" + snapshotShort() + "）($)"; $("thMcap").textContent = "快照市值"; $("thMult").textContent = "快照倍数";
     $("stMcapK").textContent = "全网总市值"; $("stTimeK").textContent = "数据基准";
     badge.textContent = "快照模式（" + snapshotDate() + "）"; badge.className = "badge snapshot";
-    banner.textContent = snapshotBannerText(); banner.className = "status-banner snapshot";
+    bannerText = snapshotBannerText(); banner.className = "status-banner snapshot";
   }
+  if (banner.textContent !== bannerText) banner.textContent = bannerText;
   if (mode === "snapshot") {
     $("stMcap").textContent = "—"; $("stMcap").className = "v muted";
     $("stDom").textContent = "—"; $("stDom").className = "v";
